@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(unicode)
 
-include_directories("D:/MiniTools/CopyCommonLib/copyed" "D:/OpenSSL/build-x64/include")
+include_directories("src/commonlib" "D:/OpenSSL/build-x64/include")
 link_directories("D:/OpenSSL/build-x64-debug/lib")
 
 set(CMAKE_CXX_STANDARD 20)

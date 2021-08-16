@@ -418,12 +418,11 @@ namespace PROJECT_NAME {
                 auto prev = result.size();
                 result.resize(result.size() + size);
                 while (r.read_byte(result.data() + prev, size, translate_byte_as_is, true) < size) {
-                    if (r.eof()) break;
+                    r.offset(1);
                     r.ref().reading();
                 }
                 while (!r.expect("\r\n")) {
-                    if (r.eof()) break;
-                    r.ref().reading();
+                    if(r.readable()<2)r.ref().reading();
                 }
             }
         }

@@ -16,6 +16,7 @@
 #endif
 
 #include <string>
+
 namespace socklib {
     constexpr int invalid_socket = -1;
     constexpr size_t intmaximum = static_cast<size_t>(static_cast<unsigned int>(~0) >> 1);
@@ -144,6 +145,10 @@ namespace socklib {
             if (addrin) {
                 copy_addrinfo(addrin);
             }
+        }
+
+        virtual bool is_secure() const {
+            return false;
         }
 
         bool addr_same(addrinfo* info) const {
@@ -296,6 +301,10 @@ namespace socklib {
 
         virtual bool is_opened() const override {
             return ssl != nullptr || Conn::is_opened();
+        }
+
+        virtual bool is_secure() const override {
+            return true;
         }
 
         virtual bool write(const char* data, size_t size) override {

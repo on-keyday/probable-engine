@@ -7,6 +7,8 @@
 
 namespace socklib {
     struct HttpConn {
+        friend struct Http;
+
        protected:
         std::shared_ptr<Conn> conn;
         using Header = std::multimap<std::string, std::string>;
@@ -84,12 +86,25 @@ namespace socklib {
         }
 
         template <class F>
+        void recv(F&& f) {
+            std::shared_ptr<HttpClientConn> self(
+                this, +[](HttpClientConn*) {});
+            f(self, recv());
+        }
+
+        template <class F>
         void recv_async(F&& f) {
             waiting = true;
             std::thread([&, this]() {
-                f(*this, recv());
+                std::shared_ptr<HttpClientConn> self(
+                    this, +[](HttpClientConn*) {});
+                f(self, recv());
                 waiting = false;
             }).detach();
+        }
+
+        void close() {
+            conn->close();
         }
 
         ~HttpClientConn() {

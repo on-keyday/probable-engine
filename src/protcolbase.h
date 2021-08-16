@@ -7,7 +7,7 @@
 namespace socklib {
     struct TCP {
        private:
-        static int open_detail(addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr) {
+        static int open_detail(const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr) {
             if (!Network::Init()) return invalid_socket;
             ::addrinfo hint = {0};
             hint.ai_socktype = SOCK_STREAM;
@@ -23,6 +23,11 @@ namespace socklib {
                 if (port_net) {
                     addr->sin_port = port_net;
                 }
+                if (conn) {
+                    if (conn->addr_same(p) && conn->is_secure() == secure) {
+                        return 0;
+                    }
+                }
                 auto tmp = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
                 if (tmp < 0) continue;
                 if (::connect(tmp, p->ai_addr, p->ai_addrlen) == 0) {
@@ -37,8 +42,9 @@ namespace socklib {
 
        public:
         static std::shared_ptr<Conn> open(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false) {
-            ::addrinfo *selected = nullptr, *got = nullptr;
-            int sock = open_detail(got, selected, host, port, service);
+            std::shared_ptr<Conn> ret;
+            /*::addrinfo *selected = nullptr, *got = nullptr;
+            int sock = open_detail(nullptr, false, got, selected, host, port, service);
             if (sock == invalid_socket) {
                 return nullptr;
             }
@@ -47,23 +53,18 @@ namespace socklib {
                 ::ioctlsocket(sock, FIONBIO, &l);
             }
             auto ret = std::make_shared<Conn>(sock, selected);
-            ::freeaddrinfo(got);
+            ::freeaddrinfo(got);*/
+            if (!reopen(ret, host, port, service, noblock)) {
+                return nullptr;
+            }
             return ret;
         }
 
-        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0) {
-            ::addrinfo *selected = nullptr, *got = nullptr;
-            int sock = open_detail(got, selected, host, port, service);
-            if (sock == invalid_socket) {
-                return nullptr;
-            }
-            SSL_CTX* ctx = nullptr;
-            SSL* ssl = nullptr;
+       private:
+        static bool setupssl(int sock, const char* host, SSL_CTX*& ctx, SSL*& ssl, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0) {
             ctx = SSL_CTX_new(TLS_method());
             if (!ctx) {
-                ::closesocket(sock);
-                ::freeaddrinfo(got);
-                return nullptr;
+                return false;
             }
             SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2);
             if (cacert) {
@@ -75,9 +76,7 @@ namespace socklib {
             ssl = SSL_new(ctx);
             if (!ssl) {
                 SSL_CTX_free(ctx);
-                ::closesocket(sock);
-                ::freeaddrinfo(got);
-                return nullptr;
+                return false;
             }
             SSL_set_fd(ssl, sock);
             SSL_set_tlsext_host_name(ssl, host);
@@ -85,13 +84,27 @@ namespace socklib {
             if (!X509_VERIFY_PARAM_add1_host(param, host, 0)) {
                 SSL_free(ssl);
                 SSL_CTX_free(ctx);
-                ::closesocket(sock);
-                ::freeaddrinfo(got);
-                return nullptr;
+                return false;
             }
             if (SSL_connect(ssl) != 1) {
                 SSL_free(ssl);
                 SSL_CTX_free(ctx);
+                return false;
+            }
+            return true;
+        }
+
+       public:
+        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0) {
+            std::shared_ptr<Conn> ret;
+            /*::addrinfo *selected = nullptr, *got = nullptr;
+            int sock = open_detail(nullptr, true, got, selected, host, port, service);
+            if (sock == invalid_socket) {
+                return nullptr;
+            }
+            SSL_CTX* ctx = nullptr;
+            SSL* ssl = nullptr;
+            if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len)) {
                 ::closesocket(sock);
                 ::freeaddrinfo(got);
                 return nullptr;
@@ -101,8 +114,54 @@ namespace socklib {
                 ::ioctlsocket(sock, FIONBIO, &l);
             }
             auto ret = std::make_shared<SecureConn>(ctx, ssl, sock, selected);
-            ::freeaddrinfo(got);
+            ::freeaddrinfo(got);*/
+            if (!reopen_secure(ret, host, port, service, noblock, cacert, alpnstr, len)) {
+                return nullptr;
+            }
             return ret;
+        }
+
+        static bool reopen(std::shared_ptr<Conn>& conn, const char* host, unsigned short port, const char* service = nullptr, bool noblock = false) {
+            ::addrinfo *selected = nullptr, *got = nullptr;
+            int sock = open_detail(conn, false, got, selected, host, port, service);
+            if (sock == invalid_socket) {
+                return false;
+            }
+            else if (sock == 0) {
+                return true;
+            }
+            if (noblock) {
+                u_long l = 1;
+                ::ioctlsocket(sock, FIONBIO, &l);
+            }
+            conn = std::make_shared<Conn>(sock, selected);
+            ::freeaddrinfo(got);
+            return true;
+        }
+
+        static bool reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0) {
+            ::addrinfo *selected = nullptr, *got = nullptr;
+            int sock = open_detail(conn, true, got, selected, host, port, service);
+            if (sock == invalid_socket) {
+                return false;
+            }
+            else if (sock == 0) {
+                return true;
+            }
+            SSL_CTX* ctx = nullptr;
+            SSL* ssl = nullptr;
+            if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len)) {
+                ::closesocket(sock);
+                ::freeaddrinfo(got);
+                return false;
+            }
+            if (noblock) {
+                u_long l = 1;
+                ::ioctlsocket(sock, FIONBIO, &l);
+            }
+            conn = std::make_shared<SecureConn>(ctx, ssl, sock, selected);
+            ::freeaddrinfo(got);
+            return true;
         }
     };
 
