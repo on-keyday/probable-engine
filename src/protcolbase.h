@@ -62,9 +62,16 @@ namespace socklib {
 
        private:
         static bool setupssl(int sock, const char* host, SSL_CTX*& ctx, SSL*& ssl, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0) {
-            ctx = SSL_CTX_new(TLS_method());
+            bool has_ctx = false, has_ssl = false;
             if (!ctx) {
-                return false;
+                if (ssl) return false;
+                ctx = SSL_CTX_new(TLS_method());
+                if (!ctx) {
+                    return false;
+                }
+            }
+            else {
+                has_ctx = true;
             }
             SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2);
             if (cacert) {
@@ -73,22 +80,27 @@ namespace socklib {
             if (alpnstr && len) {
                 SSL_CTX_set_alpn_protos(ctx, (const unsigned char*)alpnstr, len);
             }
-            ssl = SSL_new(ctx);
             if (!ssl) {
-                SSL_CTX_free(ctx);
-                return false;
+                ssl = SSL_new(ctx);
+                if (!ssl) {
+                    if (!has_ctx) SSL_CTX_free(ctx);
+                    return false;
+                }
+            }
+            else {
+                has_ssl = true;
             }
             SSL_set_fd(ssl, sock);
             SSL_set_tlsext_host_name(ssl, host);
             auto param = SSL_get0_param(ssl);
             if (!X509_VERIFY_PARAM_add1_host(param, host, 0)) {
-                SSL_free(ssl);
-                SSL_CTX_free(ctx);
+                if (!has_ssl) SSL_free(ssl);
+                if (!has_ctx) SSL_CTX_free(ctx);
                 return false;
             }
             if (SSL_connect(ssl) != 1) {
-                SSL_free(ssl);
-                SSL_CTX_free(ctx);
+                if (!has_ssl) SSL_free(ssl);
+                if (!has_ctx) SSL_CTX_free(ctx);
                 return false;
             }
             return true;
@@ -134,7 +146,14 @@ namespace socklib {
                 u_long l = 1;
                 ::ioctlsocket(sock, FIONBIO, &l);
             }
-            conn = std::make_shared<Conn>(sock, selected);
+            bool res = false;
+            if (conn) {
+                res = conn->reset(sock, selected);
+            }
+            else {
+                conn = std::make_shared<Conn>(sock, selected);
+                res = (bool)conn;
+            }
             ::freeaddrinfo(got);
             return true;
         }
@@ -148,7 +167,7 @@ namespace socklib {
             else if (sock == 0) {
                 return true;
             }
-            SSL_CTX* ctx = nullptr;
+            SSL_CTX* ctx = conn ? (SSL_CTX*)conn->get_sslctx() : nullptr;
             SSL* ssl = nullptr;
             if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len)) {
                 ::closesocket(sock);
@@ -159,9 +178,16 @@ namespace socklib {
                 u_long l = 1;
                 ::ioctlsocket(sock, FIONBIO, &l);
             }
-            conn = std::make_shared<SecureConn>(ctx, ssl, sock, selected);
+            bool res = false;
+            if (conn && conn->is_secure()) {
+                res = conn->reset(ctx, ssl, sock, selected);
+            }
+            else {
+                conn = std::make_shared<SecureConn>(ctx, ssl, sock, selected);
+                res = (bool)conn;
+            }
             ::freeaddrinfo(got);
-            return true;
+            return res;
         }
     };
 

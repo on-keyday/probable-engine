@@ -282,6 +282,10 @@ namespace socklib {
             return ret;
         }
 
+        virtual void* get_sslctx() {
+            return nullptr;
+        }
+
         virtual ~Conn() noexcept {
             close();
         }
@@ -408,8 +412,17 @@ namespace socklib {
             return true;
         }
 
-        virtual bool reset(int, addrinfo*) override {
-            return false;
+        virtual bool reset(int fd, addrinfo* info) override {
+            if (!resetable(fd, info)) {
+                return false;
+            }
+            close();
+            Conn::reset_impl(fd, info);
+            return true;
+        }
+
+        virtual void* get_sslctx() override {
+            return ctx;
         }
 
         ~SecureConn() {

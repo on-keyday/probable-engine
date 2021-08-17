@@ -13,22 +13,23 @@ auto httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const ch
     Reader<std::string>(conn->response().find(":status")->second) >> statuscode;
     std::cout << conn->url() << "\n";
     std::cout << statuscode << "\n";
-    std::cout << conn->response().find(":body")->second;
     if (statuscode >= 301 && statuscode <= 308) {
         if (auto found = conn->response().find("location"); found != conn->response().end()) {
             auto tmp = socklib::Http::open(found->second.c_str(), true, cacert);
             if (!tmp) return;
             conn->close();
+            std::cout << "redirect\n";
             tmp->send(conn->method().c_str());
             tmp->recv(httprecv, cacert);
             return;
         }
     }
+    std::cout << conn->response().find(":body")->second;
 }
 
 int main(int, char**) {
     auto cacert = "D:/CommonLib/netsoft/cacert.pem";
-    auto conn = socklib::Http::open("https://google.com/teapot", false, cacert);
+    auto conn = socklib::Http::open("http://gmail.com", false, cacert);
     if (!conn) {
         std::cout << "connection failed\n";
         std::cout << "last error:" << WSAGetLastError();
