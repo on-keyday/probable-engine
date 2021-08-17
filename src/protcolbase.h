@@ -170,11 +170,16 @@ namespace socklib {
         mutable std::shared_ptr<Conn> base;
         mutable std::string buffer;
         mutable bool on_eof = false;
+        void (*callback)(void*, bool) = nullptr;
+        void* ctx = nullptr;
 
        public:
-        SockReader(std::shared_ptr<Conn> r)
-            : base(r) {}
-
+        SockReader(std::shared_ptr<Conn> r, decltype(callback) cb = nullptr, void* ct = nullptr)
+            : base(r), callback(cb), ctx(ct) {}
+        void setcallback(decltype(callback) cb, void* ct) {
+            callback = cb;
+            ctx = ct;
+        }
         size_t size() const {
             if (buffer.size() < 100) reading();
             return buffer.size() + 1;
@@ -185,9 +190,9 @@ namespace socklib {
             auto res = base->read(buffer);
             if (res == ~0 || res == 0) {
                 on_eof = true;
-                return false;
             }
-            return true;
+            if (callback) callback(ctx, on_eof);
+            return !on_eof;
         }
 
         char operator[](size_t idx) const {

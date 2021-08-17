@@ -29,6 +29,10 @@ namespace socklib {
         void interrupt() {
             conn->set_suspend(true);
         }
+
+        std::string url() const {
+            return (conn->is_secure() ? "https://" : "http://") + host + path;
+        }
     };
 
     struct HttpClientConn : HttpConn {
@@ -87,7 +91,21 @@ namespace socklib {
             if (!sent || recving) return false;
             recving = true;
             commonlib2::Reader<socklib::SockReader> r(conn);
-            header = commonlib2::parse_httpresponse(r);
+            struct {
+                decltype(r)& r;
+                decltype(header)& h;
+                bool first = false;
+                size_t prevpos = 0;
+            } data{r, header};
+            r.ref().setcallback(
+                [](void* ctx, bool oneof) {
+                    auto d = (decltype(&data))ctx;
+                },
+                &data);
+            header.clear();
+            if (!commonlib2::parse_httpresponse(r, header)) {
+                return false;
+            }
             recving = false;
             return header.size() != 0;
         }

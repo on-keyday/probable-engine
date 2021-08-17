@@ -435,7 +435,7 @@ namespace PROJECT_NAME {
                 r.ref().reading();
             }
         }
-        else if (f = data.find("content-type"); f != data.end() && f->second.find("json")) {
+        else if (f = data.find("content-type"); f != data.end() && f->second.find("json")!=~0) {
             size_t first = r.readpos();
             const char* err;
             do {
@@ -467,30 +467,50 @@ namespace PROJECT_NAME {
         return true;
     }
 
+    template<class Buf,class Str = std::string,class Map>
+    bool  parse_httprequest(Reader<Buf>& r,Map& ret,bool ignore_body=false) {
+        auto status = split(getline(r, false), " ");
+        if (status.size() < 2) return false;
+        ret.emplace(":method", status[0]);
+        ret.emplace(":path", status[1]);
+        if(!parse_httpheader<Str>(r,ret))return false;
+        if(!ignore_body){
+            parse_httpbody<Str>(ret, r);
+        }
+        return true;
+    }
+
     template <class Buf, class Str = std::string, template <class...> class Map = std::multimap>
     auto parse_httprequest(Reader<Buf>& r,bool ignore_body=false) {
         Map<Str, Str> ret;
-        auto status = split(getline(r, false), " ");
-        if (status.size() < 2) return ret;
-        ret.emplace(":method", status[0]);
-        ret.emplace(":path", status[1]);
-        if(!parse_httpheader<Str>(r,ret))return decltype(ret)();
-        if(!ignore_body){
-            parse_httpbody(ret, r);
+        if(!parse_httprequest(r,ret,ignore_body)){
+            return decltype(ret)();
         }
         return ret;
+    }
+
+    template<class Buf,class Str = std::string,class Map>
+    bool  parse_httpresponse(Reader<Buf>& r,Map& ret,bool ignore_body=false) {
+        auto status = split(getline(r, false), " ");
+        if (status.size() < 3) return false;
+        ret.emplace(":status", status[1]);
+        std::string phrase=status[2];
+        for(auto i=3;i<status.size();i++){
+            phrase+=" "+status[i];
+        }
+        ret.emplace(":phrase", phrase);
+        if(!parse_httpheader<Str>(r,ret))return false;
+        if(!ignore_body){
+            parse_httpbody<Str>(ret, r);
+        }
+        return true;
     }
 
     template <class Buf, class Str = std::string, template <class...> class Map = std::multimap>
     auto parse_httpresponse(Reader<Buf>& r,bool ignore_body=false) {
         Map<Str, Str> ret;
-        auto status = split(getline(r, false), " ");
-        if (status.size() < 3) return ret;
-        ret.emplace(":status", status[1]);
-        ret.emplace(":phrase", status[2]);
-        if(!parse_httpheader<Str>(r,ret))return decltype(ret)();
-        if(!ignore_body){
-            parse_httpbody(ret, r);
+        if(!parse_httpresponse(r,ret,ignore_body)){
+            return decltype(ret)();
         }
         return ret;
     }

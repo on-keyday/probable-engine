@@ -11,6 +11,7 @@ using namespace commonlib2;
 auto httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const char* cacert) {
     unsigned short statuscode = 0;
     Reader<std::string>(conn->response().find(":status")->second) >> statuscode;
+    std::cout << conn->url() << "\n";
     std::cout << statuscode << "\n";
     std::cout << conn->response().find(":body")->second;
     if (statuscode >= 301 && statuscode <= 308) {
@@ -27,7 +28,7 @@ auto httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const ch
 
 int main(int, char**) {
     auto cacert = "D:/CommonLib/netsoft/cacert.pem";
-    auto conn = socklib::Http::open("https://gmail.com", false, cacert);
+    auto conn = socklib::Http::open("https://google.com/teapot", false, cacert);
     if (!conn) {
         std::cout << "connection failed\n";
         std::cout << "last error:" << WSAGetLastError();
