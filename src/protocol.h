@@ -32,12 +32,18 @@ namespace socklib {
     };
 
     struct HttpClientConn : HttpConn {
+        std::string _method;
+
        public:
         HttpClientConn(std::shared_ptr<Conn>&& in, std::string&& hostname, std::string&& path)
             : HttpConn(std::move(in), std::move(hostname), std::move(path)) {}
 
         Header& response() {
             return header;
+        }
+
+        const std::string& method() {
+            return _method;
         }
 
         bool send(const char* method, const Header& header = Header(), const char* body = nullptr, size_t bodylen = 0) {
@@ -73,6 +79,7 @@ namespace socklib {
                 res.append(body, bodylen);
             }
             sent = conn->write(res);
+            if (sent) _method = method;
             return sent;
         }
 
@@ -85,20 +92,20 @@ namespace socklib {
             return header.size() != 0;
         }
 
-        template <class F>
-        void recv(F&& f) {
+        template <class F, class... Args>
+        void recv(F&& f, Args&&... args) {
             std::shared_ptr<HttpClientConn> self(
                 this, +[](HttpClientConn*) {});
-            f(self, recv());
+            f(self, recv(), std::forward<Args>(args)...);
         }
 
-        template <class F>
-        void recv_async(F&& f) {
+        template <class F, class... Args>
+        void recv_async(F&& f, Args&&... args) {
             waiting = true;
             std::thread([&, this]() {
                 std::shared_ptr<HttpClientConn> self(
                     this, +[](HttpClientConn*) {});
-                f(self, recv());
+                f(self, recv(), std::forward<Args>(args)...);
                 waiting = false;
             }).detach();
         }
@@ -114,29 +121,28 @@ namespace socklib {
     };
 
     struct Http {
-        static std::shared_ptr<HttpClientConn> open(const char* url, bool encoded = false, const char* cacert = nullptr) {
+       private:
+        static bool
+        setuphttp(const char* url, bool encoded, unsigned short& port, commonlib2::URLContext<std::string>& urlctx, std::string& path, std::string& query) {
             using R = commonlib2::Reader<std::string>;
-            commonlib2::URLContext<std::string> urlctx;
             R(url).readwhile(commonlib2::parse_url, urlctx);
-            if (!urlctx.succeed) return nullptr;
+            if (!urlctx.succeed) return false;
             if (!urlctx.scheme.size()) {
                 urlctx.scheme = "http";
             }
             else {
                 if (urlctx.scheme != "http" && urlctx.scheme != "https") {
-                    return nullptr;
+                    return false;
                 }
             }
             if (!urlctx.path.size()) {
                 urlctx.path = "/";
             }
-            std::string finally;
-            std::string path, query;
             if (!encoded) {
                 commonlib2::URLEncodingContext<std::string> encctx;
                 encctx.path = true;
                 R(urlctx.path).readwhile(path, commonlib2::url_encode, &encctx);
-                if (encctx.failed) return nullptr;
+                if (encctx.failed) return false;
                 encctx.query = true;
                 encctx.path = false;
                 R(urlctx.query).readwhile(query, commonlib2::url_encode, &encctx);
@@ -145,9 +151,20 @@ namespace socklib {
                 path = urlctx.path;
                 query = urlctx.query;
             }
-            unsigned short port = 0;
             if (urlctx.port.size()) {
                 R(urlctx.port) >> port;
+            }
+            return true;
+        }
+
+       public:
+        static std::shared_ptr<HttpClientConn>
+        open(const char* url, bool encoded = false, const char* cacert = nullptr) {
+            commonlib2::URLContext<std::string> urlctx;
+            unsigned short port = 0;
+            std::string path, query;
+            if (!setuphttp(url, encoded, port, urlctx, path, query)) {
+                return nullptr;
             }
             std::shared_ptr<Conn> conn;
             if (urlctx.scheme == "http") {
