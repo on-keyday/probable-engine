@@ -105,15 +105,22 @@ int main(int, char**) {
     if (maxth == 0) {
         maxth = 4;
     }
+    bool proc_end = false;
     uint32_t i = 0;
-    for (i = 0; i < maxth; i++) {
+    for (i = 0; i < maxth - 1; i++) {
         try {
             std::thread(
-                []() {
+                [&]() {
                     auto id = std::this_thread::get_id();
+                    size_t got = 0;
                     while (true) {
                         std::shared_ptr<socklib::HttpServerConn> conn;
                         mut.lock();
+                        if (proc_end) {
+                            std::cout << "thread-" << id << ":" << got << "\n";
+                            mut.unlock();
+                            return;
+                        }
                         if (que.size()) {
                             conn = std::move(que.front());
                             que.pop_front();
@@ -123,6 +130,7 @@ int main(int, char**) {
                             Sleep(10);
                             continue;
                         }
+                        got++;
                         auto begin = std::chrono::system_clock::now();
                         auto print_time = [&](auto end) {
                             std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin);
@@ -153,6 +161,7 @@ int main(int, char**) {
                             }
                             status = 200;
                         }
+                        auto end = std::chrono::system_clock::now();
                         std::cout << "thread-" << id;
                         std::cout << "|" << conn->ipaddress() << "|\"";
                         std::cout << path << "\"|";
@@ -160,7 +169,7 @@ int main(int, char**) {
                         std::cout << status << "|";
                         print_time(rec);
                         std::cout << "|";
-                        print_time(std::chrono::system_clock::now());
+                        print_time(end);
                         std::cout << "|\n";
                     }
                 })
@@ -172,13 +181,25 @@ int main(int, char**) {
     }
 
     std::cout << "thread count:" << maxth << "\n";
-
+    std::thread(
+        [&] {
+            while (!proc_end) {
+                std::string input;
+                std::getline(std::cin, input);
+                if (input == "exit") {
+                    proc_end = true;
+                }
+            }
+        })
+        .detach();
     socklib::Server sv;
-    while (true) {
+    while (!proc_end) {
         auto res = socklib::Http::serve(sv, 8090);
+        if (proc_end) break;
         if (!res) {
             std::cout << "error occured\n";
-            continue;
+            proc_end = true;
+            Sleep(10);
         }
         mut.lock();
         que.push_back(std::move(res));
