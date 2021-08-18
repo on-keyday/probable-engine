@@ -22,6 +22,35 @@ namespace socklib {
         HttpConn(std::shared_ptr<Conn>&& in, std::string&& hostname, std::string&& path)
             : conn(std::move(in)), host(hostname), path(path) {}
 
+       protected:
+        bool send_detail(std::string& res, const Header& header, const char* body, size_t bodylen) {
+            if (body && bodylen) {
+                res += "content-length: ";
+                res += std::to_string(bodylen);
+                res += "\r\n";
+            }
+            for (auto& h : header) {
+                std::string tmp;
+                tmp.resize(h.first.size());
+                std::transform(h.first.begin(), h.first.end(), tmp.begin(), [](auto c) { return std::tolower((unsigned char)c); });
+                if (tmp.find("content-length") != ~0 || tmp.find("host") != ~0) {
+                    continue;
+                }
+                if (h.first.find("\r") != ~0 || h.first.find("\n") != ~0 || h.second.find("\r") != ~0 || h.second.find("\n") != ~0) {
+                    continue;
+                }
+                res += h.first;
+                res += ": ";
+                res += h.second;
+                res += "\r\n";
+            }
+            res += "\r\n";
+            if (body && bodylen) {
+                res.append(body, bodylen);
+            }
+            return conn->write(res);
+        }
+
        public:
         bool wait() const {
             return waiting;
@@ -35,8 +64,8 @@ namespace socklib {
             conn->set_suspend(false);
         }
 
-        std::string
-        url() const {
+        std::string url() const {
+            if (!host.size()) return std::string();
             return (conn->is_secure() ? "https://" : "http://") + host + path;
         }
 
@@ -53,6 +82,9 @@ namespace socklib {
                 inet_ntop(info->ai_family, &addr6->sin6_addr, buf, 75);
             }
             ret = buf;
+            if (ret.find("::ffff:") == 0) {
+                return std::string(std::string_view(ret).substr(7));
+            }
             return ret;
         }
     };
@@ -80,36 +112,12 @@ namespace socklib {
             res += " HTTP/1.1\r\nhost: ";
             res += host;
             res += "\r\n";
-            if (body && bodylen) {
-                res += "content-length: ";
-                res += std::to_string(bodylen);
-                res += "\r\n";
-            }
-            for (auto& h : header) {
-                std::string tmp;
-                tmp.resize(h.first.size());
-                std::transform(h.first.begin(), h.first.end(), tmp.begin(), [](auto c) { return std::tolower((unsigned char)c); });
-                if (tmp.find("content-length") != ~0 || tmp.find("host") != ~0) {
-                    continue;
-                }
-                if (h.first.find("\r") != ~0 || h.first.find("\n") != ~0 || h.second.find("\r") != ~0 || h.second.find("\n") != ~0) {
-                    continue;
-                }
-                res += h.first;
-                res += ": ";
-                res += h.second;
-                res += "\r\n";
-            }
-            res += "\r\n";
-            if (body && bodylen) {
-                res.append(body, bodylen);
-            }
-            done = conn->write(res);
+            done = send_detail(res, header, body, bodylen);
             if (done) _method = method;
             return done;
         }
 
-        bool recv() {
+        bool recv(bool igbody = false) {
             if (!done || recving) return false;
             recving = true;
             commonlib2::Reader<socklib::SockReader> r(conn);
@@ -125,7 +133,7 @@ namespace socklib {
                 },
                 &data);
             header.clear();
-            if (!commonlib2::parse_httpresponse(r, header)) {
+            if (!commonlib2::parse_httpresponse(r, header, igbody)) {
                 return false;
             }
             recving = false;
@@ -133,14 +141,14 @@ namespace socklib {
         }
 
         template <class F, class... Args>
-        void recv(F&& f, Args&&... args) {
+        void recv(F&& f, bool igbody = false, Args&&... args) {
             std::shared_ptr<HttpClientConn> self(
                 this, +[](HttpClientConn*) {});
             f(self, recv(), std::forward<Args>(args)...);
         }
 
         template <class F, class... Args>
-        bool recv_async(F&& f, Args&&... args) {
+        bool recv_async(F&& f, bool igbody = false, Args&&... args) {
             if (waiting) return false;
             waiting++;
             std::thread([&, this]() {
@@ -171,6 +179,28 @@ namespace socklib {
         }
 
         bool recv() {
+            if (recving) return false;
+            recving = true;
+            commonlib2::Reader<SockReader> r(conn);
+            header.clear();
+            if (!commonlib2::parse_httprequest(r, header)) {
+                return false;
+            }
+            recving = false;
+            done = true;
+            return true;
+        }
+
+        bool send(unsigned short statuscode = 200, const char* phrase = "OK", const Header& header = Header(), const char* body = nullptr, size_t bodylen = 0) {
+            if (!done) return false;
+            if (statuscode < 100 && statuscode > 999) return false;
+            if (!phrase || phrase[0] == 0 || std::string(phrase).find("\r") != ~0 || std::string(phrase).find("\n") != ~0) return false;
+            std::string res = "HTTP/1.1 ";
+            res += std::to_string(statuscode);
+            res += " ";
+            res += phrase;
+            res += "\r\n";
+            return send_detail(res, header, body, bodylen);
         }
     };
 
@@ -255,8 +285,8 @@ namespace socklib {
             return true;
         }
 
-        static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, bool ipv6 = false) {
-            std::shared_ptr<Conn> conn = TCP::serve(sv, port, ipv6);
+        static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, bool ipv6 = true) {
+            std::shared_ptr<Conn> conn = TCP::serve(sv, port, "http", ipv6, true);
             if (!conn) return nullptr;
             return std::make_shared<HttpServerConn>(std::move(conn));
         }

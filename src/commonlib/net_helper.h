@@ -448,6 +448,9 @@ namespace PROJECT_NAME {
             r.read_byte(result.data(), last - first);
         }
         else {
+            if(r.readpos()+1==r.ref().size()){
+                return;
+            }
             r >> result;
         }
         data.emplace(":body", std::move(result));

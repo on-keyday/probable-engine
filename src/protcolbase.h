@@ -7,6 +7,10 @@
 namespace socklib {
     struct Server {
         int sock = invalid_socket;
+        ::addrinfo* copy = nullptr;
+        ~Server() {
+            Conn::del_addrinfo(copy);
+        }
     };
 
     struct TCP {
@@ -197,14 +201,40 @@ namespace socklib {
         }
 
        private:
-        static bool init_server(Server& sv, unsigned short port, bool ipv6) {
+        static bool init_server(Server& sv, unsigned short port, const char* service, bool ipv6) {
             if (sv.sock == invalid_socket) {
-                sv.sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-                if (sv.sock < 0) return false;
-                ::sockaddr_in in = {0};
-                in.sin_family = ipv6 ? AF_INET6 : AF_INET;
-                in.sin_port = commonlib2::translate_byte_net_and_host<unsigned short>((char*)&port);
-                if (::bind(sv.sock, (::sockaddr*)&in, sizeof(in)) < 0) {
+                ::addrinfo hints = {0}, *info = nullptr, *selected = nullptr;
+                hints.ai_family = AF_INET6;
+                hints.ai_flags = AI_PASSIVE;
+                hints.ai_socktype = SOCK_STREAM;
+                if (::getaddrinfo(NULL, service, &hints, &info) != 0) {
+                    return false;
+                }
+                int sock = invalid_socket;
+                auto port_net = commonlib2::translate_byte_net_and_host<unsigned short>((char*)&port);
+                for (auto p = info; p; p = p->ai_next) {
+                    sockaddr_in* addr = (sockaddr_in*)p->ai_addr;
+                    if (port_net) {
+                        addr->sin_port = port_net;
+                    }
+                    sock = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+                    if (sock < 0) {
+                        continue;
+                    }
+                    unsigned int ipv6only = 0;
+                    if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only)) < 0) {
+                        ::closesocket(sock);
+                        sock = invalid_socket;
+                        continue;
+                    }
+                    selected = p;
+                    break;
+                }
+                if (sock < 0) {
+                    return false;
+                }
+                sv.sock = sock;
+                if (::bind(sv.sock, selected->ai_addr, selected->ai_addrlen) < 0) {
                     ::closesocket(sv.sock);
                     sv.sock = invalid_socket;
                     return false;
@@ -214,16 +244,23 @@ namespace socklib {
                     sv.sock = invalid_socket;
                     return false;
                 }
+                if (sv.copy) {
+                    Conn::del_addrinfo(sv.copy);
+                    sv.copy = nullptr;
+                }
+                Conn::copy_addrinfo(sv.copy, selected);
+                ::freeaddrinfo(selected);
             }
             return true;
         }
 
        public:
-        static std::shared_ptr<Conn> serve(Server& sv, unsigned short port, bool ipv6 = false) {
-            if (!init_server(sv, port, ipv6)) {
+        static std::shared_ptr<Conn> serve(Server& sv, unsigned short port, const char* service = nullptr, bool ipv6 = true, bool noblock = false) {
+            if (!Network::Init()) return nullptr;
+            if (!init_server(sv, port, service, ipv6)) {
                 return nullptr;
             }
-            ::addrinfo info;
+            ::addrinfo info = {0};
             info.ai_socktype = SOCK_STREAM;
             info.ai_family = ipv6 ? AF_INET6 : AF_INET;
             info.ai_protocol = IPPROTO_TCP;
@@ -235,6 +272,10 @@ namespace socklib {
             }
             info.ai_addrlen = addrlen;
             info.ai_addr = (::sockaddr*)&st;
+            if (noblock) {
+                u_long l = 1;
+                ::ioctlsocket(sock, FIONBIO, &l);
+            }
             return std::make_shared<Conn>(sock, &info);
         }
     };
@@ -255,7 +296,7 @@ namespace socklib {
             ctx = ct;
         }
         size_t size() const {
-            if (buffer.size() < 100) reading();
+            if (buffer.size() == 0) reading();
             return buffer.size() + 1;
         }
 
@@ -275,6 +316,10 @@ namespace socklib {
             }
             if (!reading()) return char();
             return buffer[idx];
+        }
+
+        bool eof() {
+            return on_eof;
         }
     };
 

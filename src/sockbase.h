@@ -67,7 +67,8 @@ namespace socklib {
         int sock = invalid_socket;
         addrinfo* addr = nullptr;
 
-        void copy_addrinfo(addrinfo* addrin) {
+       public:
+        static void copy_addrinfo(addrinfo*& addr, addrinfo* addrin) {
             addr = new addrinfo(*addrin);
             addr->ai_next = nullptr;
             addr->ai_canonname = nullptr;
@@ -83,7 +84,7 @@ namespace socklib {
             }
         }
 
-        void del_addrinfo() {
+        static void del_addrinfo(addrinfo*& addr) {
             if (!addr) return;
             delete[](char*) addr->ai_addr;
             delete[] addr->ai_canonname;
@@ -91,6 +92,7 @@ namespace socklib {
             addr = nullptr;
         }
 
+       private:
         bool cmp_addrinfo(::addrinfo* info) const {
             if (addr == info) return true;
             if (!addr || !info) return false;
@@ -143,7 +145,7 @@ namespace socklib {
             : sock(sok) {
             Network::CheckInit();
             if (addrin) {
-                copy_addrinfo(addrin);
+                copy_addrinfo(addr, addrin);
             }
         }
 
@@ -170,7 +172,7 @@ namespace socklib {
             close();
             sock = sok;
             if (addrin) {
-                copy_addrinfo(addrin);
+                copy_addrinfo(addr, addrin);
             }
             return true;
         }
@@ -195,7 +197,7 @@ namespace socklib {
                 ::closesocket(sock);
                 sock = invalid_socket;
             }
-            del_addrinfo();
+            del_addrinfo(addr);
         }
 
         virtual bool is_opened() const {
