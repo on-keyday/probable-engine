@@ -4,6 +4,7 @@
 #include <net_helper.h>
 
 #include <thread>
+#include <atomic>
 
 namespace socklib {
     struct HttpConn {
@@ -15,9 +16,9 @@ namespace socklib {
         Header header;
         std::string host;
         std::string path;
-        bool sent = false;
+        bool done = false;
         bool recving = false;
-        bool waiting = false;
+        unsigned int waiting = 0;
         HttpConn(std::shared_ptr<Conn>&& in, std::string&& hostname, std::string&& path)
             : conn(std::move(in)), host(hostname), path(path) {}
 
@@ -30,8 +31,29 @@ namespace socklib {
             conn->set_suspend(true);
         }
 
-        std::string url() const {
+        void clear() {
+            conn->set_suspend(false);
+        }
+
+        std::string
+        url() const {
             return (conn->is_secure() ? "https://" : "http://") + host + path;
+        }
+
+        std::string ipaddress() const {
+            const addrinfo* info = (const addrinfo*)conn->raw_addrinfo();
+            std::string ret;
+            char buf[75] = {0};
+            if (info->ai_family == AF_INET) {
+                sockaddr_in* addr4 = (sockaddr_in*)info->ai_addr;
+                inet_ntop(info->ai_family, &addr4->sin_addr, buf, 75);
+            }
+            else if (info->ai_family == AF_INET6) {
+                sockaddr_in6* addr6 = (sockaddr_in6*)info->ai_addr;
+                inet_ntop(info->ai_family, &addr6->sin6_addr, buf, 75);
+            }
+            ret = buf;
+            return ret;
         }
     };
 
@@ -55,7 +77,7 @@ namespace socklib {
             std::string res = method;
             res += " ";
             res += path;
-            res += " HTTP/1.1\r\nHost: ";
+            res += " HTTP/1.1\r\nhost: ";
             res += host;
             res += "\r\n";
             if (body && bodylen) {
@@ -82,13 +104,13 @@ namespace socklib {
             if (body && bodylen) {
                 res.append(body, bodylen);
             }
-            sent = conn->write(res);
-            if (sent) _method = method;
-            return sent;
+            done = conn->write(res);
+            if (done) _method = method;
+            return done;
         }
 
         bool recv() {
-            if (!sent || recving) return false;
+            if (!done || recving) return false;
             recving = true;
             commonlib2::Reader<socklib::SockReader> r(conn);
             struct {
@@ -118,14 +140,16 @@ namespace socklib {
         }
 
         template <class F, class... Args>
-        void recv_async(F&& f, Args&&... args) {
-            waiting = true;
+        bool recv_async(F&& f, Args&&... args) {
+            if (waiting) return false;
+            waiting++;
             std::thread([&, this]() {
                 std::shared_ptr<HttpClientConn> self(
                     this, +[](HttpClientConn*) {});
                 f(self, recv(), std::forward<Args>(args)...);
-                waiting = false;
+                waiting--;
             }).detach();
+            return true;
         }
 
         void close() {
@@ -135,6 +159,18 @@ namespace socklib {
         ~HttpClientConn() {
             while (waiting)
                 Sleep(5);
+        }
+    };
+
+    struct HttpServerConn : HttpConn {
+        HttpServerConn(std::shared_ptr<Conn>&& in)
+            : HttpConn(std::move(in), std::string(), std::string()) {}
+
+        Header& request() {
+            return header;
+        }
+
+        bool recv() {
         }
     };
 
@@ -185,14 +221,44 @@ namespace socklib {
                 return nullptr;
             }
             std::shared_ptr<Conn> conn;
-            if (urlctx.scheme == "http") {
+            /*if (urlctx.scheme == "http") {
                 conn = TCP::open(urlctx.host.c_str(), port, "http", true);
             }
-            else {
-                conn = TCP::open_secure(urlctx.host.c_str(), port, "https", true, cacert);
-            }
+            else {*/
+            conn = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
+                                    cacert, urlctx.scheme == "https");
+            //}
             if (!conn) return nullptr;
             return std::make_shared<HttpClientConn>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), path + query);
+        }
+
+        static bool reopen(std::shared_ptr<HttpClientConn>& conn, const char* url, bool encoded = false, const char* cacert = nullptr) {
+            commonlib2::URLContext<std::string> urlctx;
+            unsigned short port = 0;
+            std::string path, query;
+            if (!setuphttp(url, encoded, port, urlctx, path, query)) {
+                return false;
+            }
+            if (conn) {
+                auto res = TCP::reopen_secure(conn->conn, urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
+                                              cacert, urlctx.scheme == "https");
+                if (!res) return false;
+                conn->host = urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : "");
+                conn->path = path + query;
+            }
+            else {
+                auto tmp = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
+                                            cacert, urlctx.scheme == "https");
+                if (!tmp) return false;
+                conn = std::make_shared<HttpClientConn>(std::move(tmp), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), path + query);
+            }
+            return true;
+        }
+
+        static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, bool ipv6 = false) {
+            std::shared_ptr<Conn> conn = TCP::serve(sv, port, ipv6);
+            if (!conn) return nullptr;
+            return std::make_shared<HttpServerConn>(std::move(conn));
         }
     };
 }  // namespace socklib

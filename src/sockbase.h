@@ -147,6 +147,10 @@ namespace socklib {
             }
         }
 
+        const void* raw_addrinfo() const {
+            return addr;
+        }
+
         virtual bool is_secure() const {
             return false;
         }
@@ -297,11 +301,12 @@ namespace socklib {
        private:
         SSL* ssl = nullptr;
         SSL_CTX* ctx = nullptr;
+        bool nodelctx = false;
 
        public:
         constexpr SecureConn() {}
-        SecureConn(SSL_CTX* ctx, SSL* ssl, int fd, addrinfo* info)
-            : ctx(ctx), ssl(ssl), Conn(fd, info) {}
+        SecureConn(SSL_CTX* ctx, SSL* ssl, int fd, addrinfo* info, bool nodelctx = false)
+            : ctx(ctx), ssl(ssl), Conn(fd, info), nodelctx(nodelctx) {}
 
         virtual bool is_opened() const override {
             return ssl != nullptr || Conn::is_opened();
@@ -427,7 +432,7 @@ namespace socklib {
 
         ~SecureConn() {
             close();
-            if (ctx) SSL_CTX_free(ctx);
+            if (ctx && !nodelctx) SSL_CTX_free(ctx);
         }
     };
 #endif

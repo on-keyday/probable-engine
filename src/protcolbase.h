@@ -5,6 +5,10 @@
 
 #include "sockbase.h"
 namespace socklib {
+    struct Server {
+        int sock = invalid_socket;
+    };
+
     struct TCP {
        private:
         static int open_detail(const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr) {
@@ -24,7 +28,7 @@ namespace socklib {
                     addr->sin_port = port_net;
                 }
                 if (conn) {
-                    if (conn->addr_same(p) && conn->is_secure() == secure) {
+                    if (conn->addr_same(p) && conn->is_secure() == secure && conn->is_opened()) {
                         return 0;
                     }
                 }
@@ -107,7 +111,7 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0) {
+        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0) {
             std::shared_ptr<Conn> ret;
             /*::addrinfo *selected = nullptr, *got = nullptr;
             int sock = open_detail(nullptr, true, got, selected, host, port, service);
@@ -127,7 +131,7 @@ namespace socklib {
             }
             auto ret = std::make_shared<SecureConn>(ctx, ssl, sock, selected);
             ::freeaddrinfo(got);*/
-            if (!reopen_secure(ret, host, port, service, noblock, cacert, alpnstr, len)) {
+            if (!reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len)) {
                 return nullptr;
             }
             return ret;
@@ -158,7 +162,7 @@ namespace socklib {
             return true;
         }
 
-        static bool reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0) {
+        static bool reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0) {
             ::addrinfo *selected = nullptr, *got = nullptr;
             int sock = open_detail(conn, true, got, selected, host, port, service);
             if (sock == invalid_socket) {
@@ -169,10 +173,12 @@ namespace socklib {
             }
             SSL_CTX* ctx = conn ? (SSL_CTX*)conn->get_sslctx() : nullptr;
             SSL* ssl = nullptr;
-            if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len)) {
-                ::closesocket(sock);
-                ::freeaddrinfo(got);
-                return false;
+            if (secure) {
+                if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len)) {
+                    ::closesocket(sock);
+                    ::freeaddrinfo(got);
+                    return false;
+                }
             }
             if (noblock) {
                 u_long l = 1;
@@ -188,6 +194,48 @@ namespace socklib {
             }
             ::freeaddrinfo(got);
             return res;
+        }
+
+       private:
+        static bool init_server(Server& sv, unsigned short port, bool ipv6) {
+            if (sv.sock == invalid_socket) {
+                sv.sock = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+                if (sv.sock < 0) return false;
+                ::sockaddr_in in = {0};
+                in.sin_family = ipv6 ? AF_INET6 : AF_INET;
+                in.sin_port = commonlib2::translate_byte_net_and_host<unsigned short>((char*)&port);
+                if (::bind(sv.sock, (::sockaddr*)&in, sizeof(in)) < 0) {
+                    ::closesocket(sv.sock);
+                    sv.sock = invalid_socket;
+                    return false;
+                }
+                if (::listen(sv.sock, 5) < 0) {
+                    ::closesocket(sv.sock);
+                    sv.sock = invalid_socket;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+       public:
+        static std::shared_ptr<Conn> serve(Server& sv, unsigned short port, bool ipv6 = false) {
+            if (!init_server(sv, port, ipv6)) {
+                return nullptr;
+            }
+            ::addrinfo info;
+            info.ai_socktype = SOCK_STREAM;
+            info.ai_family = ipv6 ? AF_INET6 : AF_INET;
+            info.ai_protocol = IPPROTO_TCP;
+            ::sockaddr_storage st = {0};
+            int addrlen = sizeof(st);
+            int sock = ::accept(sv.sock, (::sockaddr*)&st, &addrlen);
+            if (sock < 0) {
+                return nullptr;
+            }
+            info.ai_addrlen = addrlen;
+            info.ai_addr = (::sockaddr*)&st;
+            return std::make_shared<Conn>(sock, &info);
         }
     };
 
