@@ -114,7 +114,8 @@ namespace socklib {
         int err = 0;
         bool suspend = false;
 
-        void set_os_error() {
+       public:
+        static void set_os_error(int& err) {
 #ifdef _WIN32
             err = WSAGetLastError();
 #else
@@ -122,6 +123,7 @@ namespace socklib {
 #endif
         }
 
+       protected:
         bool is_waiting(int e) {
 #ifdef _WIN32
             return e == WSAEWOULDBLOCK;
@@ -212,7 +214,7 @@ namespace socklib {
                 while (true) {
                     auto res = ::send(sock, data + count, sz < intmaximum ? (int)sz : (int)intmaximum, 0);
                     if (res < 0) {
-                        set_os_error();
+                        set_os_error(err);
                         if (!suspend && is_waiting(err)) {
                             continue;
                         }
@@ -239,7 +241,7 @@ namespace socklib {
                 while (true) {
                     auto res = ::sendto(sock, data + count, sz < intmaximum ? (int)sz : (int)intmaximum, 0, addr->ai_addr, addr->ai_addrlen);
                     if (res < 0) {
-                        set_os_error();
+                        set_os_error(err);
                         if (!suspend && is_waiting(err)) {
                             continue;
                         }
@@ -260,7 +262,7 @@ namespace socklib {
             while (true) {
                 res = ::recv(sock, data, size < intmaximum ? (int)size : intmaximum, 0);
                 if (res < 0) {
-                    set_os_error();
+                    set_os_error(err);
                     if (!suspend && is_waiting(err)) {
                         continue;
                     }
@@ -348,7 +350,7 @@ namespace socklib {
                 case (SSL_ERROR_WANT_WRITE):
                     return false;
                 case (SSL_ERROR_SYSCALL):
-                    set_os_error();
+                    set_os_error(err);
                     if (!suspend && is_waiting(err)) return false;
                     break;
                 default:

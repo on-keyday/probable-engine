@@ -8,6 +8,7 @@ namespace socklib {
     struct Server {
        private:
         friend struct TCP;
+        int err = 0;
         int sock = invalid_socket;
         ::addrinfo* copy = nullptr;
         bool suspend = false;
@@ -17,7 +18,14 @@ namespace socklib {
             suspend = flag;
         }
 
+        bool suspended() const {
+            return suspend;
+        }
+
         ~Server() {
+            if (sock != invalid_socket) {
+                ::closesocket(sock);
+            }
             Conn::del_addrinfo(copy);
         }
     };
@@ -217,6 +225,7 @@ namespace socklib {
                 hints.ai_flags = AI_PASSIVE;
                 hints.ai_socktype = SOCK_STREAM;
                 if (::getaddrinfo(NULL, service, &hints, &info) != 0) {
+                    Conn::set_os_error(sv.err);
                     return false;
                 }
                 int sock = invalid_socket;
@@ -228,10 +237,12 @@ namespace socklib {
                     }
                     sock = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
                     if (sock < 0) {
+                        Conn::set_os_error(sv.err);
                         continue;
                     }
                     unsigned int ipv6only = 0;
                     if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only)) < 0) {
+                        Conn::set_os_error(sv.err);
                         ::closesocket(sock);
                         sock = invalid_socket;
                         continue;
@@ -244,11 +255,13 @@ namespace socklib {
                 }
                 sv.sock = sock;
                 if (::bind(sv.sock, selected->ai_addr, selected->ai_addrlen) < 0) {
+                    Conn::set_os_error(sv.err);
                     ::closesocket(sv.sock);
                     sv.sock = invalid_socket;
                     return false;
                 }
                 if (::listen(sv.sock, 5) < 0) {
+                    Conn::set_os_error(sv.err);
                     ::closesocket(sv.sock);
                     sv.sock = invalid_socket;
                     return false;
@@ -279,6 +292,7 @@ namespace socklib {
                     memcpy_s(&work, sizeof(work), &baseset, sizeof(baseset));
                     auto res = ::select(sv.sock + 1, &work, nullptr, nullptr, &time);
                     if (res < 0) {
+                        Conn::set_os_error(sv.err);
                         return nullptr;
                     }
                     if (res == 0) {
@@ -300,6 +314,7 @@ namespace socklib {
             int addrlen = sizeof(st);
             int sock = ::accept(sv.sock, (::sockaddr*)&st, &addrlen);
             if (sock < 0) {
+                Conn::set_os_error(sv.err);
                 return nullptr;
             }
             info.ai_addrlen = addrlen;

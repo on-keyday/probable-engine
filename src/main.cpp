@@ -11,6 +11,9 @@
 
 #include <deque>
 
+#include <filesystem>
+#include <fileio.h>
+
 /*
 template <class T>
 struct task {
@@ -139,19 +142,46 @@ int main(int, char**) {
                         if (!conn->recv()) {
                             return;
                         }
+
                         auto rec = std::chrono::system_clock::now();
                         auto path = conn->path();
                         unsigned short status = 0;
                         auto meth = conn->request().find(":method")->second;
+                        URLEncodingContext<std::string> ctx;
+
                         if (meth != "GET" && meth != "HEAD") {
                             const char c[] = "405 method not allowed";
                             conn->send(405, "Method Not Allowed", {}, c, sizeof(c) - 1);
                             status = 405;
                         }
-                        if (!status && path != "/") {
-                            const char c[] = "404 not found";
-                            conn->send(404, "Not Found", {}, c, sizeof(c) - 1);
-                            status = 404;
+                        std::string after;
+                        Reader(path).readwhile(after, url_decode, &ctx);
+                        if (ctx.failed) {
+                            after = path;
+                        }
+                        std::filesystem::path pt = "." + after;
+                        pt = pt.lexically_normal();
+                        if (!status && pt != ".") {
+                            auto send404 = [&] {
+                                const char c[] = "404 not found";
+                                conn->send(404, "Not Found", {}, c, sizeof(c) - 1);
+                                status = 404;
+                            };
+                            if (std::filesystem::exists(pt)) {
+                                Reader<FileReader> fs(pt.c_str());
+                                if (!fs.ref().is_open()) {
+                                    send404();
+                                }
+                                else {
+                                    std::string buf;
+                                    fs >> do_nothing<char> >> buf;
+                                    conn->send(200, "OK", {}, buf.data(), buf.size());
+                                    status = 200;
+                                }
+                            }
+                            else {
+                                send404();
+                            }
                         }
                         if (!status) {
                             if (meth == "GET") {
@@ -181,7 +211,7 @@ int main(int, char**) {
         }
     }
 
-    std::cout << "thread count:" << i + 1 << "\n";
+    std::cout << "thread count:" << i << "\n";
     socklib::Server sv;
     std::thread(
         [&] {
@@ -198,14 +228,14 @@ int main(int, char**) {
 
     while (!proc_end) {
         auto res = socklib::Http::serve(sv, 8090);
-        if (proc_end) {
-            Sleep(100);
+        if (sv.suspended()) {
+            Sleep(1000);
             break;
         }
         if (!res) {
             std::cout << "error occured\n";
             proc_end = true;
-            Sleep(10);
+            Sleep(1000);
             break;
         }
         mut.lock();
