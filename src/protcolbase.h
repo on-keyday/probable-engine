@@ -6,8 +6,17 @@
 #include "sockbase.h"
 namespace socklib {
     struct Server {
+       private:
+        friend struct TCP;
         int sock = invalid_socket;
         ::addrinfo* copy = nullptr;
+        bool suspend = false;
+
+       public:
+        void set_suspend(bool flag) {
+            suspend = flag;
+        }
+
         ~Server() {
             Conn::del_addrinfo(copy);
         }
@@ -255,10 +264,33 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<Conn> serve(Server& sv, unsigned short port, const char* service = nullptr, bool ipv6 = true, bool noblock = false) {
+        static std::shared_ptr<Conn> serve(Server& sv, unsigned short port, size_t timeout = 10, const char* service = nullptr, bool ipv6 = true, bool noblock = false) {
             if (!Network::Init()) return nullptr;
             if (!init_server(sv, port, service, ipv6)) {
                 return nullptr;
+            }
+            if (timeout) {
+                ::fd_set baseset = {0}, work = {0};
+                FD_ZERO(&baseset);
+                FD_SET(sv.sock, &baseset);
+                ::timeval time = {0};
+                time.tv_usec = timeout;
+                while (!sv.suspend) {
+                    memcpy_s(&work, sizeof(work), &baseset, sizeof(baseset));
+                    auto res = ::select(sv.sock + 1, &work, nullptr, nullptr, &time);
+                    if (res < 0) {
+                        return nullptr;
+                    }
+                    if (res == 0) {
+                        continue;
+                    }
+                    if (FD_ISSET(sv.sock, &work)) {
+                        break;
+                    }
+                }
+                if (sv.suspend) {
+                    return nullptr;
+                }
             }
             ::addrinfo info = {0};
             info.ai_socktype = SOCK_STREAM;

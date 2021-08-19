@@ -115,19 +115,20 @@ int main(int, char**) {
                     size_t got = 0;
                     while (true) {
                         std::shared_ptr<socklib::HttpServerConn> conn;
-                        mut.lock();
-                        if (proc_end) {
-                            std::cout << "thread-" << id << ":" << got << "\n";
+                        if (mut.try_lock()) {
+                            if (proc_end) {
+                                std::cout << "thread-" << id << ":" << got << "\n";
+                                mut.unlock();
+                                return;
+                            }
+                            if (que.size()) {
+                                conn = std::move(que.front());
+                                que.pop_front();
+                            }
                             mut.unlock();
-                            return;
                         }
-                        if (que.size()) {
-                            conn = std::move(que.front());
-                            que.pop_front();
-                        }
-                        mut.unlock();
                         if (!conn) {
-                            Sleep(10);
+                            Sleep(1);
                             continue;
                         }
                         got++;
@@ -139,7 +140,7 @@ int main(int, char**) {
                             return;
                         }
                         auto rec = std::chrono::system_clock::now();
-                        auto path = conn->request().find(":path")->second;
+                        auto path = conn->path();
                         unsigned short status = 0;
                         auto meth = conn->request().find(":method")->second;
                         if (meth != "GET" && meth != "HEAD") {
@@ -164,7 +165,7 @@ int main(int, char**) {
                         auto end = std::chrono::system_clock::now();
                         std::cout << "thread-" << id;
                         std::cout << "|" << conn->ipaddress() << "|\"";
-                        std::cout << path << "\"|";
+                        std::cout << conn->url() << "\"|";
                         std::cout << meth << "|";
                         std::cout << status << "|";
                         print_time(rec);
@@ -180,7 +181,8 @@ int main(int, char**) {
         }
     }
 
-    std::cout << "thread count:" << maxth << "\n";
+    std::cout << "thread count:" << i + 1 << "\n";
+    socklib::Server sv;
     std::thread(
         [&] {
             while (!proc_end) {
@@ -188,18 +190,23 @@ int main(int, char**) {
                 std::getline(std::cin, input);
                 if (input == "exit") {
                     proc_end = true;
+                    sv.set_suspend(true);
                 }
             }
         })
         .detach();
-    socklib::Server sv;
+
     while (!proc_end) {
         auto res = socklib::Http::serve(sv, 8090);
-        if (proc_end) break;
+        if (proc_end) {
+            Sleep(100);
+            break;
+        }
         if (!res) {
             std::cout << "error occured\n";
             proc_end = true;
             Sleep(10);
+            break;
         }
         mut.lock();
         que.push_back(std::move(res));
