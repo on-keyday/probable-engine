@@ -96,6 +96,10 @@ namespace socklib {
             }
             return ret;
         }
+
+        void close() {
+            conn->close();
+        }
     };
 
     struct HttpClientConn : HttpConn {
@@ -170,11 +174,7 @@ namespace socklib {
             return true;
         }
 
-        void close() {
-            conn->close();
-        }
-
-        ~HttpClientConn() {
+                ~HttpClientConn() {
             while (waiting)
                 Sleep(5);
         }

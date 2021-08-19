@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(unicode)
+project(socklib)
 
 include_directories("src/commonlib" "D:/OpenSSL/build-x64/include")
 link_directories("D:/OpenSSL/build-x64-debug/lib")

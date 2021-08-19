@@ -317,11 +317,19 @@ namespace socklib {
                 Conn::set_os_error(sv.err);
                 return nullptr;
             }
+            if (sv.suspend) {
+                ::closesocket(sock);
+                return nullptr;
+            }
             info.ai_addrlen = addrlen;
             info.ai_addr = (::sockaddr*)&st;
             if (noblock) {
                 u_long l = 1;
                 ::ioctlsocket(sock, FIONBIO, &l);
+            }
+            if (sv.suspend) {
+                ::closesocket(sock);
+                return nullptr;
             }
             return std::make_shared<Conn>(sock, &info);
         }

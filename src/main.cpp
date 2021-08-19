@@ -194,14 +194,15 @@ int main(int, char**) {
                         }
                         auto end = std::chrono::system_clock::now();
                         std::cout << "thread-" << id;
-                        std::cout << "|" << conn->ipaddress() << "|\"";
-                        std::cout << conn->url() << "\"|";
+                        std::cout << "|" << conn->ipaddress() << "|";
+
                         std::cout << meth << "|";
                         std::cout << status << "|";
                         print_time(rec);
                         std::cout << "|";
                         print_time(end);
-                        std::cout << "|\n";
+                        std::cout << "|\"";
+                        std::cout << conn->url() << "\"|\n";
                     }
                 })
                 .detach();
@@ -229,6 +230,7 @@ int main(int, char**) {
     while (!proc_end) {
         auto res = socklib::Http::serve(sv, 8090);
         if (sv.suspended()) {
+            if (res) res->close();
             Sleep(1000);
             break;
         }
