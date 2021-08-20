@@ -13,10 +13,9 @@
 
 #include <filesystem>
 #include <fileio.h>
-#include <direct.h>
 
-#ifndef _WIN32
-#define Sleep(time) usleep(time)
+#ifdef _WIN32
+#include <direct.h>
 #endif
 
 /*
