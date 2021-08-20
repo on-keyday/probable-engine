@@ -304,6 +304,13 @@ int main(int, char**) {
             else if (sp.size() >= 2 && sp[0] == "client") {
                 client_test(sp[1].c_str());
             }
+            else if (sp.size() >= 1 && sp[0] == "clear") {
+#ifdef _WIN32
+                ::system("cls");
+#else
+                ::system("clear");
+#endif
+            }
             else {
                 std::cout << "no such command\n";
             }
