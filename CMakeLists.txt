@@ -6,6 +6,8 @@ include_directories("src/commonlib" "D:/OpenSSL/build-x64/include")
 link_directories("D:/OpenSSL/build-x64-debug/lib")
 endif()
 
+include_directories("src/commonlib")
+
 set(CMAKE_CXX_STANDARD 20)
 
 find_package(Threads REQUIRED)
