@@ -80,26 +80,14 @@ namespace socklib {
         }
 
         std::string ipaddress() const {
-            const addrinfo* info = (const addrinfo*)conn->raw_addrinfo();
-            std::string ret;
-            char buf[75] = {0};
-            if (info->ai_family == AF_INET) {
-                sockaddr_in* addr4 = (sockaddr_in*)info->ai_addr;
-                inet_ntop(info->ai_family, &addr4->sin_addr, buf, 75);
-            }
-            else if (info->ai_family == AF_INET6) {
-                sockaddr_in6* addr6 = (sockaddr_in6*)info->ai_addr;
-                inet_ntop(info->ai_family, &addr6->sin6_addr, buf, 75);
-            }
-            ret = buf;
-            if (ret.find("::ffff:") == 0) {
-                return std::string(std::string_view(ret).substr(7));
-            }
-            return ret;
+            if (conn) return "";
+            return conn->ipaddress();
         }
 
         void close() {
-            conn->close();
+            if (conn) {
+                conn->close();
+            }
         }
 
         std::shared_ptr<Conn>& borrow() {

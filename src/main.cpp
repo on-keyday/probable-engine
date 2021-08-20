@@ -206,9 +206,14 @@ int main(int, char**) {
     auto process = [&]() {
         auto id = std::this_thread::get_id();
         size_t got = 0;
-        while (!proc_end) {
+        while (true) {
             std::shared_ptr<socklib::HttpServerConn> conn;
             if (mut.try_lock()) {
+                if (proc_end) {
+                    std::cout << "thread-" << id << ":" << got << "\n";
+                    mut.unlock();
+                    return;
+                }
                 if (que.size()) {
                     conn = std::move(que.front());
                     que.pop_front();
@@ -260,7 +265,6 @@ int main(int, char**) {
                 }
             }
         }
-        std::cout << "thread-" << id << ":" << got << "\n";
     };
     uint32_t i = 0;
     for (i = 0; i < maxth - 1; i++) {
@@ -273,33 +277,32 @@ int main(int, char**) {
         }
     }
 
-    std::cout << "thread count:" << i << "\n";
+    std::cout << "thread count:" << i << "\naccessable ipaddress\n";
     socklib::Server sv;
-    std::thread(
-        [&] {
-            while (!proc_end) {
-                std::string input;
-                std::getline(std::cin, input);
-                if (input == "exit") {
-                    proc_end = true;
-                    sv.set_suspend(true);
+    std::cout << sv.ipaddress_list() << "\n";
+    std::thread([&] {
+        while (!proc_end) {
+            std::string input;
+            std::getline(std::cin, input);
+            if (input == "exit") {
+                proc_end = true;
+                sv.set_suspend(true);
+            }
+            else if (auto sp = split_cmd(input); sp.size() >= 2 && sp[0] == "cd") {
+                std::string dir = sp[1];
+                if (dir[0] == '"') {
+                    dir.erase(0, 1);
+                    dir.pop_back();
                 }
-                else if (auto sp = split_cmd(input); sp.size() >= 2 && sp[0] == "cd") {
-                    std::string dir = sp[1];
-                    if (dir[0] == '"') {
-                        dir.erase(0, 1);
-                        dir.pop_back();
-                    }
-                    if (_chdir(dir.c_str()) != 0) {
-                        std::cout << "cd:change cd failed\n";
-                    }
-                    else {
-                        std::cout << "cd:changed\n";
-                    }
+                if (_chdir(dir.c_str()) != 0) {
+                    std::cout << "cd:change cd failed\n";
+                }
+                else {
+                    std::cout << "cd:changed\n";
                 }
             }
-        })
-        .detach();
+        }
+    }).detach();
 
     while (!proc_end) {
         auto res = socklib::Http::serve(sv, 8090);

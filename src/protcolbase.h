@@ -12,8 +12,58 @@ namespace socklib {
         int sock = invalid_socket;
         ::addrinfo* copy = nullptr;
         bool suspend = false;
+        static void copy_list(::addrinfo*& to, const ::addrinfo* from) {
+            if (!from || to) return;
+            Conn::copy_addrinfo(to, from);
+            copy_list(to->ai_next, from->ai_next);
+        }
+
+        static void dellist(::addrinfo* del) {
+            if (!del) return;
+            dellist(del->ai_next);
+            Conn::del_addrinfo(del);
+        }
+
+        void copy_info(const ::addrinfo* from) {
+            copy_list(copy, from);
+        }
+
+        bool get_nulladdrinfo(const char* service) {
+            ::addrinfo hints = {0}, *info = nullptr;
+            hints.ai_family = AF_INET6;
+            hints.ai_flags = AI_PASSIVE;
+            hints.ai_socktype = SOCK_STREAM;
+            if (::getaddrinfo(NULL, service, &hints, &info) != 0) {
+                Conn::set_os_error(err);
+                return false;
+            }
+            copy_info(info);
+            ::freeaddrinfo(info);
+            return true;
+        }
 
        public:
+        std::string ipaddress_list(const char* service = "http") {
+            if (!Network::Init()) {
+                return std::string();
+            }
+            addrinfo infohint = {0};
+            infohint.ai_socktype = SOCK_STREAM;
+            addrinfo* info = nullptr;
+            char hostname[256] = {0};
+            gethostname(hostname, sizeof(hostname));
+            getaddrinfo(hostname, nullptr, &infohint, &info);
+            std::string ret;
+            for (auto p = info; p; p = p->ai_next) {
+                if (p != info) {
+                    ret += "\n";
+                }
+                ret += Conn::get_ipaddress(p);
+            }
+            ::freeaddrinfo(info);
+            return ret;
+        }
+
         void set_suspend(bool flag) {
             suspend = flag;
         }
@@ -26,7 +76,7 @@ namespace socklib {
             if (sock != invalid_socket) {
                 ::closesocket(sock);
             }
-            Conn::del_addrinfo(copy);
+            dellist(copy);
         }
     };
 
@@ -243,17 +293,15 @@ namespace socklib {
        private:
         static bool init_server(Server& sv, unsigned short port, const char* service, bool ipv6) {
             if (sv.sock == invalid_socket) {
-                ::addrinfo hints = {0}, *info = nullptr, *selected = nullptr;
-                hints.ai_family = AF_INET6;
-                hints.ai_flags = AI_PASSIVE;
-                hints.ai_socktype = SOCK_STREAM;
-                if (::getaddrinfo(NULL, service, &hints, &info) != 0) {
-                    Conn::set_os_error(sv.err);
-                    return false;
+                ::addrinfo* selected = nullptr;
+                if (!sv.copy) {
+                    if (!sv.get_nulladdrinfo(service)) {
+                        return false;
+                    }
                 }
                 int sock = invalid_socket;
                 auto port_net = commonlib2::translate_byte_net_and_host<unsigned short>((char*)&port);
-                for (auto p = info; p; p = p->ai_next) {
+                for (auto p = sv.copy; p; p = p->ai_next) {
                     sockaddr_in* addr = (sockaddr_in*)p->ai_addr;
                     if (port_net) {
                         addr->sin_port = port_net;
@@ -296,12 +344,6 @@ namespace socklib {
                     sv.sock = invalid_socket;
                     return false;
                 }
-                if (sv.copy) {
-                    Conn::del_addrinfo(sv.copy);
-                    sv.copy = nullptr;
-                }
-                Conn::copy_addrinfo(sv.copy, selected);
-                ::freeaddrinfo(selected);
             }
             return true;
         }

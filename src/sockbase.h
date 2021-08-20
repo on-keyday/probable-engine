@@ -94,7 +94,7 @@ namespace socklib {
         addrinfo* addr = nullptr;
 
        public:
-        static void copy_addrinfo(addrinfo*& addr, addrinfo* addrin) {
+        static void copy_addrinfo(addrinfo*& addr, const addrinfo* addrin) {
             addr = new addrinfo(*addrin);
             addr->ai_next = nullptr;
             addr->ai_canonname = nullptr;
@@ -175,6 +175,29 @@ namespace socklib {
             if (addrin) {
                 copy_addrinfo(addr, addrin);
             }
+        }
+
+        static std::string get_ipaddress(const addrinfo* info) {
+            if (!info) return "";
+            std::string ret;
+            char buf[75] = {0};
+            if (info->ai_family == AF_INET) {
+                sockaddr_in* addr4 = (sockaddr_in*)info->ai_addr;
+                inet_ntop(info->ai_family, &addr4->sin_addr, buf, 75);
+            }
+            else if (info->ai_family == AF_INET6) {
+                sockaddr_in6* addr6 = (sockaddr_in6*)info->ai_addr;
+                inet_ntop(info->ai_family, &addr6->sin6_addr, buf, 75);
+            }
+            ret = buf;
+            if (ret.find("::ffff:") == 0) {
+                return std::string(std::string_view(ret).substr(7));
+            }
+            return ret;
+        }
+
+        std::string ipaddress() const {
+            return get_ipaddress(addr);
         }
 
         const void* raw_addrinfo() const {
