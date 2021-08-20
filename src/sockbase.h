@@ -30,6 +30,10 @@
 #define strcpy_s(dst, dsz, src) strcpy(dst, src)
 #endif
 
+#ifndef _WIN32
+#define Sleep(time) usleep(time)
+#endif
+
 #ifndef USE_OPENSSL
 #define USE_OPENSSL 1
 #endif

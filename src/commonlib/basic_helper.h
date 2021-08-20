@@ -771,7 +771,7 @@ namespace PROJECT_NAME {
 namespace PROJECT_NAME {
     template <class N>
     constexpr N msb_on() {
-        return static_cast<N>(static_cast<N>(1) << (static_cast<N>(sizeof(N) * 8 - 1)));
+        return static_cast<N>(~(static_cast<N>(~0)>>1));
     }
 
     template <class N>
