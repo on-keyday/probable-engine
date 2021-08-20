@@ -164,14 +164,14 @@ namespace socklib {
         }
 
         template <class F, class... Args>
-        void recv(F&& f, bool igbody = false, Args&&... args) {
+        void recv(F&& f, bool igbody, Args&&... args) {
             std::shared_ptr<HttpClientConn> self(
                 this, +[](HttpClientConn*) {});
             f(self, recv(), std::forward<Args>(args)...);
         }
 
         template <class F, class... Args>
-        bool recv_async(F&& f, bool igbody = false, Args&&... args) {
+        bool recv_async(F&& f, bool igbody, Args&&... args) {
             if (waiting) return false;
             waiting++;
             std::thread([&, this]() {
