@@ -18,8 +18,8 @@ add_executable(sock "src/main.cpp")
 
 if(WIN32)
 target_link_libraries(sock libssl libcrypto ws2_32)
-elseif(LINUX)
-target_link_libraries(sock libssl.so libcrypto.so Thread::Threads)
+elseif(linux)
+target_link_libraries(sock libssl.so libcrypto.so Threads::Threads)
 endif()
 
 
