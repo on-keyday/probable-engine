@@ -207,62 +207,71 @@ int main(int, char**) {
         auto id = std::this_thread::get_id();
         size_t got = 0;
         while (true) {
-            std::shared_ptr<socklib::HttpServerConn> conn;
-            if (mut.try_lock()) {
-                if (proc_end) {
-                    std::cout << "thread-" << id << ":" << got << "\n";
+            try {
+                std::shared_ptr<socklib::HttpServerConn> conn;
+                if (mut.try_lock()) {
+                    if (proc_end) {
+                        std::cout << "thread-" << id << ":" << got << "\n";
+                        mut.unlock();
+                        return;
+                    }
+                    if (que.size()) {
+                        conn = std::move(que.front());
+                        que.pop_front();
+                    }
                     mut.unlock();
-                    return;
                 }
-                if (que.size()) {
-                    conn = std::move(que.front());
-                    que.pop_front();
+                if (!conn) {
+                    Sleep(1);
+                    continue;
                 }
-                mut.unlock();
-            }
-            if (!conn) {
-                Sleep(1);
-                continue;
-            }
-            got++;
-            auto begin = std::chrono::system_clock::now();
-            auto print_time = [&](auto end) {
-                std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "us";
-            };
-            if (!conn->recv()) {
-                return;
-            }
-            bool keep_alive = false;
-            parse_proc(conn, id, print_time, keep_alive);
-            if (keep_alive) {
-                try {
-                    std::thread(
-                        [](std::shared_ptr<socklib::HttpServerConn> conn, std::thread::id id) {
-                            while (socklib::Selecter::wait(conn->borrow(), 5)) {
-                                auto begin = std::chrono::system_clock::now();
-                                if (!conn->recv()) {
-                                    std::cout << "thread-" << id << "-" << std::this_thread::get_id();
-                                    std::cout << ":keep-alive end\n";
-                                    return;
+                got++;
+                auto begin = std::chrono::system_clock::now();
+                auto print_time = [&](auto end) {
+                    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "us";
+                };
+                if (!conn->recv()) {
+                    got--;
+                    std::cout << "thread-" << id << " recv failed\n";
+                    continue;
+                }
+                bool keep_alive = false;
+                parse_proc(conn, id, print_time, keep_alive);
+                if (keep_alive) {
+                    try {
+                        std::thread(
+                            [](std::shared_ptr<socklib::HttpServerConn> conn, std::thread::id id) {
+                                while (socklib::Selecter::wait(conn->borrow(), 5)) {
+                                    auto begin = std::chrono::system_clock::now();
+                                    if (!conn->recv()) {
+                                        std::cout << "thread-" << id << "-" << std::this_thread::get_id();
+                                        std::cout << ":keep-alive end\n";
+                                        return;
+                                    }
+                                    auto print_time = [&](auto end) {
+                                        std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "us";
+                                    };
+                                    bool keep_alive = false;
+                                    parse_proc(conn, id, print_time, keep_alive);
+                                    if (keep_alive) {
+                                        continue;
+                                    }
                                 }
-                                auto print_time = [&](auto end) {
-                                    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "us";
-                                };
-                                bool keep_alive = false;
-                                parse_proc(conn, id, print_time, keep_alive);
-                                if (keep_alive) {
-                                    continue;
-                                }
-                            }
-                            std::cout << "thread-" << id << "-" << std::this_thread::get_id();
-                            std::cout << ":keep-alive end\n";
-                            conn->close();
-                        },
-                        std::move(conn), id)
-                        .detach();
-                } catch (...) {
-                    std::cout << "start keep-alive thread failed\n";
+                                std::cout << "thread-" << id << "-" << std::this_thread::get_id();
+                                std::cout << ":keep-alive end\n";
+                                conn->close();
+                            },
+                            std::move(conn), id)
+                            .detach();
+                    } catch (...) {
+                        std::cout << "start keep-alive thread failed\n";
+                    }
                 }
+
+            } catch (std::exception& e) {
+                std::cout << "thread-" << id << ":exception thrown:" << e.what() << "\n";
+            } catch (...) {
+                std::cout << "thread-" << id << ":exception thrown\n";
             }
         }
     };
