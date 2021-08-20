@@ -90,9 +90,9 @@ void client_test(const char* url) {
     if (!conn) {
         std::cout << "connection failed\n";
 #ifdef _WIN32
-        std::cout << "last error:" << WSAGetLastError();
+        std::cout << "last error:" << WSAGetLastError() << "\n";
 #else
-        std::cout << "last error:" << errno;
+        std::cout << "last error:" << errno << "\n";
 #endif
         return;
     }
