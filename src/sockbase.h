@@ -343,6 +343,10 @@ namespace socklib {
             return nullptr;
         }
 
+        virtual void* get_ssl() {
+            return nullptr;
+        }
+
         virtual ~Conn() noexcept {
             close();
         }
@@ -481,6 +485,10 @@ namespace socklib {
 
         virtual void* get_sslctx() override {
             return ctx;
+        }
+
+        virtual void* get_ssl() override {
+            return ssl;
         }
 
         ~SecureConn() {

@@ -76,7 +76,7 @@ namespace socklib {
 
         std::string url() const {
             if (!host.size()) return path_ + query_;
-            return (conn->is_secure() ? "https://" : "http://") + host + path_ + query_;
+            return (conn->get_ssl() ? "https://" : "http://") + host + path_ + query_;
         }
 
         std::string ipaddress() const {
