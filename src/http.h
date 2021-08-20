@@ -80,7 +80,7 @@ namespace socklib {
         }
 
         std::string ipaddress() const {
-            if (conn) return "";
+            if (!conn) return "";
             return conn->ipaddress();
         }
 
