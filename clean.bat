@@ -1,6 +1,6 @@
 @echo off
 ninja clean
-rem rmdir /s /q CMakeFiles
-rem del build.ninja
-rem del cmake_install.cmake
-rem del CMakeCache.txt
+rmdir /s /q CMakeFiles
+del build.ninja
+del cmake_install.cmake
+del CMakeCache.txt
