@@ -16,6 +16,8 @@
 
 #ifdef _WIN32
 #include <direct.h>
+#else
+#define _chdir chdir
 #endif
 
 /*
@@ -87,7 +89,11 @@ void client_test() {
     auto conn = socklib::Http::open("gmail.com", false, cacert);
     if (!conn) {
         std::cout << "connection failed\n";
+#ifdef _WIN32
         std::cout << "last error:" << WSAGetLastError();
+#else
+        std::cout << "last error:" << errno;
+#endif
         return;
     }
     const char payload[] = "Hello World";
