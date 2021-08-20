@@ -139,7 +139,6 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
     if (!status) {
         std::string after;
         Reader(path).readwhile(after, url_decode, &ctx);
-        std::cout << after << "\n";
         if (ctx.failed) {
             after = path;
         }
