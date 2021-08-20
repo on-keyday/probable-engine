@@ -263,8 +263,15 @@ namespace socklib {
                         Conn::set_os_error(sv.err);
                         continue;
                     }
-                    unsigned int ipv6only = 0;
-                    if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&ipv6only, sizeof(ipv6only)) < 0) {
+                    unsigned int flag = 0;
+                    if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
+                        Conn::set_os_error(sv.err);
+                        ::closesocket(sock);
+                        sock = invalid_socket;
+                        continue;
+                    }
+                    flag = 1;
+                    if (::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&flag, sizeof(flag)) < 0) {
                         Conn::set_os_error(sv.err);
                         ::closesocket(sock);
                         sock = invalid_socket;
