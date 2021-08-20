@@ -216,7 +216,7 @@ int main(int, char**) {
             got++;
             auto begin = std::chrono::system_clock::now();
             auto print_time = [&](auto end) {
-                std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin);
+                std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "us";
             };
             if (!conn->recv()) {
                 return;
@@ -235,7 +235,7 @@ int main(int, char**) {
                                     return;
                                 }
                                 auto print_time = [&](auto end) {
-                                    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin);
+                                    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "us";
                                 };
                                 bool keep_alive = false;
                                 parse_proc(conn, id, print_time, keep_alive);
