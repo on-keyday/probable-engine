@@ -373,6 +373,7 @@ namespace PROJECT_NAME {
             auto second = 0;
             self->increment();
             first = self->achar();
+            self->increment();
             second = self->achar();
             auto translate = [](unsigned char c) -> unsigned char {
                 if (c >= '0' && c <= '9') {

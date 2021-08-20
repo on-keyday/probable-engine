@@ -84,9 +84,9 @@ void httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const ch
     callback(conn);
 }
 
-void client_test() {
+void client_test(const char* url) {
     auto cacert = "D:/CommonLib/netsoft/cacert.pem";
-    auto conn = socklib::Http::open("gmail.com", false, cacert);
+    auto conn = socklib::Http::open(url, false, cacert);
     if (!conn) {
         std::cout << "connection failed\n";
 #ifdef _WIN32
@@ -96,11 +96,10 @@ void client_test() {
 #endif
         return;
     }
-    const char payload[] = "Hello World";
     conn->send("GET");
 
-    conn->recv_async(httprecv, false, cacert, [](auto& conn) {
-        std::cout << conn->response().find(":body")->second;
+    conn->recv(httprecv, false, cacert, [](auto& conn) {
+        std::cout << conn->response().find(":body")->second << "\n";
     });
 
     while (conn->wait()) {
@@ -140,6 +139,7 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
     if (!status) {
         std::string after;
         Reader(path).readwhile(after, url_decode, &ctx);
+        std::cout << after << "\n";
         if (ctx.failed) {
             after = path;
         }
@@ -300,6 +300,12 @@ int main(int, char**) {
                 else {
                     std::cout << "cd:changed\n";
                 }
+            }
+            else if (sp.size() >= 2 && sp[0] == "client") {
+                client_test(sp[1].c_str());
+            }
+            else {
+                std::cout << "no such command\n";
             }
         }
     }).detach();
