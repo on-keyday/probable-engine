@@ -64,6 +64,7 @@ namespace socklib {
 
     struct Conn {
        private:
+        friend struct Selecter;
         int sock = invalid_socket;
         addrinfo* addr = nullptr;
 

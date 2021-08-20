@@ -9,10 +9,10 @@
 namespace socklib {
     struct HttpConn {
         friend struct Http;
+        using Header = std::multimap<std::string, std::string>;
 
        protected:
         std::shared_ptr<Conn> conn;
-        using Header = std::multimap<std::string, std::string>;
         Header header;
         std::string host;
         std::string path_;
@@ -25,6 +25,7 @@ namespace socklib {
 
        protected:
         bool send_detail(std::string& res, const Header& header, const char* body, size_t bodylen) {
+            if (!conn) return false;
             if (body && bodylen) {
                 res += "content-length: ";
                 res += std::to_string(bodylen);
@@ -100,6 +101,14 @@ namespace socklib {
         void close() {
             conn->close();
         }
+
+        std::shared_ptr<Conn>& borrow() {
+            return conn;
+        }
+
+        std::shared_ptr<Conn> hijack() {
+            return std::move(conn);
+        }
     };
 
     struct HttpClientConn : HttpConn {
@@ -174,7 +183,7 @@ namespace socklib {
             return true;
         }
 
-                ~HttpClientConn() {
+        ~HttpClientConn() {
             while (waiting)
                 Sleep(5);
         }

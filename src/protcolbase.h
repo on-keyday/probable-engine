@@ -30,6 +30,29 @@ namespace socklib {
         }
     };
 
+    struct Selecter {
+        static bool wait(const std::shared_ptr<Conn>& conn, unsigned long sec, unsigned long usec = 0) {
+            if (!conn) return false;
+            ::timeval timer = {0};
+            timer.tv_sec = sec;
+            timer.tv_usec = usec;
+            ::fd_set rset = {0};
+            FD_ZERO(&rset);
+            FD_SET(conn->sock, &rset);
+            auto res = ::select(conn->sock, &rset, nullptr, nullptr, &timer);
+            if (res <= 0) {
+                if (res < 0) {
+                    Conn::set_os_error(conn->err);
+                }
+                return false;
+            }
+            if (FD_ISSET(conn->sock, &rset)) {
+                return true;
+            }
+            return false;
+        }
+    };
+
     struct TCP {
        private:
         static int open_detail(const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr) {
@@ -290,6 +313,8 @@ namespace socklib {
                 time.tv_usec = timeout;
                 while (!sv.suspend) {
                     memcpy_s(&work, sizeof(work), &baseset, sizeof(baseset));
+                    time.tv_sec = 0;
+                    time.tv_usec = timeout;
                     auto res = ::select(sv.sock + 1, &work, nullptr, nullptr, &time);
                     if (res < 0) {
                         Conn::set_os_error(sv.err);
@@ -351,6 +376,10 @@ namespace socklib {
             ctx = ct;
         }
         size_t size() const {
+            if (!base) {
+                on_eof = true;
+                return 0;
+            }
             if (buffer.size() == 0) reading();
             return buffer.size() + 1;
         }
@@ -366,6 +395,10 @@ namespace socklib {
         }
 
         char operator[](size_t idx) const {
+            if (!base) {
+                on_eof = true;
+                return char();
+            }
             if (buffer.size() > idx) {
                 return buffer[idx];
             }

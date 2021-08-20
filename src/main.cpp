@@ -13,6 +13,7 @@
 
 #include <filesystem>
 #include <fileio.h>
+#include <direct.h>
 
 /*
 template <class T>
@@ -103,108 +104,159 @@ std::mutex mut;
 
 std::deque<std::shared_ptr<socklib::HttpServerConn>> que;
 
+void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::thread::id& id, auto& print_time, bool& keep_alive) {
+    auto rec = std::chrono::system_clock::now();
+    auto path = conn->path();
+    unsigned short status = 0;
+    auto meth = conn->request().find(":method")->second;
+    const char* conh = "close";
+    if (auto found = conn->request().find("connection"); found != conn->request().end()) {
+        if (found->second.find("Keep-Alive")) {
+            keep_alive = true;
+            conh = "Keep-Alive";
+        }
+    }
+    socklib::HttpConn::Header h = {{"Connection", conh}};
+    if (keep_alive) {
+        h.emplace("Keep-Alive", "timeout=5, max=1000");
+    }
+    URLEncodingContext<std::string> ctx;
+
+    if (meth != "GET" && meth != "HEAD") {
+        const char c[] = "405 method not allowed";
+        conn->send(405, "Method Not Allowed", h, c, sizeof(c) - 1);
+        status = 405;
+        keep_alive = false;
+    }
+    if (!status) {
+        std::string after;
+        Reader(path).readwhile(after, url_decode, &ctx);
+        if (ctx.failed) {
+            after = path;
+        }
+        std::filesystem::path pt = "." + after;
+        pt = pt.lexically_normal();
+        if (pt != ".") {
+            auto send404 = [&] {
+                const char c[] = "404 not found";
+                conn->send(404, "Not Found", h, c, sizeof(c) - 1);
+                status = 404;
+            };
+            if (std::filesystem::exists(pt)) {
+                Reader<FileReader> fs(pt.c_str());
+                if (!fs.ref().is_open()) {
+                    send404();
+                }
+                else {
+                    std::string buf;
+                    fs >> do_nothing<char> >> buf;
+                    if (pt.extension() == ".json") {
+                        h.emplace("content-type", "application/json");
+                    }
+                    else if (pt.extension() == ".html") {
+                        h.emplace("content-type", "text/html");
+                    }
+                    conn->send(200, "OK", h, buf.data(), buf.size());
+                    status = 200;
+                }
+            }
+            else {
+                send404();
+            }
+        }
+    }
+    if (!status) {
+        h.emplace("content-type", "text/plain");
+        if (meth == "GET") {
+            conn->send(200, "OK", h, "It Works!", 9);
+        }
+        else {
+            conn->send(200, "OK", h);
+        }
+        status = 200;
+    }
+    auto end = std::chrono::system_clock::now();
+    std::cout << "thread-" << id << "-" << std::this_thread::get_id();
+    std::cout << "|" << conn->ipaddress() << "|";
+
+    std::cout << meth << "|";
+    std::cout << status << "|";
+    print_time(rec);
+    std::cout << "|";
+    print_time(end);
+    std::cout << "|\"";
+    std::cout << conn->url() << "\"|\n";
+}
+
 int main(int, char**) {
     auto maxth = std::thread::hardware_concurrency();
     if (maxth == 0) {
         maxth = 4;
     }
     bool proc_end = false;
+    auto process = [&]() {
+        auto id = std::this_thread::get_id();
+        size_t got = 0;
+        while (!proc_end) {
+            std::shared_ptr<socklib::HttpServerConn> conn;
+            if (mut.try_lock()) {
+                if (que.size()) {
+                    conn = std::move(que.front());
+                    que.pop_front();
+                }
+                mut.unlock();
+            }
+            if (!conn) {
+                Sleep(1);
+                continue;
+            }
+            got++;
+            auto begin = std::chrono::system_clock::now();
+            auto print_time = [&](auto end) {
+                std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin);
+            };
+            if (!conn->recv()) {
+                return;
+            }
+            bool keep_alive = false;
+            parse_proc(conn, id, print_time, keep_alive);
+            if (keep_alive) {
+                try {
+                    std::thread(
+                        [](std::shared_ptr<socklib::HttpServerConn> conn, std::thread::id id) {
+                            while (socklib::Selecter::wait(conn->borrow(), 5)) {
+                                auto begin = std::chrono::system_clock::now();
+                                if (!conn->recv()) {
+                                    std::cout << "thread-" << id << "-" << std::this_thread::get_id();
+                                    std::cout << ":keep-alive end\n";
+                                    return;
+                                }
+                                auto print_time = [&](auto end) {
+                                    std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin);
+                                };
+                                bool keep_alive = false;
+                                parse_proc(conn, id, print_time, keep_alive);
+                                if (keep_alive) {
+                                    continue;
+                                }
+                            }
+                            std::cout << "thread-" << id << "-" << std::this_thread::get_id();
+                            std::cout << ":keep-alive end\n";
+                            conn->close();
+                        },
+                        std::move(conn), id)
+                        .detach();
+                } catch (...) {
+                    std::cout << "start keep-alive thread failed\n";
+                }
+            }
+        }
+        std::cout << "thread-" << id << ":" << got << "\n";
+    };
     uint32_t i = 0;
     for (i = 0; i < maxth - 1; i++) {
         try {
-            std::thread(
-                [&]() {
-                    auto id = std::this_thread::get_id();
-                    size_t got = 0;
-                    while (true) {
-                        std::shared_ptr<socklib::HttpServerConn> conn;
-                        if (mut.try_lock()) {
-                            if (proc_end) {
-                                std::cout << "thread-" << id << ":" << got << "\n";
-                                mut.unlock();
-                                return;
-                            }
-                            if (que.size()) {
-                                conn = std::move(que.front());
-                                que.pop_front();
-                            }
-                            mut.unlock();
-                        }
-                        if (!conn) {
-                            Sleep(1);
-                            continue;
-                        }
-                        got++;
-                        auto begin = std::chrono::system_clock::now();
-                        auto print_time = [&](auto end) {
-                            std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin);
-                        };
-                        if (!conn->recv()) {
-                            return;
-                        }
-
-                        auto rec = std::chrono::system_clock::now();
-                        auto path = conn->path();
-                        unsigned short status = 0;
-                        auto meth = conn->request().find(":method")->second;
-                        URLEncodingContext<std::string> ctx;
-
-                        if (meth != "GET" && meth != "HEAD") {
-                            const char c[] = "405 method not allowed";
-                            conn->send(405, "Method Not Allowed", {}, c, sizeof(c) - 1);
-                            status = 405;
-                        }
-                        std::string after;
-                        Reader(path).readwhile(after, url_decode, &ctx);
-                        if (ctx.failed) {
-                            after = path;
-                        }
-                        std::filesystem::path pt = "." + after;
-                        pt = pt.lexically_normal();
-                        if (!status && pt != ".") {
-                            auto send404 = [&] {
-                                const char c[] = "404 not found";
-                                conn->send(404, "Not Found", {}, c, sizeof(c) - 1);
-                                status = 404;
-                            };
-                            if (std::filesystem::exists(pt)) {
-                                Reader<FileReader> fs(pt.c_str());
-                                if (!fs.ref().is_open()) {
-                                    send404();
-                                }
-                                else {
-                                    std::string buf;
-                                    fs >> do_nothing<char> >> buf;
-                                    conn->send(200, "OK", {}, buf.data(), buf.size());
-                                    status = 200;
-                                }
-                            }
-                            else {
-                                send404();
-                            }
-                        }
-                        if (!status) {
-                            if (meth == "GET") {
-                                conn->send(200, "OK", {}, "It Works!", 9);
-                            }
-                            else {
-                                conn->send();
-                            }
-                            status = 200;
-                        }
-                        auto end = std::chrono::system_clock::now();
-                        std::cout << "thread-" << id;
-                        std::cout << "|" << conn->ipaddress() << "|";
-
-                        std::cout << meth << "|";
-                        std::cout << status << "|";
-                        print_time(rec);
-                        std::cout << "|";
-                        print_time(end);
-                        std::cout << "|\"";
-                        std::cout << conn->url() << "\"|\n";
-                    }
-                })
+            std::thread(process)
                 .detach();
         } catch (...) {
             std::cout << "thread make suspended\n";
@@ -222,6 +274,19 @@ int main(int, char**) {
                 if (input == "exit") {
                     proc_end = true;
                     sv.set_suspend(true);
+                }
+                else if (auto sp = split_cmd(input); sp.size() >= 2 && sp[0] == "cd") {
+                    std::string dir = sp[1];
+                    if (dir[0] == '"') {
+                        dir.erase(0, 1);
+                        dir.pop_back();
+                    }
+                    if (_chdir(dir.c_str()) != 0) {
+                        std::cout << "cd:change cd failed\n";
+                    }
+                    else {
+                        std::cout << "cd:changed\n";
+                    }
                 }
             }
         })
