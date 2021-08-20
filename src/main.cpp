@@ -117,11 +117,12 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
     auto path = conn->path();
     unsigned short status = 0;
     auto meth = conn->request().find(":method")->second;
-    const char* conh = "close";
+    const char* conh = "Keep-Alive";
+    keep_alive = true;
     if (auto found = conn->request().find("connection"); found != conn->request().end()) {
-        if (found->second.find("Keep-Alive")) {
-            keep_alive = true;
-            conh = "Keep-Alive";
+        if (found->second.find("close")) {
+            keep_alive = false;
+            conh = "close";
         }
     }
     socklib::HttpConn::Header h = {{"Connection", conh}};
