@@ -6,7 +6,7 @@
 #include <reader.h>
 #include <net_helper.h>
 
-#include <coroutine>
+//#include <coroutine>
 #include <mutex>
 
 #include <deque>
@@ -14,6 +14,10 @@
 #include <filesystem>
 #include <fileio.h>
 #include <direct.h>
+
+#ifndef _WIN32
+#define Sleep(time) usleep(time)
+#endif
 
 /*
 template <class T>

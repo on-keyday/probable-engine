@@ -19,12 +19,13 @@
 #define ioctlsocket ioctl
 #define SD_SEND SHUT_WR
 #define SD_RECEIVE SHUT_RD
+#define SD_BOTH SHUT_RDWR
 #endif
 
 #include <string>
 #include <string.h>
 
-#if !defined(_WIN32)||(defined(__GNUC__)&&!defined(__clang__))
+#if !defined(_WIN32) || (defined(__GNUC__) && !defined(__clang__))
 #define memcpy_s(dst, dsz, src, ssz) memcpy(dst, src, ssz)
 #define strcpy_s(dst, dsz, src) strcpy(dst, src)
 #endif

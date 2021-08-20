@@ -343,7 +343,7 @@ namespace socklib {
             info.ai_family = ipv6 ? AF_INET6 : AF_INET;
             info.ai_protocol = IPPROTO_TCP;
             ::sockaddr_storage st = {0};
-            int addrlen = sizeof(st);
+            ::socklen_t addrlen = sizeof(st);
             int sock = ::accept(sv.sock, (::sockaddr*)&st, &addrlen);
             if (sock < 0) {
                 Conn::set_os_error(sv.err);
