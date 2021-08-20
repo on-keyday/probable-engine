@@ -72,7 +72,7 @@ namespace socklib {
 
         static void CheckInit() {
             if (!initialized()) {
-                throw std::exception("not initialized net work");
+                throw std::runtime_error("not initialized net work");
             }
         }
 
