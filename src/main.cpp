@@ -120,7 +120,7 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
     const char* conh = "Keep-Alive";
     keep_alive = true;
     if (auto found = conn->request().find("connection"); found != conn->request().end()) {
-        if (found->second.find("close")) {
+        if (found->second.find("close") != ~0) {
             keep_alive = false;
             conh = "close";
         }
