@@ -36,14 +36,14 @@ namespace PROJECT_NAME {
             : serialized(std::forward<RBuf>(in)) {}
 
         template <class C>
-        void write_byte(C* byte, size_t size) {
+        void write_byte(C byte, size_t size) {
             for (size_t i = 0; i < size; i++) {
-                serialized.push_back(byte[i]);
+                serialized.push_back(*(byte+i));
             }
         }
 
         template <class T, class = std::enable_if_t<bcsizeeq<T, 1>, void>>
-        void write_byte(T& seq) {
+        void write_byte(T&& seq) {
             for (auto&& i : seq) {
                 serialized.push_back(i);
             }

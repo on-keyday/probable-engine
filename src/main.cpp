@@ -2,6 +2,7 @@
 #include <iostream>
 
 #include "http.h"
+#include "websocket.h"
 
 #include <reader.h>
 #include <net_helper.h>
@@ -112,6 +113,54 @@ std::mutex mut;
 
 std::deque<std::shared_ptr<socklib::HttpServerConn>> que;
 
+void print_log(std::shared_ptr<socklib::HttpServerConn>& conn, auto& method, unsigned short status,
+               auto& print_time, const auto& id, const auto& subid, auto& recvtime) {
+    auto end = std::chrono::system_clock::now();
+    std::cout << "thread-" << id << "-" << subid;
+    std::cout << "|" << conn->ipaddress() << "|";
+
+    std::cout << method << "|";
+    std::cout << status << "|";
+    print_time(recvtime);
+    std::cout << "|";
+    print_time(end);
+    std::cout << "|\"";
+    std::cout << conn->url() << "\"|\n";
+}
+
+void websocket_accept(std::string& method, auto& print_time, auto& recvtime, auto& id, std::shared_ptr<socklib::HttpServerConn>& conn) {
+    auto& req = conn->request();
+    socklib::HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}};
+    auto sendmsg = [&](unsigned short status, const char* msg, const char* data) {
+        conn->send(status, msg, {{"content-type", "text/plain"}}, data, strlen(data));
+    };
+    if (method != "GET") {
+        sendmsg(405, "Method Not Allowed", "method not allowed");
+        return;
+    }
+    if (auto found = req.find("upgread"); found == req.end() || found->second != "websocket") {
+        sendmsg(400, "Bad Request", "Request is not WebSocket upgreade");
+        return;
+    }
+    if (auto found = req.find("sec-websocket-key"); found != req.end()) {
+        Base64Context b64;
+        SHA1Context hash;
+        std::string result;
+        Reader(found->second + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
+        Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
+        h.emplace("Sec-WebSocket-Accept", result);
+    }
+    else {
+        sendmsg(400, "Bad Request", "Request has no Sec-WebSocket-Key header.");
+        return;
+    }
+    conn->send(101, "Switching Protocols", h);
+
+    print_log(conn, method, 101, print_time, id, std::this_thread::get_id(), recvtime);
+    auto c = socklib::WebSocket::hijack_http(conn);
+    c->close();
+}
+
 void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::thread::id& id, auto& print_time, bool& keep_alive) {
     auto rec = std::chrono::system_clock::now();
     auto path = conn->path();
@@ -145,6 +194,10 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
         }
         std::filesystem::path pt = "." + after;
         pt = pt.lexically_normal();
+        if (pt == "./ws") {
+            websocket_accept(meth, print_time, rec, id, conn);
+            return;
+        }
         if (pt != ".") {
             auto send404 = [&] {
                 const char c[] = "404 not found";
@@ -184,17 +237,7 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
         }
         status = 200;
     }
-    auto end = std::chrono::system_clock::now();
-    std::cout << "thread-" << id << "-" << std::this_thread::get_id();
-    std::cout << "|" << conn->ipaddress() << "|";
-
-    std::cout << meth << "|";
-    std::cout << status << "|";
-    print_time(rec);
-    std::cout << "|";
-    print_time(end);
-    std::cout << "|\"";
-    std::cout << conn->url() << "\"|\n";
+    print_log(conn, meth, status, print_time, id, std::this_thread::get_id(), rec);
 }
 
 void server_proc() {

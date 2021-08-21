@@ -292,7 +292,7 @@ namespace PROJECT_NAME {
             }
             return ~0;
         };
-        Reader<Buf> tmp;
+        Reader<Ret> tmp;
         self->readwhile(tmp.ref(), addifmatch, [&ctx](char c) { return is_alpha_or_num(c) || ctx->c62 == c || ctx->c63 == c || c == '='; });
         if (ctx->strict) {
             if (tmp.readable() != firstsize) return true;
@@ -523,6 +523,7 @@ namespace PROJECT_NAME {
         unsigned int h[5]={0x67452301,0xEFCDAB89,0x98BADCFE,0x10325476,0xC3D2E1F0};
         unsigned char result[sizeof(h)]={0};
         unsigned long long total=0;
+        bool intotal=false;
 
         void calc(const char* bits){
              auto rol=[](unsigned int word,auto shift){
@@ -582,8 +583,18 @@ namespace PROJECT_NAME {
             ctx.h[3]=init[3];
             ctx.h[4]=init[4];
             ctx.total=0;
+            ctx.intotal=false;
         }
+        union{
+            char bits[64]={0};
+            unsigned long long ints[8];
+        }c;
         if(!r){
+            if (!ctx.intotal) {
+                c.ints[7] = translate_byte_net_and_host<unsigned long long>((char*)&ctx.total);
+                ctx.calc(c.bits);
+                ctx.intotal = true;
+            }
             int count=0;
             for(auto& i:ctx.h){
                 unsigned int be=translate_byte_net_and_host<unsigned int>((char*)&i);
@@ -595,14 +606,11 @@ namespace PROJECT_NAME {
             return true;
         }
         size_t sz=0;
-        union{
-            char bits[64]={0};
-            unsigned long long ints[8];
-        }c;
         sz=r->read_byte(c.bits,64);
         ctx.total+=sz*8;
         if(sz<64){
             c.bits[sz]=0x80;
+            ctx.intotal=true;
             if(sz<56){
                 c.ints[7]=translate_byte_net_and_host<unsigned long long>((char*)&ctx.total);
                 ctx.calc(c.bits);
