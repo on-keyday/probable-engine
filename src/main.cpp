@@ -161,12 +161,14 @@ void websocket_accept(std::string& method, auto& print_time, auto& recvtime, aut
     print_log(conn, method, 101, print_time, id, std::this_thread::get_id(), recvtime);
     auto c = socklib::WebSocket::hijack_httpserver(conn);
     std::thread(
-        [](std::shared_ptr<socklib::WebSocketConn> conn) {
+        [](std::shared_ptr<socklib::WebSocketServerConn> conn) {
             while (socklib::Selecter::wait(conn->borrow(), 10)) {
                 socklib::WsFrame f;
                 conn->recv(f);
                 std::cout << f.get_data() << "\n";
+                conn->send("Nice to meet you!", 17);
             }
+            std::cout << "web socket end\n";
         },
         std::move(c))
         .detach();
