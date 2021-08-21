@@ -154,13 +154,19 @@ void websocket_accept(std::string& method, auto& print_time, auto& recvtime, aut
         sendmsg(400, "Bad Request", "Request has no Sec-WebSocket-Key header.");
         return;
     }
-    conn->send(101, "Switching Protocols", h);
+    if (!conn->send(101, "Switching Protocols", h)) {
+        return;
+    }
 
     print_log(conn, method, 101, print_time, id, std::this_thread::get_id(), recvtime);
-    auto c = socklib::WebSocket::hijack_http(conn);
+    auto c = socklib::WebSocket::hijack_httpserver(conn);
     std::thread(
         [](std::shared_ptr<socklib::WebSocketConn> conn) {
-            socklib::Selecter::wait(conn->borrow(), 10);
+            while (socklib::Selecter::wait(conn->borrow(), 10)) {
+                socklib::WsFrame f;
+                conn->recv(f);
+                std::cout << f.get_data() << "\n";
+            }
         },
         std::move(c))
         .detach();

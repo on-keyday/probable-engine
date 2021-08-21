@@ -15,7 +15,7 @@ namespace socklib {
         pong = 0x0A,
         closing = 0x08,
         mask_fin = 0x80,
-        mask_reserved = 0xA0,
+        mask_reserved = 0x70,
         mask_opcode = 0x0f,
     };
     DEFINE_ENUMOP(WsFType)
@@ -31,8 +31,10 @@ namespace socklib {
         void unmask() {
             unsigned int res = commonlib2::translate_byte_net_and_host<unsigned int>((char*)&maskkey);
             size_t count = 0;
+            char* key = reinterpret_cast<char*>(&res);
             for (auto& c : data) {
-                c ^= reinterpret_cast<char*>(&res)[count % 4];
+                c = c ^ key[count % 4];
+                count++;
             }
             masked = false;
         }
@@ -46,11 +48,11 @@ namespace socklib {
         }
     };
     struct WebSocketConn : public AppLayer {
-       private:
+       protected:
         std::string buffer;
         commonlib2::Deserializer<std::string&> dec;
 
-        bool send_detail(const char* data, size_t len, WsFType frame) {
+        bool send_detail(const char* data, size_t len, WsFType frame, bool mask = false, unsigned int key = 0) {
             if (!conn) return false;
             commonlib2::Serializer<std::string> s;
             if (any(frame & WsFType::mask_reserved)) {
@@ -60,19 +62,36 @@ namespace socklib {
             if (!data) {
                 len = 0;
             }
+            unsigned char mmask = 0;
+            if (mask) {
+                mmask = 0x80;
+            }
             if (len <= 125) {
-                s.template write_as<unsigned char>(len);
+                s.template write_as<unsigned char>(len | mmask);
             }
             else if (len <= 0xffff) {
-                s.template write_as<unsigned char>(126);
+                s.template write_as<unsigned char>(126 | mmask);
                 s.write_hton((unsigned short)len);
             }
             else {
-                s.template write_as<unsigned char>(127);
-                s.write_hton(len);
+                s.template write_as<unsigned char>(127 | mmask);
+                s.write_hton((unsigned long long)len);
             }
             if (len) {
-                s.write_byte(std::string_view(data, len));
+                if (!mask) {
+                    s.write_byte(std::string_view(data, len));
+                }
+                else {
+                    std::string masked(data, len);
+                    unsigned int maskkey = commonlib2::translate_byte_net_and_host<unsigned int>((char*)&key);
+                    char* k = reinterpret_cast<char*>(&maskkey);
+                    size_t count = 0;
+                    for (auto& c : masked) {
+                        c = c ^ k[count % 4];
+                        count++;
+                    }
+                    s.write_byte(masked);
+                }
             }
             return conn->write(s.get());
         }
@@ -80,17 +99,6 @@ namespace socklib {
        public:
         WebSocketConn(std::shared_ptr<Conn>&& in)
             : dec(buffer), AppLayer(std::move(in)) {}
-
-        bool send(const char* data, size_t len, bool as_binary = false) {
-            return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin);
-        }
-
-        bool control(WsFType cmd, const char* data = nullptr, size_t len = 0) {
-            if (cmd != WsFType::closing && cmd != WsFType::ping && cmd != WsFType::pong) {
-                return false;
-            }
-            return send_detail(data, len, cmd | WsFType::mask_fin);
-        }
 
         bool recv(WsFrame& frame) {
             auto readlim = [this](unsigned int lim) {
@@ -110,10 +118,10 @@ namespace socklib {
             }
             if (any(frame.type & WsFType::mask_fin)) {
                 frame.continuous = false;
+                frame.type &= WsFType::mask_opcode;
             }
             else {
                 frame.continuous = true;
-                frame.type &= WsFType::mask_opcode;
             }
             unsigned char sz = 0;
             size_t size = 0, total = 2;
@@ -158,7 +166,6 @@ namespace socklib {
             if (!readlim(total)) {
                 return false;
             }
-            frame.data.resize(size);
             dec.read_byte(frame.data, size);
             buffer.erase(0, total);
             dec.base_reader().seek(0);
@@ -171,14 +178,48 @@ namespace socklib {
                 conn->close();
             }
         }
-        ~WebSocketConn() {
+        virtual ~WebSocketConn() {
             close();
         }
     };
 
+    struct WebSocketServerConn : WebSocketConn {
+        WebSocketServerConn(std::shared_ptr<Conn>&& in)
+            : WebSocketConn(std::move(in)) {}
+        bool send(const char* data, size_t len, bool as_binary = false) {
+            return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin);
+        }
+
+        bool control(WsFType cmd, const char* data = nullptr, size_t len = 0) {
+            if (cmd != WsFType::closing && cmd != WsFType::ping && cmd != WsFType::pong) {
+                return false;
+            }
+            return send_detail(data, len, cmd | WsFType::mask_fin);
+        }
+    };
+
+    struct WebSocketClientConn : WebSocketConn {
+        WebSocketClientConn(std::shared_ptr<Conn>&& in)
+            : WebSocketConn(std::move(in)) {}
+        bool send(const char* data, size_t len, unsigned int key, bool as_binary = false) {
+            return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin, true, key);
+        }
+
+        bool control(WsFType cmd, unsigned int key = 0, const char* data = nullptr, size_t len = 0) {
+            if (cmd != WsFType::closing && cmd != WsFType::ping && cmd != WsFType::pong) {
+                return false;
+            }
+            return send_detail(data, len, cmd | WsFType::mask_fin, true, key);
+        }
+    };
+
     struct WebSocket {
-        static std::shared_ptr<WebSocketConn> hijack_http(std::shared_ptr<HttpConn> in) {
-            return std::make_shared<WebSocketConn>(std::move(in->hijack()));
+        static std::shared_ptr<WebSocketServerConn> hijack_httpserver(std::shared_ptr<HttpServerConn> in) {
+            return std::make_shared<WebSocketServerConn>(std::move(in->hijack()));
+        }
+
+        static std::shared_ptr<WebSocketClientConn> hijack_httpclient(std::shared_ptr<HttpClientConn> in) {
+            return std::make_shared<WebSocketClientConn>(std::move(in->hijack()));
         }
     };
 }  // namespace socklib
