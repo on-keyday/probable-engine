@@ -45,9 +45,8 @@ namespace socklib {
             return data;
         }
     };
-    struct WebSocketConn {
+    struct WebSocketConn : public AppLayer {
        private:
-        std::shared_ptr<Conn> conn;
         std::string buffer;
         commonlib2::Deserializer<std::string&> dec;
 
@@ -80,7 +79,7 @@ namespace socklib {
 
        public:
         WebSocketConn(std::shared_ptr<Conn>&& in)
-            : dec(buffer), conn(std::move(in)) {}
+            : dec(buffer), AppLayer(std::move(in)) {}
 
         bool send(const char* data, size_t len, bool as_binary = false) {
             return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin);
@@ -166,7 +165,7 @@ namespace socklib {
             return true;
         }
 
-        void close() {
+        void close() override {
             if (conn && conn->is_opened()) {
                 send_detail(nullptr, 0, WsFType::closing | WsFType::mask_fin);
                 conn->close();

@@ -7,12 +7,11 @@
 #include <atomic>
 
 namespace socklib {
-    struct HttpConn {
+    struct HttpConn : public AppLayer {
         friend struct Http;
         using Header = std::multimap<std::string, std::string>;
 
        protected:
-        std::shared_ptr<Conn> conn;
         Header header;
         std::string host;
         std::string path_;
@@ -21,7 +20,7 @@ namespace socklib {
         bool recving = false;
         unsigned int waiting = 0;
         HttpConn(std::shared_ptr<Conn>&& in, std::string&& hostname, std::string&& path, std::string&& query)
-            : conn(std::move(in)), host(hostname), path_(path), query_(query) {}
+            : AppLayer(std::move(in)), host(hostname), path_(path), query_(query) {}
 
        protected:
         bool send_detail(std::string& res, const Header& header, const char* body, size_t bodylen) {
@@ -58,14 +57,6 @@ namespace socklib {
             return waiting;
         }
 
-        void interrupt() {
-            conn->set_suspend(true);
-        }
-
-        void clear() {
-            conn->set_suspend(false);
-        }
-
         const std::string& path() const {
             return path_;
         }
@@ -77,25 +68,6 @@ namespace socklib {
         std::string url() const {
             if (!host.size()) return path_ + query_;
             return (conn->get_ssl() ? "https://" : "http://") + host + path_ + query_;
-        }
-
-        std::string ipaddress() const {
-            if (!conn) return "";
-            return conn->ipaddress();
-        }
-
-        void close() {
-            if (conn) {
-                conn->close();
-            }
-        }
-
-        std::shared_ptr<Conn>& borrow() {
-            return conn;
-        }
-
-        std::shared_ptr<Conn> hijack() {
-            return std::move(conn);
         }
     };
 

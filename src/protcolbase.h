@@ -460,4 +460,36 @@ namespace socklib {
         }
     };
 
+    struct AppLayer {
+       protected:
+        std::shared_ptr<Conn> conn;
+
+       public:
+        AppLayer(std::shared_ptr<Conn>&& in)
+            : conn(std::move(in)) {}
+
+        void interrupt(bool f = true) {
+            conn->set_suspend(f);
+        }
+
+        std::shared_ptr<Conn> hijack() {
+            return std::move(conn);
+        }
+
+        std::shared_ptr<Conn>& borrow() {
+            return conn;
+        }
+
+        std::string ipaddress() {
+            if (!conn) return std::string();
+            return conn->ipaddress();
+        }
+
+        virtual void close() {
+            if (conn) {
+                conn->close();
+            }
+        }
+    };
+
 }  // namespace socklib

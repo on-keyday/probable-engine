@@ -138,7 +138,7 @@ void websocket_accept(std::string& method, auto& print_time, auto& recvtime, aut
         sendmsg(405, "Method Not Allowed", "method not allowed");
         return;
     }
-    if (auto found = req.find("upgread"); found == req.end() || found->second != "websocket") {
+    if (auto found = req.find("upgrade"); found == req.end() || found->second != "websocket") {
         sendmsg(400, "Bad Request", "Request is not WebSocket upgreade");
         return;
     }
@@ -158,7 +158,12 @@ void websocket_accept(std::string& method, auto& print_time, auto& recvtime, aut
 
     print_log(conn, method, 101, print_time, id, std::this_thread::get_id(), recvtime);
     auto c = socklib::WebSocket::hijack_http(conn);
-    c->close();
+    std::thread(
+        [](std::shared_ptr<socklib::WebSocketConn> conn) {
+            socklib::Selecter::wait(conn->borrow(), 10);
+        },
+        std::move(c))
+        .detach();
 }
 
 void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::thread::id& id, auto& print_time, bool& keep_alive) {
@@ -194,7 +199,7 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
         }
         std::filesystem::path pt = "." + after;
         pt = pt.lexically_normal();
-        if (pt == "./ws") {
+        if (pt == "ws") {
             websocket_accept(meth, print_time, rec, id, conn);
             return;
         }
