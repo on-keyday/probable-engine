@@ -2,7 +2,7 @@
 setlocal
 set BUILTIN_BINARY=1
 set CLANG=true
-set BUILD_TYPE=Release
+set BUILD_TYPE=Debug
 if "%CLANG%"=="true" (
     cmake -D CMAKE_CXX_COMPILER=clang++ -G Ninja -D CMAKE_BUILD_TYPE=%BUILD_TYPE% .
 ) else (

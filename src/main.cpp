@@ -197,7 +197,7 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
     std::cout << conn->url() << "\"|\n";
 }
 
-int main(int, char**) {
+void server_proc() {
     auto maxth = std::thread::hardware_concurrency();
     if (maxth == 0) {
         maxth = 4;
@@ -343,4 +343,8 @@ int main(int, char**) {
         que.push_back(std::move(res));
         mut.unlock();
     }
+}
+
+int main(int, char**) {
+    server_proc();
 }
