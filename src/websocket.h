@@ -257,16 +257,16 @@ namespace socklib {
         template <class F>
         struct has_bool : decltype(has_bool_impl::has<F>(nullptr)) {};
 
-        template <class F, bool f = has_bool<F>::value>
+        template <class F, class Ret = bool, bool f = has_bool<F>::value>
         struct invoke_cb {
             template <class... Args>
-            static bool invoke(F&& in, Args&&... args) {
+            static Ret invoke(F&& in, Args&&... args) {
                 return in(std::forward<Args>(args)...);
             }
         };
 
-        template <class F>
-        struct invoke_cb<F, true> {
+        template <class F, class Ret>
+        struct invoke_cb<F, Ret, true> {
             template <class... Args>
             static bool invoke(F&& in, Args&&... args) {
                 if (!(bool)in) return true;
@@ -323,7 +323,7 @@ namespace socklib {
 
        private:
        public:
-        template <class F = bool (*)(HttpConn::Header&, bool)>
+        template <class F = bool (*)(HttpConn::Header&, bool success, const char* reason)>
         static std::shared_ptr<WebSocketClientConn>
         default_hijack_client_proc(const char* url, bool encoded = false, const char* cacert = nullptr, F&& cb = F()) {
             URLContext<std::string> ctx;
@@ -350,29 +350,38 @@ namespace socklib {
             std::string result;
             Reader(token + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
             Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
-            if (!invoke_cb<F>::invoke(cb, h, true)) {
+            auto invoke = [&](auto& h, bool success, const char* reason) {
+                return invoke_cb<F>::invoke(cb, h, success, reason);
+            };
+            if (!invoke(h, true, "prepare")) {
                 return nullptr;
             }
             if (!client->send("GET", h)) {
+                invoke(h, false, "send");
                 return nullptr;
             }
             if (!client->recv(true)) {
+                invoke(h, false, "recv");
                 return nullptr;
             }
             auto& res = client->response();
             if (auto found = res.find(":status"); found == res.end() || found->second != "101") {
+                invoke(res, false, "status");
                 return nullptr;
             }
             if (auto found = res.find("sec-websocket-accept"); found == res.end() || fodun->second != result) {
+                invoke(res, false, "security");
                 return nullptr;
             }
             if (auto found = res.find("upgrade"); found == res.end() || found->second != "websocket") {
+                invoke(res, false, "upgrade");
                 return nullptr;
             }
             if (auto found = res.find("connection"); found == res.end() || found->second != "Upgrade") {
+                invoke(res,false,"connection");
                 return nullptr;
             }
-            if (!invoke_cb<F>::invoke(cb, h, false)) {
+            if (!invoke(res,true,"verify")) {
                 return nullptr;
             }
             return hijack_httpclient(client);
