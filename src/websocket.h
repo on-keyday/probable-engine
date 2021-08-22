@@ -48,6 +48,23 @@ namespace socklib {
         bool is_close() const {
             return any(type & WsFType::closing);
         }
+
+        const char* frame_type() const {
+            switch (type) {
+                case WsFType::binary:
+                    return "binary";
+                case WsFType::text:
+                    return "binary";
+                case WsFType::ping:
+                    return "ping";
+                case WsFType::pong:
+                    return "pong";
+                case WsFType::closing:
+                    return "close";
+                default:
+                    return "unknown";
+            }
+        }
     };
     struct WebSocketConn : public AppLayer {
        protected:
@@ -198,6 +215,10 @@ namespace socklib {
                 close();
             }
             return true;
+        }
+
+        bool recvable() const {
+            return (bool)buffer.size();
         }
 
         void close() override {

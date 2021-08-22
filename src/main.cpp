@@ -141,11 +141,17 @@ bool websocket_accept(std::string& method, auto& print_time, auto& recvtime, aut
         [](std::shared_ptr<socklib::WebSocketServerConn> conn) {
             while (socklib::Selecter::wait(conn->borrow(), 10)) {
                 socklib::WsFrame f;
-                conn->recv(f);
+                if (!conn->recv(f)) {
+                    std::cout << "recv failed\n";
+                    conn->close();
+                    return false;
+                }
+                std::cout << f.frame_type() << "\n";
                 std::cout << f.get_data() << "\n";
                 conn->send("Nice to meet you!", 17);
             }
             std::cout << "web socket end\n";
+            return true;
         },
         std::move(c))
         .detach();
