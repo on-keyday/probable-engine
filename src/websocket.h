@@ -54,7 +54,7 @@ namespace socklib {
                 case WsFType::binary:
                     return "binary";
                 case WsFType::text:
-                    return "binary";
+                    return "text";
                 case WsFType::ping:
                     return "ping";
                 case WsFType::pong:
@@ -64,6 +64,11 @@ namespace socklib {
                 default:
                     return "unknown";
             }
+        }
+
+        bool frame_type(const char* frametype) const {
+            if (!frametype) return false;
+            return strcmp(frame_type(), frametype) == 0;
         }
     };
     struct WebSocketConn : public AppLayer {
