@@ -195,17 +195,20 @@ namespace socklib {
     };
 
     struct Http {
+        friend struct WebSocket;
+
        private:
         static bool
-        setuphttp(const char* url, bool encoded, unsigned short& port, commonlib2::URLContext<std::string>& urlctx, std::string& path, std::string& query) {
+        setuphttp(const char* url, bool encoded, unsigned short& port, commonlib2::URLContext<std::string>& urlctx, std::string& path, std::string& query,
+                  const char* normal = "http", const char* secure = "https") {
             using R = commonlib2::Reader<std::string>;
             R(url).readwhile(commonlib2::parse_url, urlctx);
             if (!urlctx.succeed) return false;
             if (!urlctx.scheme.size()) {
-                urlctx.scheme = "http";
+                urlctx.scheme = normal;
             }
             else {
-                if (urlctx.scheme != "http" && urlctx.scheme != "https") {
+                if (urlctx.scheme != normal && urlctx.scheme != secure) {
                     return false;
                 }
             }

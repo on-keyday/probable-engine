@@ -259,18 +259,18 @@ namespace socklib {
 
         template <class F, bool f = has_bool<F>::value>
         struct invoke_cb {
-            static bool invoke(F&& in, const HttpConn::Header& r, HttpConn::Header& h,
-                               std::shared_ptr<HttpServerConn>& c) {
-                return in(r, h, c);
+            template <class... Args>
+            static bool invoke(F&& in, Args&&... args) {
+                return in(std::forward<Args>(args)...);
             }
         };
 
         template <class F>
         struct invoke_cb<F, true> {
-            static bool invoke(F&& in, const HttpConn::Header& r, HttpConn::Header& h,
-                               std::shared_ptr<HttpServerConn>& c) {
+            template <class... Args>
+            static bool invoke(F&& in, Args&&... args) {
                 if (!(bool)in) return true;
-                return in(r, h, c);
+                return in(std::forward<Args>(args)...);
             }
         };
 
@@ -294,9 +294,11 @@ namespace socklib {
                 sendmsg(405, "Method Not Allowed", "method not allowed");
                 return nullptr;
             }
-            if (auto found = req.find("upgrade"); found == req.end() || found->second != "websocket") {
+            if (auto found = req.find("connection"); found == req.end() || found->second != "Upgrade") {
                 sendmsg(400, "Bad Request", "Request is not WebSocket upgreade");
                 return nullptr;
+            }
+            if (auto found = req.find("upgrade"); found == req.end() || found->second != "websocket") {
             }
             if (auto found = req.find("sec-websocket-key"); found != req.end()) {
                 Base64Context b64;
@@ -317,6 +319,63 @@ namespace socklib {
                 return nullptr;
             }
             return socklib::WebSocket::hijack_httpserver(conn);
+        }
+
+       private:
+       public:
+        template <class F = bool (*)(HttpConn::Header&, bool)>
+        static std::shared_ptr<WebSocketClientConn>
+        default_hijack_client_proc(const char* url, bool encoded = false, const char* cacert = nullptr, F&& cb = F()) {
+            URLContext<std::string> ctx;
+            std::string path, query;
+            unsigned short port = 0;
+            if (!Http::setuphttp(url, encoded, port, ctx, path, query, "ws", "wss")) {
+                return nullptr;
+            }
+            auto httpurl = (ctx.scheme == "wss" ? "https://" : "http://") + ctx.host + path + query;
+            auto client = Http::open(httpurl.c_str(), true, cacert);
+            if (!client) return nullptr;
+            HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version"}, {"13"}};
+            std::random_device device;
+            std::uniform_int_distribution<unsigned char> uni;
+            unsigned char bytes[16];
+            for (auto i = 0; i < 16; i++) {
+                bytes[i] = uni(device);
+            }
+            Base64Context b64;
+            std::string token;
+            commonlib2::Reader(Sized(bytes)).readwhile(token, commonlib2::base64_encode, &b64);
+            h.emplace("Sec-WebSocket-Key", token);
+            SHA1Context hash;
+            std::string result;
+            Reader(token + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
+            Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
+            if (!invoke_cb<F>::invoke(cb, h, true)) {
+                return nullptr;
+            }
+            if (!client->send("GET", h)) {
+                return nullptr;
+            }
+            if (!client->recv(true)) {
+                return nullptr;
+            }
+            auto& res = client->response();
+            if (auto found = res.find(":status"); found == res.end() || found->second != "101") {
+                return nullptr;
+            }
+            if (auto found = res.find("sec-websocket-accept"); found == res.end() || fodun->second != result) {
+                return nullptr;
+            }
+            if (auto found = res.find("upgrade"); found == res.end() || found->second != "websocket") {
+                return nullptr;
+            }
+            if (auto found = res.find("connection"); found == res.end() || found->second != "Upgrade") {
+                return nullptr;
+            }
+            if (!invoke_cb<F>::invoke(cb, h, false)) {
+                return nullptr;
+            }
+            return hijack_httpclient(client);
         }
     };
 }  // namespace socklib
