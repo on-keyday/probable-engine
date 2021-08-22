@@ -9,9 +9,9 @@ namespace socklib {
         empty = 0xF0,
         text = 0x01,
         binary = 0x02,
+        closing = 0x08,
         ping = 0x09,
         pong = 0x0A,
-        closing = 0x08,
         mask_fin = 0x80,
         mask_reserved = 0x70,
         mask_opcode = 0x0f,
@@ -79,7 +79,7 @@ namespace socklib {
 
         bool send_detail(const char* data, size_t len, WsFType frame, bool mask = false, unsigned int key = 0) {
             if (!conn) return false;
-            if (any(frame & WsFType::closing) && closed) {
+            if (frame == WsFType::closing && closed) {
                 return false;
             }
             commonlib2::Serializer<std::string> s;
@@ -123,7 +123,7 @@ namespace socklib {
                 s.write_byte(std::string_view(data, len));
             }
             auto sent = conn->write(s.get());
-            if (sent && any(frame & WsFType::closing)) {
+            if (sent && frame == WsFType::closing) {
                 closed = true;
             }
             return sent;
@@ -215,7 +215,7 @@ namespace socklib {
             dec.read_byte(frame.data, size);
             buffer.erase(0, total);
             dec.base_reader().seek(0);
-            if (any(frame.type & WsFType::closing)) {
+            if (frame.type == WsFType::closing) {
                 closed = true;
                 close();
             }
