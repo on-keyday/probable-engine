@@ -134,7 +134,7 @@ namespace socklib {
             : dec(buffer), AppLayer(std::move(in)) {
         }
 
-        virtual bool send(const char* data, size_t len, bool as_binary = false) {
+        virtual bool send(const char* data, size_t len, bool as_binary = true) {
             return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin);
         }
 
@@ -250,7 +250,7 @@ namespace socklib {
         WebSocketClientConn(std::shared_ptr<Conn>&& in)
             : WebSocketConn(std::move(in)) {}
 
-        bool send(const char* data, size_t len, bool as_binary = false) override {
+        bool send(const char* data, size_t len, bool as_binary = true) override {
             return send_key(data, len, std::random_device()(), as_binary);
         }
 
