@@ -129,13 +129,13 @@ void print_log(std::shared_ptr<socklib::HttpServerConn>& conn, auto& method, uns
     std::cout << conn->url() << "\"|\n";
 }
 
-void websocket_accept(std::string& method, auto& print_time, auto& recvtime, auto& id, std::shared_ptr<socklib::HttpServerConn>& conn) {
+bool websocket_accept(std::string& method, auto& print_time, auto& recvtime, auto& id, std::shared_ptr<socklib::HttpServerConn>& conn) {
     auto c = socklib::WebSocket::default_hijack_server_proc(conn, [&](auto&, auto&, auto&) {
         print_log(conn, method, 101, print_time, id, std::this_thread::get_id(), recvtime);
         return true;
     });
     if (!c) {
-        return;
+        return false;
     }
     std::thread(
         [](std::shared_ptr<socklib::WebSocketServerConn> conn) {
@@ -149,9 +149,10 @@ void websocket_accept(std::string& method, auto& print_time, auto& recvtime, aut
         },
         std::move(c))
         .detach();
+    return true;
 }
 
-void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::thread::id& id, auto& print_time, bool& keep_alive) {
+void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::thread::id& id, auto& print_time, bool& keep_alive, bool& websocket) {
     auto rec = std::chrono::system_clock::now();
     auto path = conn->path();
     unsigned short status = 0;
@@ -185,7 +186,7 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
         std::filesystem::path pt = "." + after;
         pt = pt.lexically_normal();
         if (pt == "ws") {
-            websocket_accept(meth, print_time, rec, id, conn);
+            websocket = websocket_accept(meth, print_time, rec, id, conn);
             return;
         }
         if (pt != ".") {
@@ -241,6 +242,10 @@ void websocket_client(const char* url) {
     conn->send("hello", 5);
     socklib::WsFrame frame;
     while (conn->recv(frame)) {
+        if (frame.is_close()) {
+            std::cout << "webscoket client end\n";
+            break;
+        }
         std::cout << "websocket:" << frame.get_data() << "\n";
     }
 }
@@ -283,8 +288,8 @@ void server_proc() {
                     std::cout << "thread-" << id << " recv failed\n";
                     continue;
                 }
-                bool keep_alive = false;
-                parse_proc(conn, id, print_time, keep_alive);
+                bool keep_alive = false, websocket = false;
+                parse_proc(conn, id, print_time, keep_alive, websocket);
                 if (keep_alive) {
                     try {
                         std::thread(
@@ -299,8 +304,11 @@ void server_proc() {
                                     auto print_time = [&](auto end) {
                                         std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() << "us";
                                     };
-                                    bool keep_alive = false;
-                                    parse_proc(conn, id, print_time, keep_alive);
+                                    bool keep_alive = false, websocket = false;
+                                    parse_proc(conn, id, print_time, keep_alive, websocket);
+                                    if (websocket) {
+                                        return;
+                                    }
                                     if (keep_alive) {
                                         continue;
                                     }
