@@ -112,6 +112,7 @@ namespace PROJECT_NAME {
                 return Vec();
             }
             ret.push_back(std::move(str));
+            count++;
         }
         if (!r.ceof()) {
             Str str;
