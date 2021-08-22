@@ -138,6 +138,10 @@ namespace socklib {
             return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin);
         }
 
+        virtual bool send_text(const char* data, bool as_binary = false) {
+            return send(data, data ? strlen(data) : 0, as_binary);
+        }
+
         virtual bool control(WsFType cmd, const char* data = nullptr, size_t len = 0) {
             if (cmd != WsFType::closing && cmd != WsFType::ping && cmd != WsFType::pong) {
                 return false;
@@ -248,6 +252,10 @@ namespace socklib {
 
         bool send(const char* data, size_t len, bool as_binary = false) override {
             return send_key(data, len, std::random_device()(), as_binary);
+        }
+
+        bool send_text(const char* data, bool as_binary = false) override {
+            return send(data, data ? strlen(data) : 0, as_binary);
         }
 
         bool control(WsFType cmd, const char* data = nullptr, size_t len = 0) override {
