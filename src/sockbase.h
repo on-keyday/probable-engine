@@ -90,6 +90,7 @@ namespace socklib {
     struct Conn {
        private:
         friend struct Selecter;
+        friend struct EpollCtx;
         int sock = invalid_socket;
         addrinfo* addr = nullptr;
 

@@ -81,7 +81,7 @@ namespace socklib {
     };
 
     struct Selecter {
-        static bool wait(const std::shared_ptr<Conn>& conn, unsigned long sec, unsigned long usec = 0) {
+        static bool waitone(const std::shared_ptr<Conn>& conn, unsigned long sec, unsigned long usec = 0) {
             if (!conn) return false;
             ::timeval timer = {0};
             timer.tv_sec = sec;
@@ -89,6 +89,7 @@ namespace socklib {
             ::fd_set rset = {0};
             FD_ZERO(&rset);
             FD_SET(conn->sock, &rset);
+
             auto res = ::select(conn->sock, &rset, nullptr, nullptr, &timer);
             if (res <= 0) {
                 if (res < 0) {
