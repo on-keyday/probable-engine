@@ -257,7 +257,7 @@ namespace socklib {
         template <class F>
         struct has_bool : decltype(has_bool_impl::has<F>(nullptr)) {};
 
-        template <class F, class Ret = bool, bool f = has_bool<F>::value>
+        template <class F, class Ret, bool f = has_bool<F>::value>
         struct invoke_cb {
             template <class... Args>
             static Ret invoke(F&& in, Args&&... args) {
@@ -268,7 +268,7 @@ namespace socklib {
         template <class F, class Ret>
         struct invoke_cb<F, Ret, true> {
             template <class... Args>
-            static bool invoke(F&& in, Args&&... args) {
+            static Ret invoke(F&& in, Args&&... args) {
                 if (!(bool)in) return true;
                 return in(std::forward<Args>(args)...);
             }
@@ -312,7 +312,7 @@ namespace socklib {
                 sendmsg(400, "Bad Request", "Request has no Sec-WebSocket-Key header.");
                 return nullptr;
             }
-            if (!invoke_cb<F>::invoke(std::forward<F>(cb), req, h, conn)) {
+            if (!invoke_cb<F, bool>::invoke(std::forward<F>(cb), req, h, conn)) {
                 return nullptr;
             }
             if (!conn->send(101, "Switching Protocols", h)) {
@@ -321,11 +321,10 @@ namespace socklib {
             return socklib::WebSocket::hijack_httpserver(conn);
         }
 
-       private:
        public:
         template <class F = bool (*)(HttpConn::Header&, bool success, const char* reason)>
         static std::shared_ptr<WebSocketClientConn>
-        default_hijack_client_proc(const char* url, bool encoded = false, const char* cacert = nullptr, F&& cb = F()) {
+        open(const char* url, bool encoded = false, const char* cacert = nullptr, F&& cb = F()) {
             URLContext<std::string> ctx;
             std::string path, query;
             unsigned short port = 0;
@@ -335,9 +334,9 @@ namespace socklib {
             auto httpurl = (ctx.scheme == "wss" ? "https://" : "http://") + ctx.host + path + query;
             auto client = Http::open(httpurl.c_str(), true, cacert);
             if (!client) return nullptr;
-            HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version"}, {"13"}};
+            HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version", "13"}};
             std::random_device device;
-            std::uniform_int_distribution<unsigned char> uni;
+            std::uniform_int_distribution<unsigned short> uni(0, 0xff);
             unsigned char bytes[16];
             for (auto i = 0; i < 16; i++) {
                 bytes[i] = uni(device);
@@ -351,7 +350,7 @@ namespace socklib {
             Reader(token + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
             Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
             auto invoke = [&](auto& h, bool success, const char* reason) {
-                return invoke_cb<F>::invoke(cb, h, success, reason);
+                return invoke_cb<F, bool>::invoke(std::forward<F>(cb), h, success, reason);
             };
             if (!invoke(h, true, "prepare")) {
                 return nullptr;
@@ -369,7 +368,7 @@ namespace socklib {
                 invoke(res, false, "status");
                 return nullptr;
             }
-            if (auto found = res.find("sec-websocket-accept"); found == res.end() || fodun->second != result) {
+            if (auto found = res.find("sec-websocket-accept"); found == res.end() || found->second != result) {
                 invoke(res, false, "security");
                 return nullptr;
             }
@@ -378,10 +377,10 @@ namespace socklib {
                 return nullptr;
             }
             if (auto found = res.find("connection"); found == res.end() || found->second != "Upgrade") {
-                invoke(res,false,"connection");
+                invoke(res, false, "connection");
                 return nullptr;
             }
-            if (!invoke(res,true,"verify")) {
+            if (!invoke(res, true, "verify")) {
                 return nullptr;
             }
             return hijack_httpclient(client);

@@ -85,8 +85,9 @@ void httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const ch
     callback(conn);
 }
 
+auto cacert = "D:/CommonLib/netsoft/cacert.pem";
+
 void client_test(const char* url) {
-    auto cacert = "D:/CommonLib/netsoft/cacert.pem";
     auto conn = socklib::Http::open(url, false, cacert);
     if (!conn) {
         std::cout << "connection failed\n";
@@ -229,6 +230,21 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
     print_log(conn, meth, status, print_time, id, std::this_thread::get_id(), rec);
 }
 
+void websocket_client(const char* url) {
+    auto conn = socklib::WebSocket::open(url, false, cacert, [](auto& h, bool, const char* event) {
+        return true;
+    });
+    if (!conn) {
+        std::cout << "websocket:open failed\n";
+        return;
+    }
+    conn->send("hello", 5);
+    socklib::WsFrame frame;
+    while (conn->recv(frame)) {
+        std::cout << "websocket:" << frame.get_data() << "\n";
+    }
+}
+
 void server_proc() {
     auto maxth = std::thread::hardware_concurrency();
     if (maxth == 0) {
@@ -344,6 +360,9 @@ void server_proc() {
             }
             else if (sp.size() >= 2 && sp[0] == "client") {
                 client_test(sp[1].c_str());
+            }
+            else if (sp.size() >= 2 && sp[0] == "websocket") {
+                websocket_client(sp[1].c_str());
             }
             else if (sp.size() >= 1 && sp[0] == "clear") {
 #ifdef _WIN32
