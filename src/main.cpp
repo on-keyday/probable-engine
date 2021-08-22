@@ -129,37 +129,13 @@ void print_log(std::shared_ptr<socklib::HttpServerConn>& conn, auto& method, uns
 }
 
 void websocket_accept(std::string& method, auto& print_time, auto& recvtime, auto& id, std::shared_ptr<socklib::HttpServerConn>& conn) {
-    auto& req = conn->request();
-    socklib::HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}};
-    auto sendmsg = [&](unsigned short status, const char* msg, const char* data) {
-        conn->send(status, msg, {{"content-type", "text/plain"}}, data, strlen(data));
-    };
-    if (method != "GET") {
-        sendmsg(405, "Method Not Allowed", "method not allowed");
+    auto c = socklib::WebSocket::default_hijack_server_proc(conn, [&](auto&, auto&, auto&) {
+        print_log(conn, method, 101, print_time, id, std::this_thread::get_id(), recvtime);
+        return true;
+    });
+    if (!c) {
         return;
     }
-    if (auto found = req.find("upgrade"); found == req.end() || found->second != "websocket") {
-        sendmsg(400, "Bad Request", "Request is not WebSocket upgreade");
-        return;
-    }
-    if (auto found = req.find("sec-websocket-key"); found != req.end()) {
-        Base64Context b64;
-        SHA1Context hash;
-        std::string result;
-        Reader(found->second + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
-        Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
-        h.emplace("Sec-WebSocket-Accept", result);
-    }
-    else {
-        sendmsg(400, "Bad Request", "Request has no Sec-WebSocket-Key header.");
-        return;
-    }
-    if (!conn->send(101, "Switching Protocols", h)) {
-        return;
-    }
-
-    print_log(conn, method, 101, print_time, id, std::this_thread::get_id(), recvtime);
-    auto c = socklib::WebSocket::hijack_httpserver(conn);
     std::thread(
         [](std::shared_ptr<socklib::WebSocketServerConn> conn) {
             while (socklib::Selecter::wait(conn->borrow(), 10)) {

@@ -219,7 +219,81 @@ namespace socklib {
         }
 
         static std::shared_ptr<WebSocketClientConn> hijack_httpclient(std::shared_ptr<HttpClientConn> in) {
-            return std::make_shared<WebSocketClientConn>(std::move(in->hijack()));
+            return std::make_shared<WebSocketClientConn>(in->hijack());
+        }
+
+       private:
+        struct has_bool_impl {
+            template <class F>
+            static std::true_type has(decltype((bool)std::declval<F>(), (void)0)*);
+
+            template <class F>
+            static std::false_type has(...);
+        };
+
+        template <class F>
+        struct has_bool : decltype(has_bool_impl::has<F>(nullptr)) {};
+
+        template <class F, bool f = has_bool<F>::value>
+        struct invoke_cb {
+            static bool invoke(F&& in, const HttpConn::Header& r, HttpConn::Header& h,
+                               std::shared_ptr<HttpServerConn>& c) {
+                return in(r, h, c);
+            }
+        };
+
+        template <class F>
+        struct invoke_cb<F, true> {
+            static bool invoke(F&& in, const HttpConn::Header& r, HttpConn::Header& h,
+                               std::shared_ptr<HttpServerConn>& c) {
+                if (!(bool)in) return true;
+                return in(r, h, c);
+            }
+        };
+
+       public:
+        template <class F = bool (*)(const HttpConn::Header&, HttpConn::Header&, std::shared_ptr<HttpServerConn>&)>
+        static std::shared_ptr<WebSocketServerConn>
+        default_hijack_server_proc(std::shared_ptr<HttpServerConn>& conn, F&& cb = F()) {
+            auto& req = conn->request();
+            std::string method;
+            if (auto found = req.find(":method"); found == req.end()) {
+                return nullptr;
+            }
+            else {
+                method = found->second;
+            }
+            socklib::HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}};
+            auto sendmsg = [&](unsigned short status, const char* msg, const char* data) {
+                conn->send(status, msg, {{"content-type", "text/plain"}}, data, strlen(data));
+            };
+            if (method != "GET") {
+                sendmsg(405, "Method Not Allowed", "method not allowed");
+                return nullptr;
+            }
+            if (auto found = req.find("upgrade"); found == req.end() || found->second != "websocket") {
+                sendmsg(400, "Bad Request", "Request is not WebSocket upgreade");
+                return nullptr;
+            }
+            if (auto found = req.find("sec-websocket-key"); found != req.end()) {
+                Base64Context b64;
+                SHA1Context hash;
+                std::string result;
+                Reader(found->second + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
+                Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
+                h.emplace("Sec-WebSocket-Accept", result);
+            }
+            else {
+                sendmsg(400, "Bad Request", "Request has no Sec-WebSocket-Key header.");
+                return nullptr;
+            }
+            if (!invoke_cb<F>::invoke(std::forward<F>(cb), req, h, conn)) {
+                return nullptr;
+            }
+            if (!conn->send(101, "Switching Protocols", h)) {
+                return nullptr;
+            }
+            return socklib::WebSocket::hijack_httpserver(conn);
         }
     };
 }  // namespace socklib
