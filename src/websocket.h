@@ -2,6 +2,7 @@
 #include "protcolbase.h"
 #include "http.h"
 #include <serializer.h>
+#include <random>
 
 namespace socklib {
     enum class WsFType : unsigned char {
@@ -51,9 +52,13 @@ namespace socklib {
        protected:
         std::string buffer;
         commonlib2::Deserializer<std::string&> dec;
+        bool closed = false;
 
         bool send_detail(const char* data, size_t len, WsFType frame, bool mask = false, unsigned int key = 0) {
             if (!conn) return false;
+            if (any(frame & WsFType::closing) && closed) {
+                return false;
+            }
             commonlib2::Serializer<std::string> s;
             if (any(frame & WsFType::mask_reserved)) {
                 return false;
@@ -93,12 +98,27 @@ namespace socklib {
                     s.write_byte(masked);
                 }
             }
-            return conn->write(s.get());
+            auto sent = conn->write(s.get());
+            if (sent && any(frame & WsFType::closing)) {
+                closed = true;
+            }
+            return sent;
         }
 
        public:
         WebSocketConn(std::shared_ptr<Conn>&& in)
             : dec(buffer), AppLayer(std::move(in)) {}
+
+        virtual bool send(const char* data, size_t len, bool as_binary = false) {
+            return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin);
+        }
+
+        virtual bool control(WsFType cmd, const char* data = nullptr, size_t len = 0) {
+            if (cmd != WsFType::closing && cmd != WsFType::ping && cmd != WsFType::pong) {
+                return false;
+            }
+            return send_detail(data, len, cmd | WsFType::mask_fin);
+        }
 
         bool recv(WsFrame& frame) {
             auto readlim = [this](unsigned int lim) {
@@ -169,12 +189,16 @@ namespace socklib {
             dec.read_byte(frame.data, size);
             buffer.erase(0, total);
             dec.base_reader().seek(0);
+            if (any(frame.type & WsFType::closing)) {
+                closed = true;
+                close();
+            }
             return true;
         }
 
         void close() override {
             if (conn && conn->is_opened()) {
-                send_detail(nullptr, 0, WsFType::closing | WsFType::mask_fin);
+                if (!closed) send_detail(nullptr, 0, WsFType::closing | WsFType::mask_fin);
                 conn->close();
             }
         }
@@ -186,26 +210,25 @@ namespace socklib {
     struct WebSocketServerConn : WebSocketConn {
         WebSocketServerConn(std::shared_ptr<Conn>&& in)
             : WebSocketConn(std::move(in)) {}
-        bool send(const char* data, size_t len, bool as_binary = false) {
-            return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin);
-        }
-
-        bool control(WsFType cmd, const char* data = nullptr, size_t len = 0) {
-            if (cmd != WsFType::closing && cmd != WsFType::ping && cmd != WsFType::pong) {
-                return false;
-            }
-            return send_detail(data, len, cmd | WsFType::mask_fin);
-        }
     };
 
     struct WebSocketClientConn : WebSocketConn {
         WebSocketClientConn(std::shared_ptr<Conn>&& in)
             : WebSocketConn(std::move(in)) {}
-        bool send(const char* data, size_t len, unsigned int key, bool as_binary = false) {
+
+        bool send(const char* data, size_t len, bool as_binary = false) override {
+            return send_key(data, len, std::random_device()(), as_binary);
+        }
+
+        bool control(WsFType cmd, const char* data = nullptr, size_t len = 0) override {
+            return control_key(cmd, std::random_device()(), data, len);
+        }
+
+        bool send_key(const char* data, size_t len, unsigned int key, bool as_binary = false) {
             return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin, true, key);
         }
 
-        bool control(WsFType cmd, unsigned int key = 0, const char* data = nullptr, size_t len = 0) {
+        bool control_key(WsFType cmd, unsigned int key = 0, const char* data = nullptr, size_t len = 0) {
             if (cmd != WsFType::closing && cmd != WsFType::ping && cmd != WsFType::pong) {
                 return false;
             }
@@ -215,7 +238,7 @@ namespace socklib {
 
     struct WebSocket {
         static std::shared_ptr<WebSocketServerConn> hijack_httpserver(std::shared_ptr<HttpServerConn> in) {
-            return std::make_shared<WebSocketServerConn>(std::move(in->hijack()));
+            return std::make_shared<WebSocketServerConn>(in->hijack());
         }
 
         static std::shared_ptr<WebSocketClientConn> hijack_httpclient(std::shared_ptr<HttpClientConn> in) {
