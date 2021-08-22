@@ -46,7 +46,7 @@ namespace socklib {
         }
 
         bool is_close() const {
-            return any(type & WsFType::closing);
+            return type == WsFType::closing;
         }
 
         const char* frame_type() const {
