@@ -139,7 +139,7 @@ bool websocket_accept(std::string& method, auto& print_time, auto& recvtime, aut
     }
     std::thread(
         [](std::shared_ptr<socklib::WebSocketServerConn> conn) {
-            while (socklib::Selecter::wait(conn->borrow(), 10)) {
+            while (conn->recvable() || socklib::Selecter::wait(conn->borrow(), 10)) {
                 socklib::WsFrame f;
                 if (!conn->recv(f)) {
                     std::cout << "recv failed\n";
