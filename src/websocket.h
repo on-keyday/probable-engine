@@ -7,9 +7,6 @@
 namespace socklib {
     enum class WsFType : unsigned char {
         empty = 0xF0,
-        error = 0xF1,
-        incomplete = 0xF2,
-        opening = 0xF3,
         text = 0x01,
         binary = 0x02,
         ping = 0x09,
@@ -47,6 +44,10 @@ namespace socklib {
             }
             return data;
         }
+
+        bool is_close() const {
+            return any(type & WsFType::closing);
+        }
     };
     struct WebSocketConn : public AppLayer {
        protected:
@@ -82,14 +83,12 @@ namespace socklib {
                 s.template write_as<unsigned char>(127 | mmask);
                 s.write_hton((unsigned long long)len);
             }
-            if (len) {
-                if (!mask) {
-                    s.write_byte(std::string_view(data, len));
-                }
-                else {
+            if (mask) {
+                unsigned int maskkey = commonlib2::translate_byte_net_and_host<unsigned int>((char*)&key);
+                char* k = reinterpret_cast<char*>(&maskkey);
+                s.write_byte(k, 4);
+                if (len) {
                     std::string masked(data, len);
-                    unsigned int maskkey = commonlib2::translate_byte_net_and_host<unsigned int>((char*)&key);
-                    char* k = reinterpret_cast<char*>(&maskkey);
                     size_t count = 0;
                     for (auto& c : masked) {
                         c = c ^ k[count % 4];
@@ -97,6 +96,9 @@ namespace socklib {
                     }
                     s.write_byte(masked);
                 }
+            }
+            else if (len) {
+                s.write_byte(std::string_view(data, len));
             }
             auto sent = conn->write(s.get());
             if (sent && any(frame & WsFType::closing)) {
@@ -107,7 +109,8 @@ namespace socklib {
 
        public:
         WebSocketConn(std::shared_ptr<Conn>&& in)
-            : dec(buffer), AppLayer(std::move(in)) {}
+            : dec(buffer), AppLayer(std::move(in)) {
+        }
 
         virtual bool send(const char* data, size_t len, bool as_binary = false) {
             return send_detail(data, len, (as_binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin);
@@ -186,6 +189,7 @@ namespace socklib {
             if (!readlim(total)) {
                 return false;
             }
+            frame.data.clear();
             dec.read_byte(frame.data, size);
             buffer.erase(0, total);
             dec.base_reader().seek(0);
@@ -331,7 +335,8 @@ namespace socklib {
             if (!Http::setuphttp(url, encoded, port, ctx, path, query, "ws", "wss")) {
                 return nullptr;
             }
-            auto httpurl = (ctx.scheme == "wss" ? "https://" : "http://") + ctx.host + path + query;
+            auto httpurl = (ctx.scheme == "wss" ? "https://" : "http://") + ctx.host +
+                           (ctx.port.size() ? ":" + ctx.port : "") + path + query;
             auto client = Http::open(httpurl.c_str(), true, cacert);
             if (!client) return nullptr;
             HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version", "13"}};
