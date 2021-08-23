@@ -234,7 +234,6 @@ namespace socklib {
         void close() override {
             if (conn && conn->is_opened()) {
                 if (!closed) send_detail(nullptr, 0, WsFType::closing | WsFType::mask_fin);
-                conn->close();
             }
         }
         virtual ~WebSocketConn() {
