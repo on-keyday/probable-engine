@@ -337,6 +337,8 @@ namespace socklib {
                 return nullptr;
             }
             if (auto found = req.find("upgrade"); found == req.end() || found->second != "websocket") {
+                sendmsg(400, "Bad Request", "Request is not WebSocket upgrade");
+                return nullptr;
             }
             if (auto found = req.find("sec-websocket-key"); found != req.end()) {
                 Base64Context b64;
