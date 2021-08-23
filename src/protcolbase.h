@@ -491,6 +491,8 @@ namespace socklib {
                 conn->close();
             }
         }
+
+        virtual ~AppLayer() {}
     };
 
 }  // namespace socklib
