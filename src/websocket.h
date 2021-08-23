@@ -79,7 +79,7 @@ namespace socklib {
 
         bool send_detail(const char* data, size_t len, WsFType frame, bool mask = false, unsigned int key = 0) {
             if (!conn) return false;
-            if (frame == WsFType::closing && closed) {
+            if ((frame & ~WsFType::mask_fin) == WsFType::closing && closed) {
                 return false;
             }
             commonlib2::Serializer<std::string> s;
@@ -123,7 +123,7 @@ namespace socklib {
                 s.write_byte(std::string_view(data, len));
             }
             auto sent = conn->write(s.get());
-            if (sent && frame == WsFType::closing) {
+            if (sent && (frame & ~WsFType::mask_fin) == WsFType::closing) {
                 closed = true;
                 conn->close();
             }
