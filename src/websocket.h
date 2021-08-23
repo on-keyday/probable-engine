@@ -333,7 +333,7 @@ namespace socklib {
                 return nullptr;
             }
             if (auto found = req.find("connection"); found == req.end() || found->second != "Upgrade") {
-                sendmsg(400, "Bad Request", "Request is not WebSocket upgreade");
+                sendmsg(400, "Bad Request", "Request is not WebSocket upgrade");
                 return nullptr;
             }
             if (auto found = req.find("upgrade"); found == req.end() || found->second != "websocket") {
