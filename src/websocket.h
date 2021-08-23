@@ -125,6 +125,7 @@ namespace socklib {
             auto sent = conn->write(s.get());
             if (sent && frame == WsFType::closing) {
                 closed = true;
+                conn->close();
             }
             return sent;
         }
