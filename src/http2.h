@@ -37,7 +37,9 @@ namespace socklib {
         frame_size = 6
     };
 
-    struct Err {
+    using Err = commonlib2::EnumWrap<H2Error, H2Error::none, H2Error::internal>;
+
+    /*struct Err {
         H2Error errcode;
         constexpr Err(H2Error e)
             : errcode(e) {}
@@ -46,7 +48,7 @@ namespace socklib {
         operator bool() const {
             return errcode == H2Error::none;
         }
-    };
+    };*/
 
     struct H2Frame {
         H2FType type;

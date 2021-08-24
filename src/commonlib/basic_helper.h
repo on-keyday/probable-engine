@@ -46,6 +46,33 @@ namespace PROJECT_NAME {
         return static_cast<basety>(a) != 0;              \
     }
 
+/*
+#define ENUM_WRAPOBJ(ENUM,OBJ,TRUENUM,FALSENUM)\
+    struct OBJ{\
+        ENUM e;\
+        constexpr OBJ():e((ENUM)FALSENUM){}\
+        constexpr OBJ(bool i):e(i?(ENUM)TRUENUM:(ENUM)FALSENUM){}\
+        constexpr OBJ(ENUM i):e(i){}\
+        operator bool()const{\
+            return e==(ENUM)TRUENUM;\
+        }\
+    };*/
+
+    template<class E,E trueval,E falseval>
+    struct EnumWrap{
+        E e;
+        constexpr EnumWrap():e(falseval){}
+        constexpr EnumWrap(bool i):e(i?trueval:falseval){}
+        constexpr EnumWrap(E i):e(i){}
+        operator bool()const{
+            return e==trueval;
+        }
+
+        operator E()const{
+            return e;
+        }
+    };
+
     template <class Buf>
     struct Refer {
        private:
