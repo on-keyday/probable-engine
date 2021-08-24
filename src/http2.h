@@ -1,5 +1,5 @@
 #pragma once
-#include <protcolbase.h>
+#include "protcolbase.h"
 #include <net_helper.h>
 
 namespace socklib {
@@ -65,7 +65,7 @@ namespace socklib {
 
     struct H2DataFrame : H2Frame {
         std::string data;
-        constexpr H2DataFrame() {}
+        H2DataFrame() {}
         Err parse(commonlib2::HTTP2Frame<std::string>& v) override {
             H2Frame::parse(v);
             if (any(flag & H2Flag::padded)) {
@@ -86,11 +86,13 @@ namespace socklib {
         std::shared_ptr<H2Frame> recv() {
             commonlib2::Reader<SockReader> r(conn);
             commonlib2::HTTP2Frame<std::string> frame;
-            r.readwhile(commonlib2::http2frame, frame);
+            //r.readwhile(commonlib2::http2frame, frame);
             if (!frame.succeed) {
-                return false;
+                return nullptr;
             }
             return nullptr;
+            Err e;
+            e = H2Error::frame_size;
         }
     };
 }  // namespace socklib

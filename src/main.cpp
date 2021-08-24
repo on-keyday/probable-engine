@@ -410,6 +410,8 @@ void server_proc() {
     }
 }
 
+#include "http2.h"
+
 int main(int, char**) {
     server_proc();
 }

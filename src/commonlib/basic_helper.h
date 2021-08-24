@@ -71,6 +71,37 @@ namespace PROJECT_NAME {
         operator E()const{
             return e;
         }
+
+        EnumWrap operator|(const EnumWrap& i)const{
+            return e|i.e;  
+        }
+
+        EnumWrap operator&(const EnumWrap& i)const{
+            return e&i.e;  
+        }
+
+        EnumWrap operator^(const EnumWrap& i)const{
+            return e^i.e;  
+        }
+
+        EnumWrap& operator|=(const EnumWrap& i){
+            e|=i.e;
+            return *this;  
+        }
+
+        EnumWrap& operator&=(const EnumWrap& i){
+            e&=i.e;
+            return *this;  
+        }
+
+        EnumWrap& operator^=(const EnumWrap& i){
+            e^=i.e;
+            return *this;
+        }
+
+        EnumWrap operator~()const{
+            return ~e;
+        }
     };
 
     template <class Buf>
