@@ -829,7 +829,7 @@ namespace PROJECT_NAME {
 namespace PROJECT_NAME {
     template <class N>
     constexpr N msb_on() {
-        return static_cast<N>(~(static_cast<N>(~0)>>1));
+        return static_cast<N>(static_cast<N>(1)<<(sizeof(N)*8-1));
     }
 
     template <class N>

@@ -91,8 +91,6 @@ namespace socklib {
                 return nullptr;
             }
             return nullptr;
-            Err e;
-            e = H2Error::frame_size;
         }
     };
 }  // namespace socklib
