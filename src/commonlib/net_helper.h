@@ -125,13 +125,18 @@ namespace PROJECT_NAME {
         if (ctx.id < 0) return true;
         if (self->readable() < ctx.len) {
             ctx.continues = true;
+            return true;
         }
         else if (ctx.len > ctx.maxlen) {
             return true;
         }
         ctx.buf.resize(ctx.len);
+        if(self->read_byte(ctx.buf.data(),ctx.len,translate_byte_as_is,true)<ctx.len){
+            return true;
+        }
+        /*
         memmove(ctx.buf.data(), &self->ref().data()[self->readpos()], ctx.len);
-        self->seek(self->readpos() + ctx.len);
+        self->seek(self->readpos() + ctx.len);*/
         ctx.succeed = true;
         return true;
     }
@@ -628,6 +633,6 @@ namespace PROJECT_NAME {
         return begin;
     }
 
-    
+
 
 }  // namespace PROJECT_NAME

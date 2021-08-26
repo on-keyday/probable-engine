@@ -23,7 +23,7 @@ namespace socklib {
         end_stream = 0x1,
         end_headers = 0x4,
         padded = 0x8,
-        priority_f = 0x20,
+        priority = 0x20,
         ack = 0x1,
         none = 0x0
     };
@@ -86,7 +86,7 @@ namespace socklib {
         std::shared_ptr<H2Frame> recv() {
             commonlib2::Reader<SockReader> r(conn);
             commonlib2::HTTP2Frame<std::string> frame;
-            //r.readwhile(commonlib2::http2frame, frame);
+            r.readwhile(commonlib2::http2frame, frame);
             if (!frame.succeed) {
                 return nullptr;
             }

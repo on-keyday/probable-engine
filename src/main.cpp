@@ -414,5 +414,4 @@ void server_proc() {
 
 int main(int, char**) {
     server_proc();
-    constexpr int f = msb_on<int>();
 }
