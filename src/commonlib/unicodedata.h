@@ -268,7 +268,7 @@ namespace PROJECT_NAME {
         Reader<FileReader> r(name);
 
         if (!r.ref().is_open()) {
-            return std::vector<std::vector<std::string>>();
+            return {};
         }
 
         auto each = lines(r, false);
@@ -376,7 +376,7 @@ namespace PROJECT_NAME {
         return ret;
     }
 
-    constexpr int enable_version = 3;
+    constexpr int enable_version = 4;
 
     template <class Buf>
     bool serialize_codeinfo(Serializer<Buf> w, CodeInfo& info,std::string& block, int version = enable_version) {
@@ -423,13 +423,13 @@ namespace PROJECT_NAME {
             }
         }
         else {
-            unsigned int fl=0;
+            unsigned char fl=0;
             if(version>=4){
                 if(info.block!=block){
                     fl=has_blockname;
                 }
             }
-            w.write(info.numeric.flag|fl);
+            w.template write_as<unsigned char>(info.numeric.flag|fl);
             if (info.numeric.flag & has_digit) {
                 w.template write_as<char>(info.numeric.v1);
             }
