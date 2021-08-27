@@ -29,6 +29,7 @@ namespace PROJECT_NAME {
     constexpr unsigned char large_numbit = 0x8;
     constexpr unsigned char has_digit = 0x10;
     constexpr unsigned char has_decimal = 0x20;
+    constexpr unsigned char has_blockname=0x40;
     constexpr unsigned char has_uppercase = 0x1;
     constexpr unsigned char has_lowercase = 0x2;
     constexpr unsigned char has_titlecase = 0x4;
@@ -92,6 +93,7 @@ namespace PROJECT_NAME {
     struct CodeInfo {
         char32_t codepoint;
         std::string name;
+        std::string block;
         std::string category;
         unsigned int ccc = 0;  //Canonical_Combining_Class
         std::string bidiclass;
@@ -261,8 +263,8 @@ namespace PROJECT_NAME {
         return true;
     }
 
-    template <class C>
-    std::vector<std::vector<std::string>> load_EastAsianWide_text(C* name) {
+    template<class C>
+    std::vector<std::string> load_common_text(C* name){
         Reader<FileReader> r(name);
 
         if (!r.ref().is_open()) {
@@ -282,6 +284,23 @@ namespace PROJECT_NAME {
             }
             return true;
         });
+        return each;
+    }
+
+    template<class C>
+    std::vector<std::vector<std::string>> load_Blocks_text(C* name){
+        auto each=load_common_text(name);
+        std::vector<std::vector<std::string>> ret;
+        for(auto& i:each){
+            auto numname=split(i,"; ");
+            ret.push_back(std::move(numname));
+        }        
+        return ret;
+    }
+
+    template <class C>
+    std::vector<std::vector<std::string>> load_EastAsianWide_text(C* name) {
+        auto each=load_common_text(name);
 
         std::vector<std::vector<std::string>> ret;
 
@@ -292,6 +311,24 @@ namespace PROJECT_NAME {
         }
 
         return ret;
+    }
+
+    inline bool apply_blockname(std::vector<std::vector<std::string>>& vec, UnicodeData& data){
+        for (auto& e : vec) {
+            if (e.size() != 2) return false;
+            auto code = split(e[0], "..");
+            if (code.size() != 2) return false;
+            unsigned int first = 0, last = 0;
+            Reader("0x" + code[0]) >> first;
+            Reader("0x" + code[1]) >> last;
+            for (auto i = first; i <= last; i++) {
+                if (auto found = data.codes.find(i); found != data.codes.end()) {
+                    CodeInfo& info = (*found).second;
+                    info.block = e[1];
+                }
+            }
+        }
+        return true;
     }
 
     inline bool apply_east_asian_wide(std::vector<std::vector<std::string>>& vec, UnicodeData& data) {
@@ -342,7 +379,7 @@ namespace PROJECT_NAME {
     constexpr int enable_version = 3;
 
     template <class Buf>
-    bool serialize_codeinfo(Serializer<Buf> w, CodeInfo& info, int version = enable_version) {
+    bool serialize_codeinfo(Serializer<Buf> w, CodeInfo& info,std::string& block, int version = enable_version) {
         if (version > enable_version) {
             return false;
         }
@@ -386,7 +423,13 @@ namespace PROJECT_NAME {
             }
         }
         else {
-            w.write(info.numeric.flag);
+            unsigned int fl=0;
+            if(version>=4){
+                if(info.block!=block){
+                    fl=has_blockname;
+                }
+            }
+            w.write(info.numeric.flag|fl);
             if (info.numeric.flag & has_digit) {
                 w.template write_as<char>(info.numeric.v1);
             }
@@ -417,11 +460,18 @@ namespace PROJECT_NAME {
             w.template write_as<unsigned char>(info.east_asian_wides.size());
             w.write_byte(info.east_asian_wides);
         }
+        if(version>=4){
+            if(block!=info.block){
+                w.template write_as<unsigned char>(info.block.size());
+                w.write_byte(info.block);
+                block=info.block;
+            }
+        }
         return true;
     }
 
     template <class Buf>
-    bool deserialize_codeinfo(Deserializer<Buf>& r, CodeInfo& info, int version = enable_version) {
+    bool deserialize_codeinfo(Deserializer<Buf>& r, CodeInfo& info,std::string& block ,int version = enable_version) {
         if (version > enable_version) {
             return false;
         }
@@ -513,6 +563,17 @@ namespace PROJECT_NAME {
         else {
             guess_east_asian_wide(info);
         }
+        if(version>=4){
+            if(info.numeric.flag&has_blockname){
+                info.numeric.flag&=~has_blockname;
+                if (!r.template read_as<unsigned char>(size)) return false;
+                if (!r.read_byte(info.block, size)) return false;
+                block=info.block;
+            }
+            else{
+                info.block=block;
+            }
+        }
         return true;
     }
 
@@ -527,8 +588,12 @@ namespace PROJECT_NAME {
         else if (version == 3) {
             ret.write_byte("UDv3", 4);
         }
+        else if(version==4){
+            ret.write_byte("UDv4",4);
+        }
+        std::string block="";
         for (auto& d : data.codes) {
-            serialize_codeinfo(ret, d.second, version);
+            serialize_codeinfo(ret, d.second,block, version);
         }
     }
 
@@ -544,10 +609,14 @@ namespace PROJECT_NAME {
         else if (r.base_reader().expect("UDv3")) {
             version = 3;
         }
+        else if (r.base_reader().expect("UDv4")) {
+            version = 4;
+        }
         CodeInfo* prev = nullptr;
+        std::string block;
         while (!r.eof()) {
             CodeInfo info;
-            if (!deserialize_codeinfo(r, info, version)) {
+            if (!deserialize_codeinfo(r, info, block,version)) {
                 return false;
             }
             set_codepoint_info(info, ret, prev);
