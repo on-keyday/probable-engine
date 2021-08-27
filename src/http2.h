@@ -81,10 +81,17 @@ namespace socklib {
         }
     };
 
+    struct H2HeaderFrame : H2Frame {
+    };
+
     struct Http2Conn : AppLayer {
         size_t streamid_max = 0;
+        commonlib2::Reader<SockReader> r;
+
+        Http2Conn(std::shared_ptr<Conn>&& in)
+            : r(conn), AppLayer(std::move(in)) {}
+
         std::shared_ptr<H2Frame> recv() {
-            commonlib2::Reader<SockReader> r(conn);
             commonlib2::HTTP2Frame<std::string> frame;
             r.readwhile(commonlib2::http2frame, frame);
             if (!frame.succeed) {
