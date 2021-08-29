@@ -7,6 +7,7 @@
 namespace socklib {
     enum class WsFType : unsigned char {
         empty = 0xF0,
+        continuous = 0x00,
         text = 0x01,
         binary = 0x02,
         closing = 0x08,
@@ -61,6 +62,8 @@ namespace socklib {
                     return "pong";
                 case WsFType::closing:
                     return "close";
+                case WsFType::continuous:
+                    return "continuous";
                 default:
                     return "unknown";
             }
