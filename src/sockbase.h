@@ -233,8 +233,11 @@ namespace socklib {
 
         bool on_error(time_t begintime, time_t timeout) {
             set_os_error(err);
-            if (!suspend && is_waiting(err) && timeout >= 0 && std::time(nullptr) - begintime < timeout) {
+            if (!suspend && is_waiting(err)) {
                 return false;
+            }
+            if(timeout >= 0 && std::time(nullptr) - begintime < timeout){
+                return true;
             }
             return true;
         }
