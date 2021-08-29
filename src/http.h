@@ -100,10 +100,10 @@ namespace socklib {
             return done;
         }
 
-        bool recv(bool igbody = false) {
+        bool recv(bool igbody = false, time_t timeout = ~0) {
             if (!done || recving) return false;
             recving = true;
-            commonlib2::Reader<socklib::SockReader> r(conn);
+            commonlib2::Reader<SockReader> r(SockReader(conn, timeout));
             struct {
                 decltype(r)& r;
                 decltype(header)& h;
@@ -127,7 +127,7 @@ namespace socklib {
         void recv(F&& f, bool igbody, Args&&... args) {
             std::shared_ptr<HttpClientConn> self(
                 this, +[](HttpClientConn*) {});
-            f(self, recv(), std::forward<Args>(args)...);
+            f(self, recv(igbody), std::forward<Args>(args)...);
         }
 
         template <class F, class... Args>
@@ -137,7 +137,7 @@ namespace socklib {
             std::thread([&, this]() {
                 std::shared_ptr<HttpClientConn> self(
                     this, +[](HttpClientConn*) {});
-                f(self, recv(), std::forward<Args>(args)...);
+                f(self, recv(igbody), std::forward<Args>(args)...);
                 waiting--;
             }).detach();
             return true;
@@ -157,10 +157,10 @@ namespace socklib {
             return header;
         }
 
-        bool recv() {
+        bool recv(time_t timeout = ~0) {
             if (recving) return false;
             recving = true;
-            commonlib2::Reader<SockReader> r(conn);
+            commonlib2::Reader<SockReader> r(SockReader(conn, timeout));
             header.clear();
             if (!commonlib2::parse_httprequest(r, header)) {
                 return false;
@@ -279,8 +279,8 @@ namespace socklib {
             return true;
         }
 
-        static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, size_t timeout = 10, bool ipv6 = true) {
-            std::shared_ptr<Conn> conn = TCP::serve(sv, port, timeout, "http", ipv6, true);
+        static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, size_t timeout = 10, IPMode mode=IPMode::both) {
+            std::shared_ptr<Conn> conn = TCP::serve(sv, port, timeout, "http", true,mode);
             if (!conn) return nullptr;
             return std::make_shared<HttpServerConn>(std::move(conn));
         }

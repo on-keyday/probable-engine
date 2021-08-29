@@ -104,6 +104,12 @@ namespace socklib {
         }
     };
 
+    enum class IPMode {
+        both,
+        v6only,
+        v4only,
+    };
+
     struct TCP {
        private:
         static int open_detail(const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr) {
@@ -292,7 +298,7 @@ namespace socklib {
         }
 
        private:
-        static bool init_server(Server& sv, unsigned short port, const char* service, bool ipv6) {
+        static bool init_server(Server& sv, unsigned short port, const char* service, IPMode mode) {
             if (sv.sock == invalid_socket) {
                 ::addrinfo* selected = nullptr;
                 if (!sv.copy) {
@@ -307,17 +313,22 @@ namespace socklib {
                     if (port_net) {
                         addr->sin_port = port_net;
                     }
+                    if (mode == IPMode::v4only) {
+                        addr->sin_family = AF_INET;
+                    }
                     sock = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
                     if (sock < 0) {
                         Conn::set_os_error(sv.err);
                         continue;
                     }
                     unsigned int flag = 0;
-                    if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
-                        Conn::set_os_error(sv.err);
-                        ::closesocket(sock);
-                        sock = invalid_socket;
-                        continue;
+                    if (mode == IPMode::both) {
+                        if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
+                            Conn::set_os_error(sv.err);
+                            ::closesocket(sock);
+                            sock = invalid_socket;
+                            continue;
+                        }
                     }
                     flag = 1;
                     if (::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&flag, sizeof(flag)) < 0) {
@@ -350,9 +361,9 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<Conn> serve(Server& sv, unsigned short port, size_t timeout = 10, const char* service = nullptr, bool ipv6 = true, bool noblock = false) {
+        static std::shared_ptr<Conn> serve(Server& sv, unsigned short port, size_t timeout = 10, const char* service = nullptr, bool noblock = false, IPMode mode = IPMode::both) {
             if (!Network::Init()) return nullptr;
-            if (!init_server(sv, port, service, ipv6)) {
+            if (!init_server(sv, port, service, mode)) {
                 return nullptr;
             }
             if (timeout) {
@@ -383,7 +394,6 @@ namespace socklib {
             }
             ::addrinfo info = {0};
             info.ai_socktype = SOCK_STREAM;
-            info.ai_family = ipv6 ? AF_INET6 : AF_INET;
             info.ai_protocol = IPPROTO_TCP;
             ::sockaddr_storage st = {0};
             ::socklen_t addrlen = sizeof(st);
@@ -396,6 +406,7 @@ namespace socklib {
                 ::closesocket(sock);
                 return nullptr;
             }
+            info.ai_family = st.ss_family;
             info.ai_addrlen = addrlen;
             info.ai_addr = (::sockaddr*)&st;
             if (noblock) {
@@ -417,10 +428,11 @@ namespace socklib {
         mutable bool on_eof = false;
         void (*callback)(void*, bool) = nullptr;
         void* ctx = nullptr;
+        time_t timeout = ~0;
 
        public:
-        SockReader(std::shared_ptr<Conn> r, decltype(callback) cb = nullptr, void* ct = nullptr)
-            : base(r), callback(cb), ctx(ct) {}
+        SockReader(std::shared_ptr<Conn> r, time_t timeout = ~0)
+            : base(r), timeout(timeout) {}
         void setcallback(decltype(callback) cb, void* ct) {
             callback = cb;
             ctx = ct;
@@ -436,7 +448,7 @@ namespace socklib {
 
         bool reading() const {
             if (on_eof) return false;
-            auto res = base->read(buffer);
+            auto res = base->read(buffer, timeout);
             if (res == ~0 || res == 0) {
                 on_eof = true;
             }
