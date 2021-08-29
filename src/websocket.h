@@ -361,7 +361,7 @@ namespace socklib {
             if (!conn->send(101, "Switching Protocols", h)) {
                 return nullptr;
             }
-            return socklib::WebSocket::hijack_httpserver(conn);
+            return hijack_httpserver(conn);
         }
 
        public:
