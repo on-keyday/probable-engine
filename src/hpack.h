@@ -395,7 +395,7 @@ namespace socklib {
 #define TRY(...) \
     if (!(__VA_ARGS__)) return false
         template <unsigned int n>
-        static bool decode_integer(commonlib2::Deserializer<std::string&> se, size_t& sz, unsigned char& firstmask) {
+        static bool decode_integer(commonlib2::Deserializer<std::string&>& se, size_t& sz, unsigned char& firstmask) {
             static_assert(n > 0 && n <= 8, "invalid range");
             constexpr unsigned char msk = static_cast<unsigned char>(~0) >> (8 - n);
             unsigned char tmp = 0;
@@ -409,7 +409,7 @@ namespace socklib {
             }
             size_t m = 0;
             constexpr auto pow = [](size_t x) -> size_t {
-                return commonlib2::msb_on<size_t>() >> (sizeof(size_t) * 8 - 1) - x;
+                return commonlib2::msb_on<size_t>() >> ((sizeof(size_t) * 8 - 1) - x);
             };
             do {
                 TRY(se.template read_as<unsigned char>(tmp));
@@ -426,7 +426,7 @@ namespace socklib {
         static bool encode_integer(commonlib2::Serializer<std::string&> se, size_t sz, unsigned char firstmask) {
             static_assert(n > 0 && n <= 8, "invalid range");
             constexpr unsigned char msk = static_cast<unsigned char>(~0) >> (8 - n);
-            if (firstmask & ~msk) {
+            if (firstmask & msk) {
                 return false;
             }
             if (sz < (size_t)msk) {
@@ -463,6 +463,10 @@ namespace socklib {
             size_t sz = 0;
             unsigned char mask = 0;
             TRY(decode_integer<7>(se, sz, mask));
+            TRY(se.read_byte(str, sz));
+            if (mask & 0x80) {
+            }
+            return true;
         }
 
         static bool decode(std::multimap<std::string, std::string>& res, std::string& src) {
@@ -474,6 +478,8 @@ namespace socklib {
                 size_t sz = 0;
                 TRY(decode_integer<4>(se, sz, tmp));
                 if (sz == 0) {
+                }
+                else {
                 }
             }
         }

@@ -414,6 +414,19 @@ void server_proc() {
 
 int main(int, char**) {
     //server_proc();
-    std::string str;
-    socklib::Hpack::encode(str, ":method", "GET");
+    std::string str, dec;
+    const char* src =
+        (const char*)
+            u8R"(
+        SSLつまりセキュアソケットレイヤーについて、彼は意見を言ったらしいが聞き入れられなかった
+        SSLつまりセキュアソケットレイヤーについて、彼は意見を言ったらしいが聞き入れられなかった
+        SSLつまりセキュアソケットレイヤーについて、彼は意見を言ったらしいが聞き入れられなかった
+        SSLつまりセキュアソケットレイヤーについて、彼は意見を言ったらしいが聞き入れられなかった
+    )";
+    socklib::Hpack::encode_str(str, src);
+    Deserializer<std::string&> de(str);
+    socklib::Hpack::decode_str(dec, de);
+    if (src != dec) {
+        throw "error!";
+    }
 }
