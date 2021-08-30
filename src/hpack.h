@@ -668,10 +668,11 @@ namespace socklib {
                     TRY(encode_integer<7>(se, idx, 0x80));
                 }
                 else {
-                    if (get_idx([](const auto& k, const auto&) {
-                            return k == h.first;
-                        },
-                                idx, dymap)) {
+                    if (get_idx(
+                            [](const auto& k, const auto&) {
+                                return k == h.first;
+                            },
+                            idx, dymap)) {
                         if (adddy) {
                             TRY(encode_integer<6>(se, idx, 0x40));
                         }
@@ -681,9 +682,15 @@ namespace socklib {
                     }
                     else {
                         se.template write_as<unsigned char>(0);
+                        TRY(encode_str(se, h.first));
+                    }
+                    TRY(encode_str(se, h.second));
+                    if (adddy) {
+                        dymap.emplace(h.first, h.second);
                     }
                 }
             }
+            return true;
         }
 
         static HpkErr decode(HttpConn::Header& res, std::string& src,
