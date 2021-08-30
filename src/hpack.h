@@ -439,7 +439,7 @@ namespace socklib {
                 tree->has_c = true;
                 tree->eos = true;
                 if (tree->zero || tree->one) {
-                    return true;
+                    throw "invalid hpack huffman";
                 }
                 return true;
             }
@@ -495,8 +495,18 @@ namespace socklib {
             return vec.data();
         }
 
-        static bool huffman_decode_achar(unsigned char& c, bitvec_reader& r) {
-            r.get();
+        static bool huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin) {
+            if (!t) return false;
+            if (t->has_c) {
+                c = t->c;
+                fin = t;
+                return true;
+            }
+            h2huffman_tree* next = r.get() ? t->one : t->zero;
+            if (!r.incremant()) {
+                return false;
+            }
+            return huffman_decode_achar(c,r,next,fin);
         }
 #define TRY(...) \
     if (!(__VA_ARGS__)) return false
