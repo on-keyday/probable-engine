@@ -483,16 +483,19 @@ namespace socklib {
         internal,
         invalid_mask,
         invalid_value,
+        not_exists,
     };
 
     using HpkErr = commonlib2::EnumWrap<HpackError, HpackError::none, HpackError::internal>;
 
     struct Hpack {
+//Rust like try
 #define TRY(...) \
     if (auto _H_tryres = (__VA_ARGS__); !_H_tryres) return _H_tryres
 
        private:
-        static size_t gethuffmanlen(const std::string& str) {
+        static size_t
+        gethuffmanlen(const std::string& str) {
             size_t ret = 0;
             for (auto& c : str) {
                 ret += h2huffman[(unsigned char)c].size();
@@ -505,11 +508,14 @@ namespace socklib {
             for (auto c : in) {
                 vec.append(h2huffman[(unsigned char)c]);
             }
-            vec.append(h2huffman[256]);
+            //vec.append(h2huffman[256]);
+            while (vec.size() % 8) {
+                vec.push_back(true);
+            }
             return vec.data();
         }
 
-        static HpkErr huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin) {
+        static HpkErr huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin, unsigned int& allone) {
             if (!t) return HpackError::invalid_value;
             if (t->has_c) {
                 c = t->c;
@@ -517,10 +523,11 @@ namespace socklib {
                 return true;
             }
             h2huffman_tree* next = r.get() ? t->one : t->zero;
+            allone = (allone && t->one == next) ? allone + 1 : 0;
             if (!r.incremant()) {
                 return HpackError::too_short_number;
             }
-            return huffman_decode_achar(c, r, next, fin);
+            return huffman_decode_achar(c, r, next, fin, allone);
         }
 
         static HpkErr huffman_decode(std::string& res, std::string& src) {
@@ -529,9 +536,16 @@ namespace socklib {
             while (true) {
                 unsigned char c = 0;
                 h2huffman_tree* fin = nullptr;
-                TRY(huffman_decode_achar(c, r, tree, fin));
-                if (fin->eos) {
-                    break;
+                unsigned int allone = 1;
+                auto tmp = huffman_decode_achar(c, r, tree, fin, allone);
+                if (!tmp) {
+                    if (tmp == HpackError::too_short_number) {
+                        if (allone - 1 > 7) {
+                            return HpackError::too_large_number;
+                        }
+                        break;
+                    }
+                    return tmp;
                 }
                 res.push_back(c);
             }
@@ -615,10 +629,29 @@ namespace socklib {
             return true;
         }
 
-        static HpkErr decode(std::multimap<std::string, std::string>& res, std::string& src) {
+        static HpkErr decode(std::multimap<std::string, std::string>& res, std::string& src,
+                             std::multimap<size_t, std::pair<std::string, std::string>>& dymap) {
             commonlib2::Deserializer<std::string&> se(src);
             unsigned char tmp = se.base_reader().achar();
             if (tmp & 0x80) {
+                size_t idx = 0;
+                TRY(decode_integer<7>(se, idx, tmp));
+                if (idx == 0) {
+                    return HpackError::invalid_value;
+                }
+                if (idx < 63) {
+                    if (!predefined[idx].second[0]) {
+                        return HpackError::not_exists;
+                    }
+                    res.emplace(predefined[idx].first, predefined[idx].second);
+                }
+                else {
+                    if (auto found = dymap.find(idx); found != dymap.end()) {
+                    }
+                    else {
+                        return HpackError::not_exists;
+                    }
+                }
             }
             else if ((tmp & 0xf0) == 0) {
                 size_t sz = 0;
@@ -626,6 +659,8 @@ namespace socklib {
                 if (sz == 0) {
                     std::string key, value;
                     TRY(decode_str(key, se));
+                    TRY(decode_str(value, se));
+                    res.emplace(key, value);
                 }
                 else {
                 }
