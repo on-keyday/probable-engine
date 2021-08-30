@@ -222,7 +222,7 @@ namespace socklib {
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0},
-         {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1},
+         {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1},
@@ -329,7 +329,7 @@ namespace socklib {
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1},
-         {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+         {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0},
@@ -338,14 +338,14 @@ namespace socklib {
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}};
 
-    struct bitvec {
+    struct bitvec_writer {
        private:
         std::string buf;
         size_t idx = 0;
         size_t pos = 0;
 
        public:
-        bitvec() {
+        bitvec_writer() {
             buf.push_back(0);
         }
 
@@ -375,6 +375,107 @@ namespace socklib {
         }
     };
 
+    struct bitvec_reader {
+       private:
+        size_t pos;
+        size_t idx;
+        std::string& str;
+
+       public:
+        bitvec_reader(std::string& in)
+            : str(in) {}
+
+        bool get() const {
+            return (bool)(((unsigned char)str[idx]) & (1 << (7 - pos)));
+        }
+
+        bool incremant() {
+            pos++;
+            if (pos == 8) {
+                if (str.size() == idx + 1) {
+                    pos = 7;
+                    return false;
+                }
+                idx++;
+                pos = 0;
+            }
+            return true;
+        }
+
+        bool decrement() {
+            if (pos == 0) {
+                if (idx == 0) {
+                    return false;
+                }
+                idx--;
+                pos = 8;
+            }
+            pos--;
+            return true;
+        }
+    };
+
+    struct h2huffman_tree {
+        std::vector<bool> value;
+        h2huffman_tree* zero = nullptr;
+        h2huffman_tree* one = nullptr;
+        unsigned char c = 0;
+        bool has_c = false;
+        bool eos = false;
+        h2huffman_tree(const std::vector<bool>& v)
+            : value(v) {}
+        ~h2huffman_tree() noexcept {
+            delete zero;
+            delete one;
+        }
+
+       private:
+        static bool append(h2huffman_tree* tree, bool eos, unsigned char c, std::vector<bool>& v, std::vector<bool>& res, size_t idx = 0) {
+            if (!tree) {
+                return false;
+            }
+            if (v == res) {
+                tree->c = c;
+                tree->has_c = true;
+                tree->eos = true;
+                if (tree->zero || tree->one) {
+                    return true;
+                }
+                return true;
+            }
+            res.push_back(v[idx]);
+            if (v[idx]) {
+                if (!tree->one) {
+                    tree->one = new h2huffman_tree(res);
+                }
+                return append(tree->one, eos, c, v, res, idx + 1);
+            }
+            else {
+                if (!tree->zero) {
+                    tree->zero = new h2huffman_tree(res);
+                }
+                return append(tree->zero, eos, c, v, res, idx + 1);
+            }
+        }
+
+        static h2huffman_tree* init_tree() {
+            static h2huffman_tree _tree({});
+            for (auto i = 0; i < 256; i++) {
+                std::vector<bool> res;
+                append(&_tree, false, i, h2huffman[i], res);
+            }
+            std::vector<bool> res;
+            append(&_tree, true, 0, h2huffman[256], res);
+            return &_tree;
+        }
+
+       public:
+        static h2huffman_tree* tree() {
+            static h2huffman_tree* ret = init_tree();
+            return ret;
+        }
+    };
+
     struct Hpack {
        private:
         static size_t gethuffmanlen(const std::string& str) {
@@ -386,11 +487,16 @@ namespace socklib {
         }
 
         static std::string huffman_encode(const std::string& in) {
-            bitvec vec;
+            bitvec_writer vec;
             for (auto c : in) {
                 vec.append(h2huffman[(unsigned char)c]);
             }
+            vec.append(h2huffman[256]);
             return vec.data();
+        }
+
+        static bool huffman_decode_achar(unsigned char& c, bitvec_reader& r) {
+            r.get();
         }
 #define TRY(...) \
     if (!(__VA_ARGS__)) return false

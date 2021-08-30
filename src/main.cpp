@@ -414,7 +414,7 @@ void server_proc() {
 
 int main(int, char**) {
     //server_proc();
-    std::string str, dec;
+    /*std::string str, dec;
     const char* src =
         (const char*)
             u8R"(
@@ -428,5 +428,7 @@ int main(int, char**) {
     socklib::Hpack::decode_str(dec, de);
     if (src != dec) {
         throw "error!";
-    }
+    }*/
+
+    auto t = socklib::h2huffman_tree::tree();
 }
