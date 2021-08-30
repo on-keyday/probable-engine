@@ -91,13 +91,27 @@ namespace socklib {
         Http2Conn(std::shared_ptr<Conn>&& in)
             : r(conn), AppLayer(std::move(in)) {}
 
-        std::shared_ptr<H2Frame> recv() {
-            commonlib2::HTTP2Frame<std::string> frame;
-            r.readwhile(commonlib2::http2frame, frame);
-            if (!frame.succeed) {
-                return nullptr;
+       private:
+        Err get_frame(std::shared_ptr<H2Frame> res, commonlib2::HTTP2Frame<std::string>& frame) {
+            switch (frame.type) {
+                case 0:
+                    res = std::make_shared<H2DataFrame>();
+                case 1:
+                    res = std::make_shared<H2HeaderFrame>();
+                default:
+                    return H2Error::protocol;
             }
-            return nullptr;
+            return res->parse(frame);
+        }
+
+       public:
+        Err recv(std::shared_ptr<H2Frame>& res) {
+            commonlib2::HTTP2Frame<std::string> frame;
+            r.readwhile(commonlib2::http2frame_reader, frame);
+            if (!frame.succeed) {
+                return false;
+            }
+            return true;
         }
     };
 }  // namespace socklib

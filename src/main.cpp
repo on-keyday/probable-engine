@@ -410,8 +410,10 @@ void server_proc() {
     }
 }
 
-#include "http2.h"
+#include "hpack.h"
 
 int main(int, char**) {
-    server_proc();
+    //server_proc();
+    std::string str;
+    socklib::Hpack::encode(str, ":method", "GET");
 }
