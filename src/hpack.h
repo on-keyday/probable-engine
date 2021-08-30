@@ -630,41 +630,73 @@ namespace socklib {
         }
 
         static HpkErr decode(std::multimap<std::string, std::string>& res, std::string& src,
-                             std::multimap<size_t, std::pair<std::string, std::string>>& dymap) {
+                             std::vector<std::pair<std::string, std::string>>& dymap) {
             commonlib2::Deserializer<std::string&> se(src);
-            unsigned char tmp = se.base_reader().achar();
-            if (tmp & 0x80) {
-                size_t idx = 0;
-                TRY(decode_integer<7>(se, idx, tmp));
-                if (idx == 0) {
-                    return HpackError::invalid_value;
-                }
-                if (idx < 63) {
-                    if (!predefined[idx].second[0]) {
-                        return HpackError::not_exists;
-                    }
-                    res.emplace(predefined[idx].first, predefined[idx].second);
-                }
-                else {
-                    if (auto found = dymap.find(idx); found != dymap.end()) {
-                    }
-                    else {
-                        return HpackError::not_exists;
-                    }
-                }
-            }
-            else if ((tmp & 0xf0) == 0) {
-                size_t sz = 0;
-                TRY(decode_integer<4>(se, sz, tmp));
-                if (sz == 0) {
-                    std::string key, value;
+            while (!se.base_reader().ceof()) {
+                unsigned char tmp = se.base_reader().achar();
+                std::string key, value;
+                auto read_two_literal = [&]() -> HpkErr {
                     TRY(decode_str(key, se));
                     TRY(decode_str(value, se));
                     res.emplace(key, value);
+                    return true;
+                };
+                auto read_idx_and_literal = [&](size_t idx) -> HpkErr {
+                    if (idx < 63) {
+                        key = predefined[idx].first;
+                    }
+                    else {
+                        if (dymap.size() <= idx - 63) {
+                            return HpackError::not_exists;
+                        }
+                        key = dymap[idx - 63].second;
+                    }
+                    TRY(decode_str(value, se));
+                    res.emplace(key, value);
+                    return true;
+                };
+                if (tmp & 0x80) {
+                    size_t idx = 0;
+                    TRY(decode_integer<7>(se, idx, tmp));
+                    if (idx == 0) {
+                        return HpackError::invalid_value;
+                    }
+                    if (idx < 63) {
+                        if (!predefined[idx].second[0]) {
+                            return HpackError::not_exists;
+                        }
+                        res.emplace(predefined[idx].first, predefined[idx].second);
+                    }
+                    else {
+                        if (dymap.size() <= idx - 63) {
+                            return HpackError::not_exists;
+                        }
+                        res.emplace(dymap[idx - 63].first, dymap[idx - 63].second);
+                    }
                 }
-                else {
+                else if (tmp & 0x40) {
+                    size_t sz = 0;
+                    TRY(decode_integer<6>(se, sz, tmp));
+                    if (sz == 0) {
+                        TRY(read_two_literal());
+                    }
+                    else {
+                        TRY(read_idx_and_literal(sz));
+                    }
+                    dymap.push_back({key, value});
+                }
+                else if ((tmp & 0xf0) == 0) {
+                    size_t sz = 0;
+                    TRY(decode_integer<4>(se, sz, tmp));
+                    if (sz == 0) {
+                        TRY(read_two_literal());
+                    }
+                    else {
+                        TRY(read_idx_and_literal(sz));
+                    }
                 }
             }
+            return true;
         }
 #undef TRY
     };
