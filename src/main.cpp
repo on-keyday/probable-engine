@@ -429,7 +429,7 @@ int main(int, char**) {
     if (src != dec) {
         throw "error!";
     }*/
-    socklib::Hpack::DynamicTable table;
+    socklib::Hpack::DynamicTable table, other;
     socklib::HttpConn::Header header;
     const char src[] = {
         0x00,                                                                     // 圧縮情報
@@ -446,4 +446,6 @@ int main(int, char**) {
         0x0b, 0x6e, 0x67, 0x68, 0x74, 0x74, 0x70, 0x32, 0x2e, 0x6f, 0x72, 0x67};  // 11 nghttp2.org
     std::string sc(src, sizeof(src));
     socklib::Hpack::decode(header, sc, table);
+    std::string res;
+    socklib::Hpack::encode<true>(header, res, other);
 }

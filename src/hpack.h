@@ -81,7 +81,7 @@ namespace socklib {
         sheader_t("vary", ""),
         sheader_t("via", ""),
         sheader_t("www-authenticate", "")};
-    std::array<std::vector<bool>, 257> h2huffman{
+    static const std::array<std::vector<bool>, 257> h2huffman{
         {{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0},
@@ -433,7 +433,7 @@ namespace socklib {
             delete one;
         }
 
-        static bool append(h2huffman_tree* tree, bool eos, unsigned char c, std::vector<bool>& v, std::vector<bool>& res, size_t idx = 0) {
+        static bool append(h2huffman_tree* tree, bool eos, unsigned char c, const std::vector<bool>& v, std::vector<bool>& res, size_t idx = 0) {
             if (!tree) {
                 return false;
             }
@@ -661,7 +661,7 @@ namespace socklib {
             for (auto& h : src) {
                 size_t idx = 0;
                 if (get_idx(
-                        [](const auto& k, const auto& v) {
+                        [&](const auto& k, const auto& v) {
                             return k == h.first && v == h.second;
                         },
                         idx, dymap)) {
@@ -669,7 +669,7 @@ namespace socklib {
                 }
                 else {
                     if (get_idx(
-                            [](const auto& k, const auto&) {
+                            [&](const auto& k, const auto&) {
                                 return k == h.first;
                             },
                             idx, dymap)) {
@@ -682,11 +682,11 @@ namespace socklib {
                     }
                     else {
                         se.template write_as<unsigned char>(0);
-                        TRY(encode_str(se, h.first));
+                        encode_str(se, h.first);
                     }
-                    TRY(encode_str(se, h.second));
+                    encode_str(se, h.second);
                     if (adddy) {
-                        dymap.emplace(h.first, h.second);
+                        dymap.push_back({h.first, h.second});
                     }
                 }
             }
