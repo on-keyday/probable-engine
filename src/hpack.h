@@ -7,6 +7,8 @@
 
 #include <serializer.h>
 
+#include "http.h"
+
 namespace socklib {
     /*struct SimpleHeader {
         const char* header = "";
@@ -603,8 +605,7 @@ namespace socklib {
         }
 
        public:
-        static void encode_str(std::string& str, const std::string& value) {
-            commonlib2::Serializer<std::string&> se(str);
+        static void encode_str(commonlib2::Serializer<std::string&>& se, const std::string& value) {
             if (value.size() > gethuffmanlen(value)) {
                 std::string enc = huffman_encode(value);
                 encode_integer<7>(se, value.size(), 0x80);
@@ -629,8 +630,64 @@ namespace socklib {
             return true;
         }
 
-        static HpkErr decode(std::multimap<std::string, std::string>& res, std::string& src,
-                             std::vector<std::pair<std::string, std::string>>& dymap) {
+        using DynamicTable = std::vector<std::pair<std::string, std::string>>;
+
+       private:
+        template <class F>
+        static bool get_idx(F&& f, size_t& idx, DynamicTable& dymap) {
+            if (auto found = std::find_if(predefined.begin() + 1, predefined.end(), [&](auto& c) {
+                    return f(c.first, c.second);
+                });
+                found != predefined.end()) {
+                idx = std::distance(predefined.begin(), found);
+            }
+            else if (auto found = std::find_if(dymap.begin(), dymap.end(), [&](auto& c) {
+                         return f(c.first, c.second);
+                     });
+                     found != dymap.end()) {
+                idx = std::distance(dymap.begin(), found) + 63;
+            }
+            else {
+                return false;
+            }
+            return true;
+        }
+
+       public:
+        template <bool adddy = false>
+        static HpkErr encode(HttpConn::Header& src, std::string& res,
+                             DynamicTable& dymap) {
+            commonlib2::Serializer<std::string&> se(res);
+            for (auto& h : src) {
+                size_t idx = 0;
+                if (get_idx(
+                        [](const auto& k, const auto& v) {
+                            return k == h.first && v == h.second;
+                        },
+                        idx, dymap)) {
+                    TRY(encode_integer<7>(se, idx, 0x80));
+                }
+                else {
+                    if (get_idx([](const auto& k, const auto&) {
+                            return k == h.first;
+                        },
+                                idx, dymap)) {
+                        if (adddy) {
+                            TRY(encode_integer<6>(se, idx, 0x40));
+                        }
+                        else {
+                            TRY(encode_integer<4>(se, idx, 0));
+                        }
+                    }
+                    else {
+                        se.template write_as<unsigned char>(0);
+                    }
+                }
+            }
+        }
+
+        static HpkErr decode(HttpConn::Header& res, std::string& src,
+                             DynamicTable& dymap) {
             commonlib2::Deserializer<std::string&> se(src);
             while (!se.base_reader().ceof()) {
                 unsigned char tmp = se.base_reader().achar();
@@ -674,7 +731,7 @@ namespace socklib {
                         res.emplace(dymap[idx - 63].first, dymap[idx - 63].second);
                     }
                 }
-                else if (tmp & 0x40) {
+                else if (tmp & 0x40 || tmp & 0x20) {
                     size_t sz = 0;
                     TRY(decode_integer<6>(se, sz, tmp));
                     if (sz == 0) {
@@ -694,6 +751,9 @@ namespace socklib {
                     else {
                         TRY(read_idx_and_literal(sz));
                     }
+                }
+                else {
+                    return false;
                 }
             }
             return true;

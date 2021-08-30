@@ -429,4 +429,21 @@ int main(int, char**) {
     if (src != dec) {
         throw "error!";
     }*/
+    socklib::Hpack::DynamicTable table;
+    socklib::HttpConn::Header header;
+    const char src[] = {
+        0x00,                                                                     // 圧縮情報
+        0x07, 0x3a, 0x6d, 0x65, 0x74, 0x68, 0x6f, 0x64,                           // 7 :method
+        0x03, 0x47, 0x45, 0x54,                                                   // 3 GET
+        0x00,                                                                     // 圧縮情報
+        0x05, 0x3a, 0x70, 0x61, 0x74, 0x68,                                       // 5 :path
+        0x01, 0x2f,                                                               // 1 /
+        0x00,                                                                     // 圧縮情報
+        0x07, 0x3a, 0x73, 0x63, 0x68, 0x65, 0x6d, 0x65,                           // 7 :scheme
+        0x05, 0x68, 0x74, 0x74, 0x70, 0x73,                                       // 5 https
+        0x00,                                                                     // 圧縮情報
+        0x0a, 0x3a, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79,         // 10 :authority
+        0x0b, 0x6e, 0x67, 0x68, 0x74, 0x74, 0x70, 0x32, 0x2e, 0x6f, 0x72, 0x67};  // 11 nghttp2.org
+    std::string sc(src, sizeof(src));
+    socklib::Hpack::decode(header, sc, table);
 }
