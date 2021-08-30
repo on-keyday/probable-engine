@@ -416,6 +416,8 @@ namespace socklib {
     };
 
     struct h2huffman_tree {
+       private:
+        friend struct Hpack;
         std::vector<bool> value;
         h2huffman_tree* zero = nullptr;
         h2huffman_tree* one = nullptr;
@@ -429,7 +431,6 @@ namespace socklib {
             delete one;
         }
 
-       private:
         static bool append(h2huffman_tree* tree, bool eos, unsigned char c, std::vector<bool>& v, std::vector<bool>& res, size_t idx = 0) {
             if (!tree) {
                 return false;
@@ -469,14 +470,27 @@ namespace socklib {
             return &_tree;
         }
 
-       public:
         static h2huffman_tree* tree() {
             static h2huffman_tree* ret = init_tree();
             return ret;
         }
     };
 
+    enum class HpackError {
+        none,
+        too_large_number,
+        too_short_number,
+        internal,
+        invalid_mask,
+        invalid_value,
+    };
+
+    using HpkErr = commonlib2::EnumWrap<HpackError, HpackError::none, HpackError::internal>;
+
     struct Hpack {
+#define TRY(...) \
+    if (auto _H_tryres = (__VA_ARGS__); !_H_tryres) return _H_tryres
+
        private:
         static size_t gethuffmanlen(const std::string& str) {
             size_t ret = 0;
@@ -495,8 +509,8 @@ namespace socklib {
             return vec.data();
         }
 
-        static bool huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin) {
-            if (!t) return false;
+        static HpkErr huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin) {
+            if (!t) return HpackError::invalid_value;
             if (t->has_c) {
                 c = t->c;
                 fin = t;
@@ -504,14 +518,28 @@ namespace socklib {
             }
             h2huffman_tree* next = r.get() ? t->one : t->zero;
             if (!r.incremant()) {
-                return false;
+                return HpackError::too_short_number;
             }
-            return huffman_decode_achar(c,r,next,fin);
+            return huffman_decode_achar(c, r, next, fin);
         }
-#define TRY(...) \
-    if (!(__VA_ARGS__)) return false
+
+        static HpkErr huffman_decode(std::string& res, std::string& src) {
+            bitvec_reader r(src);
+            auto tree = h2huffman_tree::tree();
+            while (true) {
+                unsigned char c = 0;
+                h2huffman_tree* fin = nullptr;
+                TRY(huffman_decode_achar(c, r, tree, fin));
+                if (fin->eos) {
+                    break;
+                }
+                res.push_back(c);
+            }
+            return true;
+        }
+
         template <unsigned int n>
-        static bool decode_integer(commonlib2::Deserializer<std::string&>& se, size_t& sz, unsigned char& firstmask) {
+        static HpkErr decode_integer(commonlib2::Deserializer<std::string&>& se, size_t& sz, unsigned char& firstmask) {
             static_assert(n > 0 && n <= 8, "invalid range");
             constexpr unsigned char msk = static_cast<unsigned char>(~0) >> (8 - n);
             unsigned char tmp = 0;
@@ -532,18 +560,18 @@ namespace socklib {
                 sz += (tmp & 0x7f) * pow(m);
                 m += 7;
                 if (m > (sizeof(size_t) * 8 - 1)) {
-                    return false;
+                    return HpackError::too_large_number;
                 }
             } while (tmp & 0x80);
             return true;
         }
 
         template <unsigned int n>
-        static bool encode_integer(commonlib2::Serializer<std::string&> se, size_t sz, unsigned char firstmask) {
+        static HpkErr encode_integer(commonlib2::Serializer<std::string&> se, size_t sz, unsigned char firstmask) {
             static_assert(n > 0 && n <= 8, "invalid range");
             constexpr unsigned char msk = static_cast<unsigned char>(~0) >> (8 - n);
             if (firstmask & msk) {
-                return false;
+                return HpackError::invalid_mask;
             }
             if (sz < (size_t)msk) {
                 se.template write_as<unsigned char>(firstmask | sz);
@@ -561,7 +589,7 @@ namespace socklib {
         }
 
        public:
-        static bool encode_str(std::string& str, const std::string& value) {
+        static void encode_str(std::string& str, const std::string& value) {
             commonlib2::Serializer<std::string&> se(str);
             if (value.size() > gethuffmanlen(value)) {
                 std::string enc = huffman_encode(value);
@@ -572,20 +600,22 @@ namespace socklib {
                 encode_integer<7>(se, value.size(), 0);
                 se.write_byte(value);
             }
-            return true;
         }
 
-        static bool decode_str(std::string& str, commonlib2::Deserializer<std::string&>& se) {
+        static HpkErr decode_str(std::string& str, commonlib2::Deserializer<std::string&>& se) {
             size_t sz = 0;
             unsigned char mask = 0;
             TRY(decode_integer<7>(se, sz, mask));
             TRY(se.read_byte(str, sz));
             if (mask & 0x80) {
+                std::string decoded;
+                TRY(huffman_decode(decoded, str));
+                str = std::move(decoded);
             }
             return true;
         }
 
-        static bool decode(std::multimap<std::string, std::string>& res, std::string& src) {
+        static HpkErr decode(std::multimap<std::string, std::string>& res, std::string& src) {
             commonlib2::Deserializer<std::string&> se(src);
             unsigned char tmp = se.base_reader().achar();
             if (tmp & 0x80) {
@@ -594,6 +624,8 @@ namespace socklib {
                 size_t sz = 0;
                 TRY(decode_integer<4>(se, sz, tmp));
                 if (sz == 0) {
+                    std::string key, value;
+                    TRY(decode_str(key, se));
                 }
                 else {
                 }

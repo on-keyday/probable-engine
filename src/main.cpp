@@ -429,6 +429,4 @@ int main(int, char**) {
     if (src != dec) {
         throw "error!";
     }*/
-
-    auto t = socklib::h2huffman_tree::tree();
 }
