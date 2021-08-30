@@ -430,7 +430,7 @@ int main(int, char**) {
         throw "error!";
     }*/
     socklib::Hpack::DynamicTable table, other;
-    socklib::HttpConn::Header header;
+    socklib::HttpConn::Header header, decoded;
     const char src[] = {
         0x00,                                                                     // 圧縮情報
         0x07, 0x3a, 0x6d, 0x65, 0x74, 0x68, 0x6f, 0x64,                           // 7 :method
@@ -447,5 +447,6 @@ int main(int, char**) {
     std::string sc(src, sizeof(src));
     socklib::Hpack::decode(header, sc, table);
     std::string res;
-    socklib::Hpack::encode<true>(header, res, other);
+    socklib::Hpack::encode<true>(header, res, table);
+    socklib::Hpack::decode(decoded, res, other);
 }

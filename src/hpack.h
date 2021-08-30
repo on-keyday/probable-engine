@@ -379,8 +379,8 @@ namespace socklib {
 
     struct bitvec_reader {
        private:
-        size_t pos;
-        size_t idx;
+        size_t pos = 0;
+        size_t idx = 0;
         std::string& str;
 
        public:
@@ -608,7 +608,7 @@ namespace socklib {
         static void encode_str(commonlib2::Serializer<std::string&>& se, const std::string& value) {
             if (value.size() > gethuffmanlen(value)) {
                 std::string enc = huffman_encode(value);
-                encode_integer<7>(se, value.size(), 0x80);
+                encode_integer<7>(se, enc.size(), 0x80);
                 se.write_byte(enc);
             }
             else {
