@@ -471,6 +471,10 @@ namespace socklib {
         bool eof() {
             return on_eof;
         }
+
+        std::string& ref() {
+            return buffer;
+        }
     };
 
     struct AppLayer {

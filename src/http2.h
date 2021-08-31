@@ -196,16 +196,25 @@ namespace socklib {
                     return get_frame<H2GoAwayFrame>(frame, res, this);
                 case 8:
                     return get_frame<H2WindowUpdateFrame>(frame, res, this);
-                default:
+                case 9:
                     return H2Error::protocol;
+                default:
+                    return H2Error::unimplemented;
             }
         }
 
         bool get_a_frame(commonlib2::HTTP2Frame<std::string>& frame) {
-            r.readwhile(commonlib2::http2frame_reader, frame);
+            for (;;) {
+                r.readwhile(commonlib2::http2frame_reader, frame);
+                if (frame.continues) {
+                    TRY(r.ref().reading());
+                }
+            }
             if (!frame.succeed) {
                 return false;
             }
+            r.ref().ref().erase(0, 9 + frame.buf.size());
+            r.seek(0);
             return true;
         }
 
@@ -229,6 +238,10 @@ namespace socklib {
             commonlib2::HTTP2Frame<std::string> frame;
             TRY(get_a_frame(frame));
             return make_frame(frame, res);
+        }
+
+        bool recvable() {
+            return (bool)r.ref().ref().size();
         }
     };
 

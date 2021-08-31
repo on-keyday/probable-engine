@@ -147,14 +147,14 @@ namespace PROJECT_NAME {
         if (!begin) return true;
         auto beginpos = self->readpos();
         self->readwhile(http2frame, ctx);
-        if (ctx.succeed) {
+        /*if (ctx.succeed) {
             //self->ref().erase(beginpos, ctx.len + 9);
             //self->seek(beginpos);
-        }
+        }*/
         if (ctx.continues) {
             self->seek(beginpos);
         }
-        return false;
+        return true;
     }
 
     template <class Ctx, class Buf>
