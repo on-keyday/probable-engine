@@ -184,6 +184,18 @@ namespace socklib {
                     return get_frame<H2HeaderFrame>(frame, res, this);
                 case 2:
                     return get_frame<H2PriorityFrame>(frame, res, this);
+                case 3:
+                    return get_frame<H2RstStreamFrame>(frame, res, this);
+                case 4:
+                    return get_frame<H2SettingsFrame>(frame, res, this);
+                case 5:
+                    return get_frame<H2PushPromiseFrame>(frame, res, this);
+                case 6:
+                    return get_frame<H2PingFrame>(frame, res, this);
+                case 7:
+                    return get_frame<H2GoAwayFrame>(frame, res, this);
+                case 8:
+                    return get_frame<H2WindowUpdateFrame>(frame, res, this);
                 default:
                     return H2Error::protocol;
             }
@@ -416,6 +428,10 @@ namespace socklib {
                 return H2Error::protocol;
             }
             return true;
+        }
+
+        H2WindowUpdateFrame* window_update() override {
+            return this;
         }
     };
 #undef TRY
