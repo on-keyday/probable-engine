@@ -316,28 +316,28 @@ namespace socklib {
                 plus = 1;
             }
             size_t willsize = fsize - padding - plus, padoct = padding + plus;
+            auto write_payload = [&](auto& to_write, unsigned int len) {
+                H2Frame::serialize(len, se, t);
+                if (any(flag & H2Flag::padded)) {
+                    se.write(padding);
+                }
+                se.write_byte(to_write);
+                for (auto i = 0; i < padding; i++) {
+                    se.write('\0');
+                }
+            };
             while (data_.size() - idx) {
                 size_t appsize = data_.size() - idx;
                 if (appsize + padoct < fsize) {
                     flag = flagcpy;
                     std::string_view to_write(data_.data() + idx, data_.data() + data_.size());
                     idx = data_.size();
-                    H2Frame::serialize((unsigned int)(appsize + padoct), se, t);
-                    if (any(flag & H2Flag::padded)) {
-                        se.write(padding);
-                    }
-                    se.write_byte(to_write);
-                    se.write_byte(std::string(padding, '\0'));
+                    write_payload(to_write, (unsigned int)(appsize + padoct));
                 }
                 else {
                     std::string_view to_write(data_.data() + idx, data_.data() + idx + willsize);
                     idx += willsize;
-                    H2Frame::serialize(fsize, se, t);
-                    if (any(flag & H2Flag::padded)) {
-                        se.write(padding);
-                    }
-                    se.write_byte(to_write);
-                    se.write_byte(std::string(padding, '\0'));
+                    write_payload(to_write, fsize);
                     TRY(t->conn->write(se.get()));
                     se.get().clear();
                 }
@@ -381,7 +381,11 @@ namespace socklib {
             if (!Hpack::encode<true>(header_, hpacked, t->local)) {
                 return H2Error::compression;
             }
+            if (any(flag & H2Flag::padded)) {
+                se.write(padding);
+            }
             if (any(flag & H2Flag::priority)) {
+                TRY(write_depends(exclusive, depends, weight, se));
             }
         }
 
