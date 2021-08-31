@@ -222,7 +222,6 @@ namespace socklib {
 
     struct H2DataFrame : H2Frame {
         std::string data_;
-        H2DataFrame() {}
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
@@ -375,6 +374,48 @@ namespace socklib {
 
         H2PingFrame* ping() override {
             return this;
+        }
+    };
+
+    struct H2GoAwayFrame : H2Frame {
+        int lastid = 0;
+        unsigned int errcode = 0;
+        std::string additionaldata;
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
+            commonlib2::Deserializer<std::string&> se(v.buf);
+            if (v.id != 0) {
+                return H2Error::protocol;
+            }
+            TRY(se.read_ntoh(lastid));
+            if (lastid < 0) {
+                return H2Error::protocol;
+            }
+            TRY(se.read_ntoh(errcode));
+            v.buf.erase(0, 8);
+            additionaldata = std::move(v.buf);
+            return true;
+        }
+
+        H2GoAwayFrame* goaway() override {
+            return this;
+        }
+    };
+
+    struct H2WindowUpdateFrame : H2Frame {
+        int value = 0;
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
+            commonlib2::Deserializer<std::string&> se(v.buf);
+            if (v.len != 4) {
+                return H2Error::frame_size;
+            }
+
+            TRY(se.read_ntoh(value));
+            if (value <= 0) {
+                return H2Error::protocol;
+            }
+            return true;
         }
     };
 #undef TRY
