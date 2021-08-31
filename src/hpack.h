@@ -81,7 +81,45 @@ namespace socklib {
         sheader_t("vary", ""),
         sheader_t("via", ""),
         sheader_t("www-authenticate", "")};
-    static const std::array<std::vector<bool>, 257> h2huffman{
+    struct bitvec_t {
+       private:
+        unsigned int bits = 0;
+        unsigned int size_ = 0;
+
+        constexpr int shift(int i) const {
+            return (sizeof(bits) * 8 - 1 - i);
+        }
+
+       public:
+        constexpr bitvec_t(std::initializer_list<int> init) {
+            size_ = init.size();
+            for (auto i = 0; i < size_; i++) {
+                unsigned int bit = init.begin()[i] ? 1 : 0;
+                bits |= bit << shift(i);
+            }
+        }
+
+        constexpr bool operator[](size_t idx) const {
+            if (idx >= size_) throw "out of range";
+            return (bool)(bits & (1 << shift(idx)));
+        }
+
+        constexpr bool size() const {
+            return size_;
+        }
+
+        constexpr bool operator==(const std::vector<bool>& in) const {
+            if (size() != in.size()) return false;
+            for (auto i = 0; i < in.size(); i++) {
+                if ((*this)[i] != in[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    };
+
+    constexpr std::array<bitvec_t, 257> h2huffman{
         {{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0},
@@ -362,9 +400,10 @@ namespace socklib {
             pos++;
         }
 
-        void append(const std::vector<bool>& a) {
-            for (bool b : a) {
-                push_back(b);
+        template <class T>
+        void append(const T& a) {
+            for (auto i = 0; i < a.size(); i++) {
+                push_back(a[i]);
             }
         }
 
@@ -433,7 +472,7 @@ namespace socklib {
             delete one;
         }
 
-        static bool append(h2huffman_tree* tree, bool eos, unsigned char c, const std::vector<bool>& v, std::vector<bool>& res, size_t idx = 0) {
+        static bool append(h2huffman_tree* tree, bool eos, unsigned char c, const bitvec_t& v, std::vector<bool>& res, size_t idx = 0) {
             if (!tree) {
                 return false;
             }
