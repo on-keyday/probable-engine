@@ -2,6 +2,8 @@
 #include "protcolbase.h"
 #include <net_helper.h>
 
+#include "hpack.h"
+
 namespace socklib {
     enum class H2FType : unsigned char {
         data = 0x0,
@@ -34,12 +36,14 @@ namespace socklib {
         none = 0,
         protocol = 1,
         internal = 2,
-        frame_size = 6
+        frame_size = 6,
+        compression = 9,
+        unimplemented = ~0,
     };
 
-    using Err = commonlib2::EnumWrap<H2Error, H2Error::none, H2Error::internal>;
+    using H2Err = commonlib2::EnumWrap<H2Error, H2Error::none, H2Error::internal>;
 
-    /*struct Err {
+    /*struct H2Err {
         H2Error errcode;
         constexpr Err(H2Error e)
             : errcode(e) {}
@@ -50,12 +54,14 @@ namespace socklib {
         }
     };*/
 
+    struct Http2Conn;
+
     struct H2Frame {
         H2FType type;
         H2Flag flag;
         int streamid;
         constexpr H2Frame() {}
-        virtual Err parse(commonlib2::HTTP2Frame<std::string>& v) {
+        virtual H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn*) {
             type = (H2FType)v.type;
             flag = (H2Flag)v.flag;
             streamid = v.id;
@@ -63,11 +69,54 @@ namespace socklib {
         }
     };
 
+    struct H2DataFrame;
+    struct H2HeaderFrame;
+
+    template <class Frame, class ConnPtr>
+    H2Err get_frame(commonlib2::HTTP2Frame<std::string>& v, std::shared_ptr<H2Frame>& frame, ConnPtr self) {
+        frame = std::make_shared<Frame>();
+        return frame->parse(v, self);
+    }
+
+    struct Http2Conn : AppLayer {
+       private:
+        friend struct H2HeaderFrame;
+        size_t streamid_max = 0;
+        Hpack::DynamicTable local;
+        Hpack::DynamicTable remote;
+        commonlib2::Reader<SockReader> r;
+
+       public:
+        Http2Conn(std::shared_ptr<Conn>&& in)
+            : r(conn), AppLayer(std::move(in)) {}
+
+       protected:
+        H2Err make_frame(commonlib2::HTTP2Frame<std::string>& frame, std::shared_ptr<H2Frame>& res) {
+            switch (frame.type) {
+                case 0:
+                    return get_frame<H2DataFrame>(frame, res, this);
+                default:
+                    return H2Error::protocol;
+            }
+        }
+
+       public:
+        H2Err recv(std::shared_ptr<H2Frame>& res) {
+            commonlib2::HTTP2Frame<std::string> frame;
+            r.readwhile(commonlib2::http2frame_reader, frame);
+            if (!frame.succeed) {
+                return false;
+            }
+            get_frame<H2DataFrame>(frame, res, this);
+            return true;
+        }
+    };
+
     struct H2DataFrame : H2Frame {
         std::string data;
         H2DataFrame() {}
-        Err parse(commonlib2::HTTP2Frame<std::string>& v) override {
-            H2Frame::parse(v);
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
                 unsigned char d = (unsigned char)v.buf[0];
                 v.buf.erase(0, 1);
@@ -82,36 +131,12 @@ namespace socklib {
     };
 
     struct H2HeaderFrame : H2Frame {
-    };
-
-    struct Http2Conn : AppLayer {
-        size_t streamid_max = 0;
-        commonlib2::Reader<SockReader> r;
-
-        Http2Conn(std::shared_ptr<Conn>&& in)
-            : r(conn), AppLayer(std::move(in)) {}
-
-       private:
-        Err get_frame(std::shared_ptr<H2Frame> res, commonlib2::HTTP2Frame<std::string>& frame) {
-            switch (frame.type) {
-                case 0:
-                    res = std::make_shared<H2DataFrame>();
-                case 1:
-                    res = std::make_shared<H2HeaderFrame>();
-                default:
-                    return H2Error::protocol;
+        HttpConn::Header header;
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
+            if (!Hpack::decode(header, v.buf, t->remote)) {
+                return H2Error::compression;
             }
-            return res->parse(frame);
-        }
-
-       public:
-        Err recv(std::shared_ptr<H2Frame>& res) {
-            commonlib2::HTTP2Frame<std::string> frame;
-            r.readwhile(commonlib2::http2frame_reader, frame);
-            if (!frame.succeed) {
-                return false;
-            }
-            return true;
         }
     };
 }  // namespace socklib

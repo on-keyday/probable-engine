@@ -148,8 +148,8 @@ namespace PROJECT_NAME {
         auto beginpos = self->readpos();
         self->readwhile(http2frame, ctx);
         if (ctx.succeed) {
-            self->ref().erase(beginpos, ctx.len + 9);
-            self->seek(beginpos);
+            //self->ref().erase(beginpos, ctx.len + 9);
+            //self->seek(beginpos);
         }
         if (ctx.continues) {
             self->seek(beginpos);
