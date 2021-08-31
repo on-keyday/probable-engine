@@ -56,10 +56,19 @@ namespace socklib {
 
     struct Http2Conn;
 
+    struct H2DataFrame;
+    struct H2HeaderFrame;
+    struct H2PriorityFrame;
+
+//Rust like try
+#define TRY(...) \
+    if (auto _H_tryres = (__VA_ARGS__); !_H_tryres) return _H_tryres
+
     struct H2Frame {
         H2FType type;
         H2Flag flag;
         int streamid;
+
         constexpr H2Frame() {}
         virtual H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn*) {
             type = (H2FType)v.type;
@@ -67,10 +76,42 @@ namespace socklib {
             streamid = v.id;
             return true;
         }
-    };
 
-    struct H2DataFrame;
-    struct H2HeaderFrame;
+       protected:
+        H2Err remove_padding(std::string& buf, int len) {
+            unsigned char d = (unsigned char)buf[0];
+            buf.erase(0, 1);
+            if ((int)d > len) {
+                return H2Error::frame_size;
+            }
+            buf.erase(len - d);
+            return true;
+        }
+
+        H2Err read_depends(bool& exclusive, int& id, unsigned char& weight, std::string& buf) {
+            commonlib2::Deserializer<std::string&> se(buf);
+            unsigned int id_ = 0;
+            TRY(se.read_ntoh(id_));
+            exclusive = (bool)(id_ & commonlib2::msb_on<unsigned int>());
+            id_ &= ~commonlib2::msb_on<unsigned int>();
+            id = (int)id_;
+            TRY(se.read_ntoh(weight));
+            buf.erase(0, 5);
+            return true;
+        }
+
+       public:
+        virtual H2DataFrame* data() {
+            return nullptr;
+        }
+        virtual H2HeaderFrame* header() {
+            return nullptr;
+        }
+
+        virtual H2PriorityFrame* priority() {
+            return nullptr;
+        }
+    };
 
     template <class Frame, class ConnPtr>
     H2Err get_frame(commonlib2::HTTP2Frame<std::string>& v, std::shared_ptr<H2Frame>& frame, ConnPtr self) {
@@ -95,20 +136,43 @@ namespace socklib {
             switch (frame.type) {
                 case 0:
                     return get_frame<H2DataFrame>(frame, res, this);
+                case 1:
+                    return get_frame<H2HeaderFrame>(frame, res, this);
+                case 2:
+                    return get_frame<H2PriorityFrame>(frame, res, this);
                 default:
                     return H2Error::protocol;
             }
         }
 
-       public:
-        H2Err recv(std::shared_ptr<H2Frame>& res) {
-            commonlib2::HTTP2Frame<std::string> frame;
+        bool get_a_frame(commonlib2::HTTP2Frame<std::string>& frame) {
             r.readwhile(commonlib2::http2frame_reader, frame);
             if (!frame.succeed) {
                 return false;
             }
-            get_frame<H2DataFrame>(frame, res, this);
             return true;
+        }
+
+        H2Err read_continuous(int id, std::string& buf) {
+            while (true) {
+                commonlib2::HTTP2Frame<std::string> frame;
+                TRY(get_a_frame(frame));
+                if (frame.id != id) {
+                    return H2Error::protocol;
+                }
+                buf.append(frame.buf);
+                if (frame.flag & (unsigned char)H2Flag::end_headers) {
+                    break;
+                }
+            }
+            return true;
+        }
+
+       public:
+        H2Err recv(std::shared_ptr<H2Frame>& res) {
+            commonlib2::HTTP2Frame<std::string> frame;
+            TRY(get_a_frame(frame));
+            return make_frame(frame, res);
         }
     };
 
@@ -118,25 +182,46 @@ namespace socklib {
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
-                unsigned char d = (unsigned char)v.buf[0];
-                v.buf.erase(0, 1);
-                if ((int)d > v.len) {
-                    return H2Error::frame_size;
-                }
-                v.buf.erase(v.len - d);
+                TRY(remove_padding(v.buf, v.len));
             }
             data = std::move(v.buf);
             return true;
+        }
+
+        H2DataFrame* data() override {
+            return this;
         }
     };
 
     struct H2HeaderFrame : H2Frame {
         HttpConn::Header header;
+        bool exclusive = false;
+        int id = 0;
+        unsigned char weight = 0;
+        bool set_priority = false;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
+            if (any(flag & H2Flag::padded)) {
+                TRY(remove_padding(v.buf, v.len));
+            }
+            if (any(flag & H2Flag::priority)) {
+                TRY(read_depends(exclusive, id, weight, v.buf));
+                set_priority = true;
+            }
+            if (!any(flag & H2Flag::end_headers)) {
+                TRY(t->read_continuous(v.id, v.buf));
+            }
             if (!Hpack::decode(header, v.buf, t->remote)) {
                 return H2Error::compression;
             }
+            return true;
+        }
+        H2HeaderFrame* header() override {
+            return this;
         }
     };
+
+    struct H2PriorityFrame : H2Frame {
+    };
+#undef TRY
 }  // namespace socklib
