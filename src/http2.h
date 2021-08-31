@@ -59,6 +59,12 @@ namespace socklib {
     struct H2DataFrame;
     struct H2HeaderFrame;
     struct H2PriorityFrame;
+    struct H2RstStreamFrame;
+    struct H2SettingsFrame;
+    struct H2PushPromiseFrame;
+    struct H2PingFrame;
+    struct H2GoAwayFrame;
+    struct H2WindowUpdateFrame;
 
 //Rust like try
 #define TRY(...) \
@@ -111,6 +117,30 @@ namespace socklib {
         virtual H2PriorityFrame* priority() {
             return nullptr;
         }
+
+        virtual H2RstStreamFrame* rst_stream() {
+            return nullptr;
+        }
+
+        virtual H2SettingsFrame* settings() {
+            return nullptr;
+        }
+
+        virtual H2PushPromiseFrame* push_promise() {
+            return nullptr;
+        }
+
+        virtual H2PingFrame* ping() {
+            return nullptr;
+        }
+
+        virtual H2GoAwayFrame* goaway() {
+            return nullptr;
+        }
+
+        virtual H2WindowUpdateFrame* window_update() {
+            return nullptr;
+        }
     };
 
     template <class Frame, class ConnPtr>
@@ -120,12 +150,16 @@ namespace socklib {
     }
 
     struct Http2Conn : AppLayer {
+        using SettingTable = std::map<unsigned short, unsigned int>;
+
        private:
         friend struct H2HeaderFrame;
+        friend struct H2SettingsFrame;
         size_t streamid_max = 0;
         Hpack::DynamicTable local;
         Hpack::DynamicTable remote;
         commonlib2::Reader<SockReader> r;
+        SettingTable settings;
 
        public:
         Http2Conn(std::shared_ptr<Conn>&& in)
@@ -196,7 +230,7 @@ namespace socklib {
     struct H2HeaderFrame : H2Frame {
         HttpConn::Header header;
         bool exclusive = false;
-        int id = 0;
+        int depends = 0;
         unsigned char weight = 0;
         bool set_priority = false;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
@@ -205,7 +239,7 @@ namespace socklib {
                 TRY(remove_padding(v.buf, v.len));
             }
             if (any(flag & H2Flag::priority)) {
-                TRY(read_depends(exclusive, id, weight, v.buf));
+                TRY(read_depends(exclusive, depends, weight, v.buf));
                 set_priority = true;
             }
             if (!any(flag & H2Flag::end_headers)) {
@@ -222,6 +256,70 @@ namespace socklib {
     };
 
     struct H2PriorityFrame : H2Frame {
+        bool exclusive = false;
+        int depends = 0;
+        unsigned char weight = 0;
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
+            return read_depends(exclusive, depends, weight, v.buf);
+        }
+        H2PriorityFrame* priority() override {
+            return this;
+        }
+    };
+
+    struct H2RstStreamFrame : H2Frame {
+        unsigned int errcode = 0;
+
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
+            commonlib2::Deserializer<std::string&> se(v.buf);
+            TRY(se.read_ntoh(errcode));
+            return true;
+        }
+
+        H2RstStreamFrame* rst_stream() override {
+            return this;
+        }
+    };
+
+    struct H2SettingsFrame : H2Frame {
+        bool ack = false;
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
+            if (streamid != 0) {
+                return H2Error::protocol;
+            }
+            if (any(flag & H2Flag::ack)) {
+                if (v.len != 0) {
+                    return H2Error::frame_size;
+                }
+                ack = true;
+                return true;
+            }
+            if (v.len % 6) {
+                return H2Error::frame_size;
+            }
+            commonlib2::Deserializer<std::string&> se(v.buf);
+            while (!se.base_reader().ceof()) {
+                unsigned short key = 0;
+                unsigned int value = 0;
+                TRY(se.read_ntoh(key));
+                TRY(se.read_ntoh(value));
+                t->settings[key] = value;
+            }
+            return true;
+        }
+
+        H2SettingsFrame* settings() override {
+            return this;
+        }
+    };
+
+    struct H2PushPromiseFrame : H2Frame {
+        HttpConn::Header header;
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+        }
     };
 #undef TRY
 }  // namespace socklib
