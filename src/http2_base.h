@@ -328,7 +328,7 @@ namespace socklib {
             };
             while (data_.size() - idx) {
                 size_t appsize = data_.size() - idx;
-                if (appsize + padoct < fsize) {
+                if (appsize + padoct <= fsize) {
                     flag = flagcpy;
                     std::string_view to_write(data_.data() + idx, data_.data() + data_.size());
                     idx = data_.size();
@@ -381,12 +381,41 @@ namespace socklib {
             if (!Hpack::encode<true>(header_, hpacked, t->local)) {
                 return H2Error::compression;
             }
-            if (any(flag & H2Flag::padded)) {
-                se.write(padding);
+            H2Flag flagcpy = flag;
+            unsigned char plus = 0;
+            flag &= ~H2Flag::end_headers;
+            if (!any(flag & H2Flag::padded)) {
+                padding = 0;
+            }
+            else {
+                plus = 1;
             }
             if (any(flag & H2Flag::priority)) {
-                TRY(write_depends(exclusive, depends, weight, se));
+                plus += 5;
             }
+            size_t idx = 0;
+            auto write_header = [&](unsigned int len, auto& to_write) {
+                TRY(H2Frame::serialize(len, se, t));
+                if (any(flag & H2Flag::padded)) {
+                    se.write(padding);
+                }
+                if (any(flag & H2Flag::priority)) {
+                    TRY(write_depends(exclusive, depends, weight, se));
+                }
+                se.write_byte(to_write);
+                for (auto i = 0; i < padding; i++) {
+                    se.write('\0');
+                }
+            };
+            if (hpacked.size() + padding + plus <= fsize) {
+                flag = flagcpy;
+                TRY(write_header((unsigned int)(hpacked.size() + padding + plus), hpacked));
+            }
+            else {
+                std::string_view view(hpacked.data(), hpacked.data() + fsize - (padding + plus));
+                TRY(write_header(fsize, view));
+            }
+            flag = flagcpy;
         }
 
         H2HeaderFrame* header() override {
