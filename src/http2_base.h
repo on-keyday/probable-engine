@@ -277,7 +277,7 @@ namespace socklib {
         H2Err send(H2Frame& input) {
             commonlib2::Serializer<std::string> se;
             unsigned int& fsize = settings[(unsigned short)H2PredefinedSetting::max_frame_size];
-            if (fsize == 0) {
+            if (fsize < 0xffff) {
                 fsize = 0xffff;
             }
             else if (fsize > 0xffffff) {
@@ -383,7 +383,7 @@ namespace socklib {
             }
             H2Flag flagcpy = flag;
             unsigned char plus = 0;
-            flag &= ~H2Flag::end_headers;
+            flag |= H2Flag::end_headers;
             if (!any(flag & H2Flag::padded)) {
                 padding = 0;
             }
@@ -414,8 +414,24 @@ namespace socklib {
             else {
                 std::string_view view(hpacked.data(), hpacked.data() + fsize - (padding + plus));
                 TRY(write_header(fsize, view));
+                size_t idx = fsize - (padding + plus);
+                while (hpacked.size() - idx) {
+                    if (hpacked.size() - idx <= fsize) {
+                        view = std::string_view(hpacked.data() + idx, hpacked.data() + hpacked.size());
+                        idx = hpacked.size();
+                        H2Frame::serialize_impl(view.size(), streamid, H2FType::continuation, H2Flag::end_headers, se);
+                        se.write(view);
+                    }
+                    else {
+                        view = std::string_view(hpacked.data() + idx, hpacked.data() + idx + fsize);
+                        idx += fsize;
+                        H2Frame::serialize_impl(view.size(), streamid, H2FType::continuation, H2Flag::none, se);
+                        se.write(view);
+                    }
+                }
             }
             flag = flagcpy;
+            return true;
         }
 
         H2HeaderFrame* header() override {
