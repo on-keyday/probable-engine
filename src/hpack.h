@@ -479,7 +479,7 @@ namespace socklib {
             if (v == res) {
                 tree->c = c;
                 tree->has_c = true;
-                tree->eos = true;
+                tree->eos = eos;
                 if (tree->zero || tree->one) {
                     throw "invalid hpack huffman";
                 }
@@ -558,7 +558,9 @@ namespace socklib {
 
         static HpkErr huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin, unsigned int& allone) {
             for (;;) {
-                if (!t) return HpackError::invalid_value;
+                if (!t) {
+                    return HpackError::invalid_value;
+                }
                 if (t->has_c) {
                     c = t->c;
                     fin = t;
