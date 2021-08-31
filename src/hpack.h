@@ -91,7 +91,7 @@ namespace socklib {
         }
 
        public:
-        constexpr bitvec_t(std::initializer_list<int> init) {
+        constexpr bitvec_t(std::initializer_list<int> init) noexcept {
             size_ = init.size();
             for (auto i = 0; i < size_; i++) {
                 unsigned int bit = init.begin()[i] ? 1 : 0;
@@ -557,18 +557,21 @@ namespace socklib {
         }
 
         static HpkErr huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin, unsigned int& allone) {
-            if (!t) return HpackError::invalid_value;
-            if (t->has_c) {
-                c = t->c;
-                fin = t;
-                return true;
+            for (;;) {
+                if (!t) return HpackError::invalid_value;
+                if (t->has_c) {
+                    c = t->c;
+                    fin = t;
+                    return true;
+                }
+                h2huffman_tree* next = r.get() ? t->one : t->zero;
+                allone = (allone && t->one == next) ? allone + 1 : 0;
+                if (!r.incremant()) {
+                    return HpackError::too_short_number;
+                }
+                t = next;
             }
-            h2huffman_tree* next = r.get() ? t->one : t->zero;
-            allone = (allone && t->one == next) ? allone + 1 : 0;
-            if (!r.incremant()) {
-                return HpackError::too_short_number;
-            }
-            return huffman_decode_achar(c, r, next, fin, allone);
+            //return huffman_decode_achar(c, r, next, fin, allone);
         }
 
         static HpkErr huffman_decode(std::string& res, std::string& src) {
@@ -587,6 +590,9 @@ namespace socklib {
                         break;
                     }
                     return tmp;
+                }
+                if (fin->eos) {
+                    return HpackError::invalid_value;
                 }
                 res.push_back(c);
             }
