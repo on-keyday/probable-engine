@@ -92,8 +92,9 @@ namespace socklib {
             return true;
         }
 
-        virtual H2Err serialize(commonlib2::Serializer<std::string>& se, Http2Conn*) {
-            return serialize_impl(0, se);  //must override!
+        //framesize will be Length octet
+        virtual H2Err serialize(unsigned int framesize, commonlib2::Serializer<std::string>& se, Http2Conn*) {
+            return serialize_impl(framesize, se);
         }
 
        protected:
@@ -264,7 +265,14 @@ namespace socklib {
 
         H2Err send(H2Frame& input) {
             commonlib2::Serializer<std::string> se;
-            TRY(input.serialize(se, this));
+            unsigned int& fsize = settings[(unsigned short)H2PredefinedSetting::max_frame_size];
+            if (fsize == 0) {
+                fsize = 0xffff;
+            }
+            else if (fsize > 0xffffff) {
+                return H2Error::frame_size;
+            }
+            TRY(input.serialize(fsize, se, this));
             return conn->write(se.get());
         }
 
@@ -285,18 +293,46 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
-            unsigned int& fsize = t->settings[(unsigned short)H2PredefinedSetting::max_frame_size];
-            if (fsize == 0) {
-                fsize = 0xffff;
-            }
-            else if (fsize > 0xffffff) {
-                return H2Error::frame_size;
-            }
-            size_t fixed = (size_t)fsize;
+        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             size_t idx = 0;
-            while (data_.size() - idx) {
+            unsigned char plus = 0;
+            H2Flag flagcpy = flag;
+            flag &= ~H2Flag::end_stream;
+            if (!any(flag & H2Flag::padded)) {
+                padding = 0;
             }
+            else {
+                plus = 1;
+            }
+            size_t willsize = fsize - padding - plus, padoct = padding + plus;
+            while (data_.size() - idx) {
+                size_t appsize = data_.size() - idx;
+                if (appsize + padoct < fsize) {
+                    flag = flagcpy;
+                    std::string_view to_write(data_.data() + idx, data_.data() + data_.size());
+                    idx = data_.size();
+                    H2Frame::serialize((unsigned int)(appsize + padoct), se, t);
+                    if (any(flag & H2Flag::padded)) {
+                        se.write(padding);
+                    }
+                    se.write_byte(to_write);
+                    se.write_byte(std::string(padding, '\0'));
+                }
+                else {
+                    std::string_view to_write(data_.data() + idx, data_.data() + idx + willsize);
+                    idx += willsize;
+                    H2Frame::serialize(fsize, se, t);
+                    if (any(flag & H2Flag::padded)) {
+                        se.write(padding);
+                    }
+                    se.write_byte(to_write);
+                    se.write_byte(std::string(padding, '\0'));
+                    TRY(t->conn->write(se.get()));
+                    se.get().clear();
+                }
+            }
+            flag = flagcpy;
+            return true;
         }
 
         H2DataFrame* data() override {
