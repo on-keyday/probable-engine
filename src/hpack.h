@@ -104,7 +104,7 @@ namespace socklib {
             return (bool)(bits & (1 << shift(idx)));
         }
 
-        constexpr bool size() const {
+        constexpr size_t size() const {
             return size_;
         }
 
