@@ -121,7 +121,7 @@ namespace socklib {
             if (getaddrinfo(host, service, &hint, &got) != 0) {
                 return invalid_socket;
             }
-            auto port_net = commonlib2::translate_byte_net_and_host<unsigned short>((char*)&port);
+            auto port_net = commonlib2::translate_byte_net_and_host<unsigned short>(&port);
             int sock = invalid_socket;
             for (auto p = got; p; p = p->ai_next) {
                 sockaddr_in* addr = (sockaddr_in*)p->ai_addr;
@@ -307,7 +307,7 @@ namespace socklib {
                     }
                 }
                 int sock = invalid_socket;
-                auto port_net = commonlib2::translate_byte_net_and_host<unsigned short>((char*)&port);
+                auto port_net = commonlib2::translate_byte_net_and_host<unsigned short>(&port);
                 for (auto p = sv.copy; p; p = p->ai_next) {
                     sockaddr_in* addr = (sockaddr_in*)p->ai_addr;
                     if (port_net) {

@@ -596,13 +596,13 @@ namespace PROJECT_NAME {
         }c;
         if(!r){
             if (!ctx.intotal) {
-                c.ints[7] = translate_byte_net_and_host<unsigned long long>((char*)&ctx.total);
+                c.ints[7] = translate_byte_net_and_host<unsigned long long>(&ctx.total);
                 ctx.calc(c.bits);
                 ctx.intotal = true;
             }
             int count=0;
             for(auto& i:ctx.h){
-                unsigned int be=translate_byte_net_and_host<unsigned int>((char*)&i);
+                unsigned int be=translate_byte_net_and_host<unsigned int>(&i);
                 for(auto k=0;k<4;k++){
                     ctx.result[count]=reinterpret_cast<char*>(&be)[k];
                     count++;
@@ -617,13 +617,13 @@ namespace PROJECT_NAME {
             c.bits[sz]=0x80;
             ctx.intotal=true;
             if(sz<56){
-                c.ints[7]=translate_byte_net_and_host<unsigned long long>((char*)&ctx.total);
+                c.ints[7]=translate_byte_net_and_host<unsigned long long>(&ctx.total);
                 ctx.calc(c.bits);
             }
             else{
                 ctx.calc(c.bits);
                 memset(c.bits,0,64);
-                c.ints[7]=translate_byte_net_and_host<unsigned long long>((char*)&ctx.total);
+                c.ints[7]=translate_byte_net_and_host<unsigned long long>(&ctx.total);
                 ctx.calc(c.bits);
             }
         }

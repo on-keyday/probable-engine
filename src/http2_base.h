@@ -92,25 +92,33 @@ namespace socklib {
             return true;
         }
 
-        virtual H2Err serialize(commonlib2::Serializer<std::string&>& se) {
+        virtual H2Err serialize(commonlib2::Serializer<std::string>& se, Http2Conn*) {
             return serialize_impl(0, se);  //must override!
         }
 
        protected:
-        H2Err serialize_impl(int len, commonlib2::Serializer<std::string&>& se) {
-            if (len < 0 || len > 0xffffff) {
+        H2Err serialize_impl(unsigned int len, commonlib2::Serializer<std::string>& se) {
+            if (len > 0xffffff || streamid < 0) {
                 return H2Error::protocol;
             }
-            int len_net = commonlib2::translate_byte_net_and_host<int>(&len);
+            len <<= 8;
+            unsigned int len_net = commonlib2::translate_byte_net_and_host<unsigned int>(&len);
+            se.write_byte((char*)&len_net, 3);
+            se.template write_as<unsigned char>(type);
+            se.template write_as<unsigned char>(flag);
+            unsigned int id_net = commonlib2::translate_byte_net_and_host<int>(&streamid);
+            se.template write_as<unsigned int>(id_net);
+            return true;
         }
 
-        H2Err remove_padding(std::string& buf, int len) {
+        H2Err remove_padding(std::string& buf, int len, unsigned char& padding) {
             unsigned char d = (unsigned char)buf[0];
             buf.erase(0, 1);
             if ((int)d > len) {
                 return H2Error::frame_size;
             }
             buf.erase(len - d);
+            padding = d;
             return true;
         }
 
@@ -161,6 +169,8 @@ namespace socklib {
         virtual H2WindowUpdateFrame* window_update() {
             return nullptr;
         }
+
+        virtual ~H2Frame() noexcept {}
     };
 
     template <class Frame, class ConnPtr>
@@ -173,6 +183,7 @@ namespace socklib {
         using SettingTable = std::map<unsigned short, unsigned int>;
 
        private:
+        friend struct H2DataFrame;
         friend struct H2HeaderFrame;
         friend struct H2SettingsFrame;
         friend struct H2PushPromiseFrame;
@@ -252,6 +263,9 @@ namespace socklib {
         }
 
         H2Err send(H2Frame& input) {
+            commonlib2::Serializer<std::string> se;
+            TRY(input.serialize(se, this));
+            return conn->write(se.get());
         }
 
         bool recvable() {
@@ -261,13 +275,28 @@ namespace socklib {
 
     struct H2DataFrame : H2Frame {
         std::string data_;
+        unsigned char padding = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
-                TRY(remove_padding(v.buf, v.len));
+                TRY(remove_padding(v.buf, v.len, padding));
             }
             data_ = std::move(v.buf);
             return true;
+        }
+
+        H2Err serialize(commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+            unsigned int& fsize = t->settings[(unsigned short)H2PredefinedSetting::max_frame_size];
+            if (fsize == 0) {
+                fsize = 0xffff;
+            }
+            else if (fsize > 0xffffff) {
+                return H2Error::frame_size;
+            }
+            size_t fixed = (size_t)fsize;
+            size_t idx = 0;
+            while (data_.size() - idx) {
+            }
         }
 
         H2DataFrame* data() override {
@@ -281,10 +310,11 @@ namespace socklib {
         int depends = 0;
         unsigned char weight = 0;
         bool set_priority = false;
+        unsigned char padding = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
-                TRY(remove_padding(v.buf, v.len));
+                TRY(remove_padding(v.buf, v.len, padding));
             }
             if (any(flag & H2Flag::priority)) {
                 TRY(read_depends(exclusive, depends, weight, v.buf));
@@ -367,13 +397,14 @@ namespace socklib {
     struct H2PushPromiseFrame : H2Frame {
         int promiseid = 0;
         HttpConn::Header header_;
+        unsigned char padding = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (!t->settings[(unsigned short)H2PredefinedSetting::enable_push]) {
                 return H2Error::protocol;
             }
             if (any(flag & H2Flag::padded)) {
-                TRY(remove_padding(v.buf, v.len));
+                TRY(remove_padding(v.buf, v.len, padding));
             }
             commonlib2::Deserializer<std::string&> se(v.buf);
             TRY(se.read_ntoh(promiseid));
