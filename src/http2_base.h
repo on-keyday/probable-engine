@@ -94,11 +94,11 @@ namespace socklib {
 
         //framesize will be Length octet
         virtual H2Err serialize(unsigned int framesize, commonlib2::Serializer<std::string>& se, Http2Conn*) {
-            return serialize_impl(framesize, se);
+            return serialize_impl(framesize, streamid, type, flag, se);
         }
 
        protected:
-        H2Err serialize_impl(unsigned int len, commonlib2::Serializer<std::string>& se) {
+        static H2Err serialize_impl(unsigned int len, int streamid, H2FType type, H2Flag flag, commonlib2::Serializer<std::string>& se) {
             if (len > 0xffffff || streamid < 0) {
                 return H2Error::protocol;
             }
@@ -112,7 +112,7 @@ namespace socklib {
             return true;
         }
 
-        H2Err remove_padding(std::string& buf, int len, unsigned char& padding) {
+        static H2Err remove_padding(std::string& buf, int len, unsigned char& padding) {
             unsigned char d = (unsigned char)buf[0];
             buf.erase(0, 1);
             if ((int)d > len) {
@@ -123,7 +123,18 @@ namespace socklib {
             return true;
         }
 
-        H2Err read_depends(bool& exclusive, int& id, unsigned char& weight, std::string& buf) {
+        static H2Err write_depends(bool exclusive, int id, unsigned char weight, commonlib2::Serializer<std::string>& se) {
+            TRY(id >= 0);
+            unsigned int mask = exclusive ? commonlib2::msb_on<unsigned int>() : 0;
+            unsigned int to_write = (unsigned int)id;
+            to_write |= mask;
+            to_write = commonlib2::translate_byte_net_and_host<unsigned int>(&to_write);
+            se.write(to_write);
+            se.write(weight);
+            return true;
+        }
+
+        static H2Err read_depends(bool& exclusive, int& id, unsigned char& weight, std::string& buf) {
             commonlib2::Deserializer<std::string&> se(buf);
             unsigned int id_ = 0;
             TRY(se.read_ntoh(id_));
@@ -345,7 +356,7 @@ namespace socklib {
         bool exclusive = false;
         int depends = 0;
         unsigned char weight = 0;
-        bool set_priority = false;
+        //bool set_priority = false;
         unsigned char padding = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
@@ -354,7 +365,7 @@ namespace socklib {
             }
             if (any(flag & H2Flag::priority)) {
                 TRY(read_depends(exclusive, depends, weight, v.buf));
-                set_priority = true;
+                //set_priority = true;
             }
             if (!any(flag & H2Flag::end_headers)) {
                 TRY(t->read_continuous(v.id, v.buf));
@@ -364,6 +375,16 @@ namespace socklib {
             }
             return true;
         }
+
+        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+            std::string hpacked;
+            if (!Hpack::encode<true>(header_, hpacked, t->local)) {
+                return H2Error::compression;
+            }
+            if (any(flag & H2Flag::priority)) {
+            }
+        }
+
         H2HeaderFrame* header() override {
             return this;
         }

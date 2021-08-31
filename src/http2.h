@@ -37,7 +37,7 @@ namespace socklib {
                 for (auto& v : h->header_) {
                     header.insert(v);
                 }
-                if (h->set_priority) {
+                if (any(h->flag & H2Flag::priority)) {
                     if (streamid == h->depends) {
                         return H2Error::protocol;
                     }
