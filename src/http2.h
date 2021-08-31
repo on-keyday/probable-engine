@@ -31,7 +31,7 @@ namespace socklib {
         H2Stream(int id, Http2Conn* c)
             : streamid(id), base(c) {}
 
-        H2Err apply(std::shared_ptr<H2Frame>& frame) {
+        H2Err recv_apply(std::shared_ptr<H2Frame>& frame) {
             TRY(frame && (frame->streamid == streamid));
             if (auto h = frame->header()) {
                 for (auto& v : h->header_) {

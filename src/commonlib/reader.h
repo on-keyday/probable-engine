@@ -16,25 +16,25 @@
 
 namespace PROJECT_NAME {
 
-    template <class T>
-    T translate_byte_as_is(const char* s) {
+    template <class T,class C=char>
+    T translate_byte_as_is(const C* s) {
         T res = T();
         res.~T();
         char* res_p = (char*)&res;
         for (auto i = 0u; i < sizeof(T); i++) {
-            res_p[i] = s[i];
+            res_p[i] = ((unsigned char*)(s))[i];
         }
         return res;
     }
 
-    template <class T>
-    T translate_byte_reverse(const char* s) {
+    template <class T,class C=char>
+    T translate_byte_reverse(const C* s) {
         T res = T();
         res.~T();
         char* res_p = (char*)&res;
         auto k = 0ull;
         for (auto i = sizeof(T) - 1;; i--) {
-            res_p[i] = s[k];
+            res_p[i] = ((unsigned char*)(s))[k];
             if (i == 0) break;
             k++;
         }
@@ -53,8 +53,8 @@ namespace PROJECT_NAME {
 #endif
     }
 
-    template <class T>
-    T translate_byte_net_and_host(const char* s) {
+    template <class T,class C>
+    T translate_byte_net_and_host(const C* s) {
 #if defined(__BIG_ENDIAN__)
         return translate_byte_as_is<T>(s);
 #elif defined(__LITTLE_ENDIAN__)

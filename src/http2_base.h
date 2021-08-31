@@ -92,7 +92,18 @@ namespace socklib {
             return true;
         }
 
+        virtual H2Err serialize(commonlib2::Serializer<std::string&>& se) {
+            return serialize_impl(0, se);  //must override!
+        }
+
        protected:
+        H2Err serialize_impl(int len, commonlib2::Serializer<std::string&>& se) {
+            if (len < 0 || len > 0xffffff) {
+                return H2Error::protocol;
+            }
+            int len_net = commonlib2::translate_byte_net_and_host<int>(&len);
+        }
+
         H2Err remove_padding(std::string& buf, int len) {
             unsigned char d = (unsigned char)buf[0];
             buf.erase(0, 1);
@@ -238,6 +249,9 @@ namespace socklib {
             commonlib2::HTTP2Frame<std::string> frame;
             TRY(get_a_frame(frame));
             return make_frame(frame, res);
+        }
+
+        H2Err send(H2Frame& input) {
         }
 
         bool recvable() {
