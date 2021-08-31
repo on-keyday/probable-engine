@@ -41,6 +41,15 @@ namespace socklib {
         unimplemented = ~0,
     };
 
+    enum class H2PredefinedSetting : unsigned short {
+        header_table_size = 1,
+        enable_push = 2,
+        max_concurrent_streams = 3,
+        initial_window_size = 4,
+        max_frame_size = 5,
+        max_header_list_size = 6,
+    };
+
     using H2Err = commonlib2::EnumWrap<H2Error, H2Error::none, H2Error::internal>;
 
     /*struct H2Err {
@@ -155,6 +164,7 @@ namespace socklib {
        private:
         friend struct H2HeaderFrame;
         friend struct H2SettingsFrame;
+        friend struct H2PushPromiseFrame;
         size_t streamid_max = 0;
         Hpack::DynamicTable local;
         Hpack::DynamicTable remote;
@@ -211,14 +221,14 @@ namespace socklib {
     };
 
     struct H2DataFrame : H2Frame {
-        std::string data;
+        std::string data_;
         H2DataFrame() {}
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
                 TRY(remove_padding(v.buf, v.len));
             }
-            data = std::move(v.buf);
+            data_ = std::move(v.buf);
             return true;
         }
 
@@ -228,7 +238,7 @@ namespace socklib {
     };
 
     struct H2HeaderFrame : H2Frame {
-        HttpConn::Header header;
+        HttpConn::Header header_;
         bool exclusive = false;
         int depends = 0;
         unsigned char weight = 0;
@@ -245,7 +255,7 @@ namespace socklib {
             if (!any(flag & H2Flag::end_headers)) {
                 TRY(t->read_continuous(v.id, v.buf));
             }
-            if (!Hpack::decode(header, v.buf, t->remote)) {
+            if (!Hpack::decode(header_, v.buf, t->remote)) {
                 return H2Error::compression;
             }
             return true;
@@ -317,8 +327,54 @@ namespace socklib {
     };
 
     struct H2PushPromiseFrame : H2Frame {
-        HttpConn::Header header;
+        int promiseid = 0;
+        HttpConn::Header header_;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
+            if (!t->settings[(unsigned short)H2PredefinedSetting::enable_push]) {
+                return H2Error::protocol;
+            }
+            if (any(flag & H2Flag::padded)) {
+                TRY(remove_padding(v.buf, v.len));
+            }
+            commonlib2::Deserializer<std::string&> se(v.buf);
+            TRY(se.read_ntoh(promiseid));
+            if (promiseid <= 0) {
+                return H2Error::protocol;
+            }
+            v.buf.erase(0, 4);
+            if (!any(flag & H2Flag::end_headers)) {
+                TRY(t->read_continuous(v.id, v.buf));
+            }
+            if (!Hpack::decode(header_, v.buf, t->remote)) {
+                return H2Error::compression;
+            }
+            return true;
+        }
+
+        H2PushPromiseFrame* push_promise() override {
+            return this;
+        }
+    };
+
+    struct H2PingFrame : H2Frame {
+        unsigned char data_[8] = {0};
+        bool ack = false;
+        H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
+            H2Frame::parse(v, t);
+            if (v.len != 8) {
+                return H2Error::frame_size;
+            }
+            if (v.id != 0) {
+                return H2Error::protocol;
+            }
+            ack = any(flag & H2Flag::ack);
+            memmove(data_, v.buf.data(), 8);
+            return true;
+        }
+
+        H2PingFrame* ping() override {
+            return this;
         }
     };
 #undef TRY
