@@ -173,7 +173,7 @@ namespace socklib {
 
        public:
         Http2Conn(std::shared_ptr<Conn>&& in)
-            : r(conn), AppLayer(std::move(in)) {}
+            : r(in), AppLayer(std::move(in)) {}
 
        protected:
         H2Err make_frame(commonlib2::HTTP2Frame<std::string>& frame, std::shared_ptr<H2Frame>& res) {
