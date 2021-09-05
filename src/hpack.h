@@ -790,7 +790,12 @@ namespace socklib {
                 }
                 else if (tmp & 0x40 || tmp & 0x20) {
                     size_t sz = 0;
-                    TRY(decode_integer<6>(se, sz, tmp));
+                    if (tmp & 0x40) {
+                        TRY(decode_integer<6>(se, sz, tmp));
+                    }
+                    else {
+                        TRY(decode_integer<5>(se, sz, tmp));
+                    }
                     if (sz == 0) {
                         TRY(read_two_literal());
                     }

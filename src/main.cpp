@@ -451,22 +451,23 @@ int main(int, char**) {
     socklib::Hpack::encode<true>(header, res, table);
     socklib::Hpack::decode(decoded, res, other);*/
 
-    auto conn = socklib::Http2::open("https://www.google.com", false, cacert);
+    auto conn = socklib::Http2::open("https://nghttp2.org/httpbin/", false, cacert);
     if (!conn) return -1;
     socklib::H2Stream *st, *c1;
     conn->get_stream(0, st);
     conn->make_stream(1, c1);
     st->send_settings({});
     c1->send_header(
-        {{":authority", "www.google.com"},
+        {{":authority", "nghttp2.org"},
          {":scheme", "https"},
          {":method", "GET"},
-         {":path", "/"}},
+         {":path", "/httpbin/"}},
         false, 0, true);
     while (true) {
         if (conn->recvable() || socklib::Selecter::waitone(conn->borrow(), 1, 0)) {
             std::shared_ptr<socklib::H2Frame> frame;
             if (auto e = conn->recv(frame); !e) {
+                std::cout << "error\n";
                 return -1;
             }
             if (auto c = frame->settings()) {
@@ -498,6 +499,9 @@ int main(int, char**) {
             }
             else if (auto e = frame->rst_stream()) {
                 std::cout << "rst stream\n";
+                break;
+            }
+            else if (auto e = frame->goaway()) {
                 break;
             }
         }
