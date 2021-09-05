@@ -67,8 +67,16 @@ namespace socklib {
     struct H2Context {
         Http2Conn* conn;
 
-        H2Err send_data(const char* data, size_t size) {
+        H2Err send_data(const char* data, size_t size, bool padding = false, unsigned char padlen = 0, bool endstream = false) {
             H2DataFrame frame;
+            frame.data_ = std::string(data, size);
+            if (padding) {
+                frame.flag |= H2Flag::padded;
+                frame.padding = padlen;
+            }
+            if (endstream) {
+                frame.flag |= H2Flag::end_stream;
+            }
         }
     };
 #undef TRY

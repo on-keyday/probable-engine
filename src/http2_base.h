@@ -80,8 +80,8 @@ namespace socklib {
     if (auto _H_tryres = (__VA_ARGS__); !_H_tryres) return _H_tryres
 
     struct H2Frame {
-        H2FType type;
-        H2Flag flag;
+        H2FType type = H2FType::unknown;
+        H2Flag flag = H2Flag::none;
         int streamid;
 
         constexpr H2Frame() {}
