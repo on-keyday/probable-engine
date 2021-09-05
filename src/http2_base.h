@@ -248,8 +248,7 @@ namespace socklib {
 
        public:
         Http2Conn(std::shared_ptr<Conn>&& in)
-            : AppLayer(std::move(in)) {
-            r = SockReader(conn);
+            : AppLayer(std::move(in)), r(conn) {
         }
 
        protected:
