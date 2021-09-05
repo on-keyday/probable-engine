@@ -413,7 +413,7 @@ void server_proc() {
 #include "http2.h"
 
 int main(int, char**) {
-    server_proc();
+    //server_proc();
     /*std::string str, dec;
     const char* src =
         (const char*)
@@ -453,10 +453,11 @@ int main(int, char**) {
     if (!socklib::Http2::open(ctx, "https://google.com", false, cacert)) {
         return false;
     }
-    socklib::H2Stream* st;
+    socklib::H2Stream *st, *c1;
     ctx.get_stream(0, st);
+    ctx.make_stream(1, c1);
     st->send_settings({});
-    st->send_header(
+    c1->send_header(
         {{":authority", "google.com"},
          {":scheme", "https"},
          {":method", "GET"},
@@ -465,6 +466,20 @@ int main(int, char**) {
         if (socklib::Selecter::waitone(ctx.conn->borrow(), 1, 0)) {
             std::shared_ptr<socklib::H2Frame> frame;
             if (auto e = ctx.conn->recv(frame); !e) {
+                return -1;
+            }
+            if (auto c = frame->settings()) {
+                if (any(c->flag & socklib::H2Flag::ack)) {
+                }
+                else {
+                    st->send_settings({}, true);
+                }
+            }
+            else if (auto d = frame->data()) {
+                std::cout << "data\n";
+            }
+            else if (auto d = frame->header()) {
+                std::cout << "header\n";
             }
         }
     }

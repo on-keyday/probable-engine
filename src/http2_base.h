@@ -284,9 +284,9 @@ namespace socklib {
                 if (frame.continues) {
                     TRY(r.ref().reading());
                 }
-            }
-            if (!frame.succeed) {
-                return false;
+                if (!frame.succeed) {
+                    return false;
+                }
             }
             r.ref().ref().erase(0, 9 + frame.buf.size());
             r.seek(0);

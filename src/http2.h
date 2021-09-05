@@ -163,7 +163,7 @@ namespace socklib {
         }
 
         bool get_stream(int id, H2Stream*& stream) {
-            if (id <= 0) return false;
+            if (id < 0) return false;
             if (auto found = streams.find(id); found != streams.end()) {
                 stream = &found->second;
                 return true;
