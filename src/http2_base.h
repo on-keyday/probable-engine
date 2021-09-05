@@ -487,7 +487,7 @@ namespace socklib {
         }
 
         H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
-            H2Frame::serialize(5, se, t);
+            TRY(H2Frame::serialize(5, se, t));
             return write_depends(exclusive, depends, weight, se);
         }
 
@@ -507,7 +507,7 @@ namespace socklib {
         }
 
         H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
-            H2Frame::serialize(4, se, t);
+            TRY(H2Frame::serialize(4, se, t));
             se.write_hton(errcode);
             return true;
         }
@@ -615,7 +615,9 @@ namespace socklib {
                     se.write('\0');
                 }
             };
-            write_continuous(write_promise, se, fsize, hpacked, flag, flagcpy, padding, plus);
+            TRY(write_continuous(write_promise, se, fsize, hpacked, flag, flagcpy, padding, plus));
+            flag = flagcpy;
+            return true;
         }
 
         H2PushPromiseFrame* push_promise() override {
@@ -625,7 +627,7 @@ namespace socklib {
 
     struct H2PingFrame : H2Frame {
         unsigned char data_[8] = {0};
-        bool ack = false;
+        //bool ack = false;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (v.len != 8) {
@@ -634,8 +636,13 @@ namespace socklib {
             if (v.id != 0) {
                 return H2Error::protocol;
             }
-            ack = any(flag & H2Flag::ack);
             memmove(data_, v.buf.data(), 8);
+            return true;
+        }
+
+        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+            TRY(H2Frame::serialize(8, se, t));
+            se.write_byte(data_, 8);
             return true;
         }
 
@@ -661,6 +668,17 @@ namespace socklib {
             TRY(se.read_ntoh(errcode));
             v.buf.erase(0, 8);
             additionaldata = std::move(v.buf);
+            return true;
+        }
+
+        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+            if (additionaldata.size() + 9 + 8 > fsize) {
+                return H2Error::frame_size;
+            }
+            TRY(H2Frame::serialize((unsigned int)additionaldata.size() + 8, se, t));
+            se.write_hton(lastid);
+            se.write_hton(errcode);
+            se.write_byte(additionaldata);
             return true;
         }
 
