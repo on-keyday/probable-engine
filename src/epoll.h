@@ -17,7 +17,7 @@ namespace socklib {
         }
 
         bool del(std::shared_ptr<Conn>& fd) {
-            if (fds.find(fd->sock) != fds.end()) return false;
+            if (fds.find(fd->sock) == fds.end()) return false;
             fds.erase(fd->sock);
             return true;
         }

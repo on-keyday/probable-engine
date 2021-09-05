@@ -97,7 +97,7 @@ namespace PROJECT_NAME {
         std::string category;
         unsigned int ccc = 0;  //Canonical_Combining_Class
         std::string bidiclass;
-        std::string east_asian_wides;
+        std::string east_asian_width;
         Decomposition decomposition;
         Numeric numeric;
         bool mirrored = false;
@@ -197,20 +197,20 @@ namespace PROJECT_NAME {
 
     inline void guess_east_asian_wide(CodeInfo& info) {
         if (info.decomposition.command == "<wide>") {
-            info.east_asian_wides = "F";
+            info.east_asian_width = "F";
         }
         else if (info.decomposition.command == "<narrow>") {
-            info.east_asian_wides = "H";
+            info.east_asian_width = "H";
         }
         else if (info.name.find("CJK") != ~0 || info.name.find("HIRAGANA") != ~0 ||
                  info.name.find("KATAKANA") != ~0) {
-            info.east_asian_wides = "W";
+            info.east_asian_width = "W";
         }
         else if (info.name.find("GREEK") != ~0) {
-            info.east_asian_wides = "A";
+            info.east_asian_width = "A";
         }
         else {
-            info.east_asian_wides = "U";
+            info.east_asian_width = "U";
         }
     }
 
@@ -221,7 +221,7 @@ namespace PROJECT_NAME {
         info.codepoint = (char32_t)codepoint;
         info.name = d[1];
         info.category = d[2];
-        Reader("0x" + d[3]) >> info.ccc;
+        Reader(d[3]) >> info.ccc;
         info.bidiclass = d[4];
         parse_decomposition(d[5], info.decomposition);
         parse_numeric(d, info);
@@ -341,7 +341,7 @@ namespace PROJECT_NAME {
                 Reader("0x" + code[0]) >> c;
                 if (auto found = data.codes.find(c); found != data.codes.end()) {
                     CodeInfo& info = (*found).second;
-                    info.east_asian_wides = e[1];
+                    info.east_asian_width = e[1];
                 }
             }
             else if (code.size() == 2) {
@@ -351,7 +351,7 @@ namespace PROJECT_NAME {
                 for (auto i = first; i <= last; i++) {
                     if (auto found = data.codes.find(i); found != data.codes.end()) {
                         CodeInfo& info = (*found).second;
-                        info.east_asian_wides = e[1];
+                        info.east_asian_width = e[1];
                     }
                 }
             }
@@ -384,17 +384,17 @@ namespace PROJECT_NAME {
             return false;
         }
         w.write_hton(info.codepoint);
-        w.template write_as<char>(info.name.size());
+        w.template write_as<unsigned char>(info.name.size());
         w.write_byte(info.name);
-        w.template write_as<char>(info.category.size());
+        w.template write_as<unsigned char>(info.category.size());
         w.write_byte(info.category);
-        w.template write_as<char>(info.ccc);
-        w.template write_as<char>(info.bidiclass.size());
+        w.template write_as<unsigned char>(info.ccc);
+        w.template write_as<unsigned char>(info.bidiclass.size());
         w.write_byte(info.bidiclass);
-        w.template write_as<char>(info.decomposition.command.size());
+        w.template write_as<unsigned char>(info.decomposition.command.size());
         w.write_byte(info.decomposition.command);
         size_t size = info.decomposition.to.size();
-        w.template write_as<char>(size * sizeof(char32_t));
+        w.template write_as<unsigned char>(size * sizeof(char32_t));
         w.write_hton(info.decomposition.to.data(), size);
         auto write_numeric3 = [&] {
             if (info.numeric.flag & large_numbit) {
@@ -410,11 +410,11 @@ namespace PROJECT_NAME {
             }
         };
         if (version <= 2) {
-            w.template write_as<char>(info.numeric.v1);
-            w.template write_as<char>(info.numeric.v2);
+            w.template write_as<unsigned char>(info.numeric.v1);
+            w.template write_as<unsigned char>(info.numeric.v2);
             if (version == 0) {
                 std::string str = info.numeric.stringify();
-                w.template write_as<char>(str.size());
+                w.template write_as<unsigned char>(str.size());
                 w.write_byte(str);
             }
             else if (version >= 1) {
@@ -431,14 +431,14 @@ namespace PROJECT_NAME {
             }
             w.template write_as<unsigned char>(info.numeric.flag|fl);
             if (info.numeric.flag & has_digit) {
-                w.template write_as<char>(info.numeric.v1);
+                w.template write_as<unsigned char>(info.numeric.v1);
             }
             if (info.numeric.flag & has_decimal) {
-                w.template write_as<char>(info.numeric.v2);
+                w.template write_as<unsigned char>(info.numeric.v2);
             }
             write_numeric3();
         }
-        w.template write_as<char>(info.mirrored);
+        w.template write_as<unsigned char>(info.mirrored);
         if (version <= 2) {
             w.write_hton(info.casemap.upper);
             w.write_hton(info.casemap.lower);
@@ -457,8 +457,8 @@ namespace PROJECT_NAME {
             }
         }
         if (version >= 2) {
-            w.template write_as<unsigned char>(info.east_asian_wides.size());
-            w.write_byte(info.east_asian_wides);
+            w.template write_as<unsigned char>(info.east_asian_width.size());
+            w.write_byte(info.east_asian_width);
         }
         if(version>=4){
             if(block!=info.block){
@@ -558,7 +558,7 @@ namespace PROJECT_NAME {
         }
         if (version >= 2) {
             if (!r.template read_as<unsigned char>(size)) return false;
-            if (!r.read_byte(info.east_asian_wides, size)) return false;
+            if (!r.read_byte(info.east_asian_width, size)) return false;
         }
         else {
             guess_east_asian_wide(info);

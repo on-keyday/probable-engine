@@ -413,7 +413,7 @@ void server_proc() {
 #include "http2.h"
 
 int main(int, char**) {
-    //server_proc();
+    server_proc();
     /*std::string str, dec;
     const char* src =
         (const char*)
