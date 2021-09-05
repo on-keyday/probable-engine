@@ -18,7 +18,7 @@ namespace socklib {
         std::string query_;
         bool done = false;
         bool recving = false;
-        unsigned int waiting = 0;
+        std::uint32_t waiting = 0;
         HttpConn(std::shared_ptr<Conn>&& in, std::string&& hostname, std::string&& path, std::string&& query)
             : AppLayer(std::move(in)), host(hostname), path_(path), query_(query) {}
 

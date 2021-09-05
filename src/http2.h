@@ -23,17 +23,19 @@ namespace socklib {
         std::string payload;
         Http2Conn* conn = nullptr;
         int depend = 0;
-        unsigned char weight = 0;
+        std::uint8_t weight = 0;
         bool exclusive = false;
 
-        unsigned int errorcode = 0;
+        std::int32_t window = 0;
+
+        std::uint32_t errorcode = 0;
         H2Stream() {}
 
         H2Stream(int id, Http2Conn* c)
             : streamid(id), conn(c) {}
 
         H2Err recv_apply(std::shared_ptr<H2Frame>& frame) {
-            TRY(frame && (frame->streamid == streamid));
+            TRY(conn && frame && (frame->streamid == streamid));
             if (auto h = frame->header()) {
                 for (auto& v : h->header_) {
                     header.insert(v);
@@ -64,7 +66,7 @@ namespace socklib {
             }
         }
 
-        H2Err send_data(const char* data, size_t size, bool padding = false, unsigned char padlen = 0, bool endstream = false) {
+        H2Err send_data(const char* data, size_t size, bool padding = false, std::uint8_t padlen = 0, bool endstream = false) {
             TRY(conn && streamid != 0);
             H2DataFrame frame;
             frame.streamid = streamid;
@@ -80,8 +82,8 @@ namespace socklib {
         }
 
         H2Err send_header(const HttpConn::Header& header,
-                          bool padding = false, unsigned char padlen = 0, bool endstream = false,
-                          bool has_priority = false, bool exclusive = false, int depends = 0, unsigned char weight = 0) {
+                          bool padding = false, std::uint8_t padlen = 0, bool endstream = false,
+                          bool has_priority = false, bool exclusive = false, int depends = 0, std::uint8_t weight = 0) {
             TRY(conn && streamid != 0);
             H2HeaderFrame frame;
             frame.streamid = streamid;
@@ -128,13 +130,23 @@ namespace socklib {
             }
             return conn->send(frame);
         }
+
+        H2Err send_windowupdate(int up) {
+            TRY(conn);
+            H2WindowUpdateFrame frame;
+            frame.streamid = streamid;
+            frame.value = up;
+            return conn->send(frame);
+        }
     };
 
-    struct Http2Context {
-        std::shared_ptr<Http2Conn> conn = nullptr;
+    struct Http2Context : Http2Conn {
         bool server = false;
         std::map<int, H2Stream> streams;
         int maxid = 0;
+        Http2Context(std::shared_ptr<Conn>&& conn)
+            : Http2Conn(std::move(conn)) {}
+
         H2Err apply(std::shared_ptr<H2Frame>& frame, H2Stream*& stream) {
             stream = nullptr;
             TRY((bool)frame);
@@ -144,7 +156,7 @@ namespace socklib {
                 return found->second.recv_apply(frame);
             }
             else {
-                auto& tmp = streams[frame->streamid] = H2Stream(frame->streamid, conn.get());
+                auto& tmp = streams[frame->streamid] = H2Stream(frame->streamid, this);
                 stream = &tmp;
                 return tmp.recv_apply(frame);
             }
@@ -158,7 +170,7 @@ namespace socklib {
             if ((server && id % 2) || (!server && 1 != id % 2)) {
                 return false;
             }
-            stream = &(streams[id] = H2Stream(id, conn.get()));
+            stream = &(streams[id] = H2Stream(id, this));
             return true;
         }
 
@@ -173,31 +185,30 @@ namespace socklib {
     };
 
     struct Http2 {
-        static bool open(Http2Context& ctx, const char* url, bool encoded = false, const char* cacert = nullptr) {
+        static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr) {
             unsigned short port = 0;
             commonlib2::URLContext<std::string> urlctx;
             std::string path, query;
             if (!Http::setuphttp(url, encoded, port, urlctx, path, query, "https", "https")) {
-                return false;
+                return nullptr;
             }
             auto conn = TCP::open_secure(urlctx.host.c_str(), port, "https", true, cacert, true, "\2h2", 3);
             if (!conn) {
-                return false;
+                return nullptr;
             }
             const unsigned char* data = nullptr;
             unsigned int len = 0;
             SSL_get0_alpn_selected((SSL*)conn->get_ssl(), &data, &len);
             if (len != 2 || !data || data[0] != 'h' || data[1] != '2') {
-                return false;
+                return nullptr;
             }
             if (!conn->write("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
-                return false;
+                return nullptr;
             }
-            auto ret = std::make_shared<Http2Conn>(std::move(conn));
-            ctx.streams[0] = H2Stream(0, ret.get());
-            ctx.server = false;
-            ctx.conn = ret;
-            return true;
+            auto ret = std::make_shared<Http2Context>(std::move(conn));
+            ret->streams[0] = H2Stream(0, ret.get());
+            ret->server = false;
+            return ret;
         }
     };
 #undef TRY

@@ -5,7 +5,7 @@
 #include "hpack.h"
 
 namespace socklib {
-    enum class H2FType : unsigned char {
+    enum class H2FType : std::uint8_t {
         data = 0x0,
         header = 0x1,
         priority = 0x2,
@@ -21,7 +21,7 @@ namespace socklib {
 
     DEFINE_ENUMOP(H2FType)
 
-    enum class H2Flag : unsigned char {
+    enum class H2Flag : std::uint8_t {
         end_stream = 0x1,
         end_headers = 0x4,
         padded = 0x8,
@@ -82,7 +82,7 @@ namespace socklib {
     struct H2Frame {
         H2FType type = H2FType::unknown;
         H2Flag flag = H2Flag::none;
-        int streamid = 0;
+        std::int32_t streamid = 0;
 
         constexpr H2Frame() {}
         constexpr H2Frame(H2FType type)
@@ -96,27 +96,27 @@ namespace socklib {
         }
 
         //framesize will be Length octet
-        virtual H2Err serialize(unsigned int framesize, commonlib2::Serializer<std::string>& se, Http2Conn*) {
+        virtual H2Err serialize(std::uint32_t framesize, commonlib2::Serializer<std::string>& se, Http2Conn*) {
             return serialize_impl(framesize, streamid, type, flag, se);
         }
 
        protected:
-        static H2Err serialize_impl(unsigned int len, int streamid, H2FType type, H2Flag flag, commonlib2::Serializer<std::string>& se) {
+        static H2Err serialize_impl(std::uint32_t len, std::int32_t streamid, H2FType type, H2Flag flag, commonlib2::Serializer<std::string>& se) {
             if (len > 0xffffff || streamid < 0) {
                 return H2Error::protocol;
             }
             len <<= 8;
-            unsigned int len_net = commonlib2::translate_byte_net_and_host<unsigned int>(&len);
+            std::uint32_t len_net = commonlib2::translate_byte_net_and_host<std::uint32_t>(&len);
             se.write_byte((char*)&len_net, 3);
-            se.template write_as<unsigned char>(type);
-            se.template write_as<unsigned char>(flag);
-            unsigned int id_net = commonlib2::translate_byte_net_and_host<int>(&streamid);
-            se.template write_as<unsigned int>(id_net);
+            se.template write_as<std::uint8_t>(type);
+            se.template write_as<std::uint8_t>(flag);
+            std::uint32_t id_net = commonlib2::translate_byte_net_and_host<int>(&streamid);
+            se.template write_as<std::uint32_t>(id_net);
             return true;
         }
 
-        static H2Err remove_padding(std::string& buf, int len, unsigned char& padding) {
-            unsigned char d = (unsigned char)buf[0];
+        static H2Err remove_padding(std::string& buf, int len, std::uint8_t& padding) {
+            std::uint8_t d = (std::uint8_t)buf[0];
             buf.erase(0, 1);
             if ((int)d > len) {
                 return H2Error::frame_size;
@@ -126,23 +126,23 @@ namespace socklib {
             return true;
         }
 
-        static H2Err write_depends(bool exclusive, int id, unsigned char weight, commonlib2::Serializer<std::string>& se) {
+        static H2Err write_depends(bool exclusive, int id, std::uint8_t weight, commonlib2::Serializer<std::string>& se) {
             TRY(id >= 0);
-            unsigned int mask = exclusive ? commonlib2::msb_on<unsigned int>() : 0;
-            unsigned int to_write = (unsigned int)id;
+            std::uint32_t mask = exclusive ? commonlib2::msb_on<std::uint32_t>() : 0;
+            std::uint32_t to_write = (std::uint32_t)id;
             to_write |= mask;
-            to_write = commonlib2::translate_byte_net_and_host<unsigned int>(&to_write);
+            to_write = commonlib2::translate_byte_net_and_host<std::uint32_t>(&to_write);
             se.write(to_write);
             se.write(weight);
             return true;
         }
 
-        static H2Err read_depends(bool& exclusive, int& id, unsigned char& weight, std::string& buf) {
+        static H2Err read_depends(bool& exclusive, int& id, std::uint8_t& weight, std::string& buf) {
             commonlib2::Deserializer<std::string&> se(buf);
-            unsigned int id_ = 0;
+            std::uint32_t id_ = 0;
             TRY(se.read_ntoh(id_));
-            exclusive = (bool)(id_ & commonlib2::msb_on<unsigned int>());
-            id_ &= ~commonlib2::msb_on<unsigned int>();
+            exclusive = (bool)(id_ & commonlib2::msb_on<std::uint32_t>());
+            id_ &= ~commonlib2::msb_on<std::uint32_t>();
             id = (int)id_;
             TRY(se.read_ntoh(weight));
             buf.erase(0, 5);
@@ -150,8 +150,8 @@ namespace socklib {
         }
 
         template <class F>
-        static H2Err write_continuous(int streamid, F&& write_header, commonlib2::Serializer<std::string>& se, unsigned int fsize,
-                                      std::string& hpacked, H2Flag flag, H2Flag flagcpy, unsigned char& padding, unsigned char plus) {
+        static H2Err write_continuous(int streamid, F&& write_header, commonlib2::Serializer<std::string>& se, std::uint32_t fsize,
+                                      std::string& hpacked, H2Flag flag, H2Flag flagcpy, std::uint8_t& padding, std::uint8_t plus) {
             size_t idx = 0;
             if (!any(flag & H2Flag::padded)) {
                 padding = 0;
@@ -161,7 +161,7 @@ namespace socklib {
             }
             if (hpacked.size() + padding + plus <= fsize) {
                 flag = flagcpy;
-                TRY(write_header((unsigned int)(hpacked.size() + padding + plus), hpacked));
+                TRY(write_header((std::uint32_t)(hpacked.size() + padding + plus), hpacked));
             }
             else {
                 std::string_view view(hpacked.data(), hpacked.data() + fsize - (padding + plus));
@@ -231,7 +231,7 @@ namespace socklib {
     }
 
     struct Http2Conn : AppLayer {
-        using SettingTable = std::map<unsigned short, unsigned int>;
+        using SettingTable = std::map<unsigned short, std::uint32_t>;
 
        private:
         friend struct H2DataFrame;
@@ -304,7 +304,7 @@ namespace socklib {
                     return H2Error::protocol;
                 }
                 buf.append(frame.buf);
-                if (frame.flag & (unsigned char)H2Flag::end_headers) {
+                if (frame.flag & (std::uint8_t)H2Flag::end_headers) {
                     break;
                 }
             }
@@ -320,7 +320,7 @@ namespace socklib {
 
         H2Err send(H2Frame& input) {
             commonlib2::Serializer<std::string> se;
-            unsigned int& fsize = remote_settings[(unsigned short)H2PredefinedSetting::max_frame_size];
+            std::uint32_t& fsize = remote_settings[(unsigned short)H2PredefinedSetting::max_frame_size];
             if (fsize < 0xffff) {
                 fsize = 0xffff;
             }
@@ -340,7 +340,7 @@ namespace socklib {
         H2DataFrame()
             : H2Frame(H2FType::data) {}
         std::string data_;
-        unsigned char padding = 0;
+        std::uint8_t padding = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
@@ -350,7 +350,7 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             size_t idx = 0;
             unsigned char plus = 0;
             H2Flag flagcpy = flag;
@@ -362,7 +362,7 @@ namespace socklib {
                 plus = 1;
             }
             size_t willsize = fsize - padding - plus, padoct = padding + plus;
-            auto write_payload = [&](auto& to_write, unsigned int len) {
+            auto write_payload = [&](auto& to_write, std::uint32_t len) {
                 H2Frame::serialize(len, se, t);
                 if (any(flag & H2Flag::padded)) {
                     se.write(padding);
@@ -378,7 +378,7 @@ namespace socklib {
                     flag = flagcpy;
                     std::string_view to_write(data_.data() + idx, data_.data() + data_.size());
                     idx = data_.size();
-                    write_payload(to_write, (unsigned int)(appsize + padoct));
+                    write_payload(to_write, (std::uint32_t)(appsize + padoct));
                 }
                 else {
                     std::string_view to_write(data_.data() + idx, data_.data() + idx + willsize);
@@ -403,9 +403,9 @@ namespace socklib {
         HttpConn::Header header_;
         bool exclusive = false;
         int depends = 0;
-        unsigned char weight = 0;
+        std::uint8_t weight = 0;
         //bool set_priority = false;
-        unsigned char padding = 0;
+        std::uint8_t padding = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
@@ -424,13 +424,13 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             std::string hpacked;
             if (!Hpack::encode<true>(header_, hpacked, t->local_table)) {
                 return H2Error::compression;
             }
             H2Flag flagcpy = flag;
-            unsigned char plus = 0;
+            std::uint8_t plus = 0;
             flag |= H2Flag::end_headers;
             /*if (!any(flag & H2Flag::padded)) {
                 padding = 0;
@@ -441,7 +441,7 @@ namespace socklib {
             if (any(flag & H2Flag::priority)) {
                 plus += 5;
             }
-            auto write_header = [&](unsigned int len, auto& to_write) {
+            auto write_header = [&](std::uint32_t len, auto& to_write) {
                 TRY(H2Frame::serialize(len, se, t));
                 if (any(flag & H2Flag::padded)) {
                     se.write(padding);
@@ -457,7 +457,7 @@ namespace socklib {
             };
             /*if (hpacked.size() + padding + plus <= fsize) {
                 flag = flagcpy;
-                TRY(write_header((unsigned int)(hpacked.size() + padding + plus), hpacked));
+                TRY(write_header((std::uint32_t)(hpacked.size() + padding + plus), hpacked));
             }
             else {
                 std::string_view view(hpacked.data(), hpacked.data() + fsize - (padding + plus));
@@ -493,13 +493,13 @@ namespace socklib {
             : H2Frame(H2FType::priority) {}
         bool exclusive = false;
         int depends = 0;
-        unsigned char weight = 0;
+        std::uint8_t weight = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             return read_depends(exclusive, depends, weight, v.buf);
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             TRY(H2Frame::serialize(5, se, t));
             return write_depends(exclusive, depends, weight, se);
         }
@@ -510,7 +510,7 @@ namespace socklib {
     };
 
     struct H2RstStreamFrame : H2Frame {
-        unsigned int errcode = 0;
+        std::uint32_t errcode = 0;
 
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
@@ -519,7 +519,7 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             TRY(H2Frame::serialize(4, se, t));
             se.write_hton(errcode);
             return true;
@@ -551,7 +551,7 @@ namespace socklib {
             commonlib2::Deserializer<std::string&> se(v.buf);
             while (!se.base_reader().ceof()) {
                 unsigned short key = 0;
-                unsigned int value = 0;
+                std::uint32_t value = 0;
                 TRY(se.read_ntoh(key));
                 TRY(se.read_ntoh(value));
                 t->remote_settings[key] = value;
@@ -559,7 +559,7 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             auto ressize = t->local_settings.size() * 6;
             if (fsize < ressize) {
                 return H2Error::frame_size;
@@ -568,7 +568,7 @@ namespace socklib {
                 TRY(H2Frame::serialize(0, se, t));
                 return true;
             }
-            TRY(H2Frame::serialize((unsigned int)ressize, se, t));
+            TRY(H2Frame::serialize((std::uint32_t)ressize, se, t));
             for (auto& s : t->local_settings) {
                 se.write_hton(s.first);
                 se.write_hton(s.second);
@@ -586,7 +586,7 @@ namespace socklib {
             : H2Frame(H2FType::push_promise) {}
         int promiseid = 0;
         HttpConn::Header header_;
-        unsigned char padding = 0;
+        std::uint8_t padding = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             if (!t->remote_settings[(unsigned short)H2PredefinedSetting::enable_push]) {
                 return H2Error::protocol;
@@ -610,7 +610,7 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             if (!t->local_settings[(unsigned short)H2PredefinedSetting::enable_push]) {
                 return H2Error::protocol;
             }
@@ -619,9 +619,9 @@ namespace socklib {
                 return H2Error::compression;
             }
             H2Flag flagcpy = flag;
-            unsigned char plus = 0;
+            std::uint8_t plus = 0;
             flag |= H2Flag::end_headers;
-            auto write_promise = [&](unsigned int len, auto& to_write) {
+            auto write_promise = [&](std::uint32_t len, auto& to_write) {
                 TRY(H2Frame::serialize(len, se, t));
                 if (any(flag & H2Flag::padded)) {
                     se.write(padding);
@@ -646,7 +646,7 @@ namespace socklib {
     struct H2PingFrame : H2Frame {
         constexpr H2PingFrame()
             : H2Frame(H2FType::ping) {}
-        unsigned char data_[8] = {0};
+        std::uint8_t data_[8] = {0};
         //bool ack = false;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
@@ -660,7 +660,7 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             TRY(H2Frame::serialize(8, se, t));
             se.write_byte(data_, 8);
             return true;
@@ -675,7 +675,7 @@ namespace socklib {
         H2GoAwayFrame()
             : H2Frame(H2FType::goaway) {}
         int lastid = 0;
-        unsigned int errcode = 0;
+        std::uint32_t errcode = 0;
         std::string additionaldata;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
@@ -693,11 +693,11 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             if (additionaldata.size() + 9 + 8 > fsize) {
                 return H2Error::frame_size;
             }
-            TRY(H2Frame::serialize((unsigned int)additionaldata.size() + 8, se, t));
+            TRY(H2Frame::serialize((std::uint32_t)additionaldata.size() + 8, se, t));
             se.write_hton(lastid);
             se.write_hton(errcode);
             se.write_byte(additionaldata);
@@ -712,7 +712,7 @@ namespace socklib {
     struct H2WindowUpdateFrame : H2Frame {
         constexpr H2WindowUpdateFrame()
             : H2Frame(H2FType::window_update) {}
-        int value = 0;
+        std::int32_t value = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             commonlib2::Deserializer<std::string&> se(v.buf);
@@ -727,7 +727,10 @@ namespace socklib {
             return true;
         }
 
-        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+        H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+            if (value <= 0) {
+                return H2Error::protocol;
+            }
             TRY(H2Frame::serialize(4, se, t));
             se.write_hton(value);
             return true;

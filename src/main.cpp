@@ -450,38 +450,49 @@ int main(int, char**) {
     std::string res;
     socklib::Hpack::encode<true>(header, res, table);
     socklib::Hpack::decode(decoded, res, other);*/
-    socklib::Http2Context ctx;
-    if (!socklib::Http2::open(ctx, "https://google.com", false, cacert)) {
-        return false;
-    }
+
+    auto conn = socklib::Http2::open("https://google.com", false, cacert);
+    if (!conn) return false;
     socklib::H2Stream *st, *c1;
-    ctx.get_stream(0, st);
-    ctx.make_stream(1, c1);
+    conn->get_stream(0, st);
+    conn->make_stream(1, c1);
     st->send_settings({});
     c1->send_header(
         {{":authority", "google.com"},
          {":scheme", "https"},
          {":method", "GET"},
-         {":path", "/"}});
+         {":path", "/"}},
+        false, 0, true);
     while (true) {
-        if (socklib::Selecter::waitone(ctx.conn->borrow(), 1, 0)) {
+        if (conn->recvable() || socklib::Selecter::waitone(conn->borrow(), 1, 0)) {
             std::shared_ptr<socklib::H2Frame> frame;
-            if (auto e = ctx.conn->recv(frame); !e) {
+            if (auto e = conn->recv(frame); !e) {
                 return -1;
             }
             if (auto c = frame->settings()) {
-                std::cout << "settings\n";
+                std::cout << "settings";
                 if (any(c->flag & socklib::H2Flag::ack)) {
+                    std::cout << ":ack";
                 }
                 else {
                     st->send_settings({}, true);
                 }
+                std::cout << "\n";
             }
             else if (auto d = frame->data()) {
-                std::cout << "data\n";
+                //std::cout << "data\n";
+                std::cout << d->data_;
+                if (any(d->flag & socklib::H2Flag::end_stream)) {
+                    std::cout << "end stream\n";
+                    break;
+                }
             }
             else if (auto d = frame->header()) {
                 std::cout << "header\n";
+            }
+            else if (auto e = frame->rst_stream()) {
+                std::cout << "rst stream\n";
+                break;
             }
         }
     }

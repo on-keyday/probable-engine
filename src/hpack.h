@@ -83,8 +83,8 @@ namespace socklib {
         sheader_t("www-authenticate", "")};
     struct bitvec_t {
        private:
-        unsigned int bits = 0;
-        unsigned int size_ = 0;
+        std::uint32_t bits = 0;
+        std::uint32_t size_ = 0;
 
         constexpr int shift(int i) const {
             return (sizeof(bits) * 8 - 1 - i);
@@ -94,7 +94,7 @@ namespace socklib {
         constexpr bitvec_t(std::initializer_list<int> init) noexcept {
             size_ = init.size();
             for (auto i = 0; i < size_; i++) {
-                unsigned int bit = init.begin()[i] ? 1 : 0;
+                std::uint32_t bit = init.begin()[i] ? 1 : 0;
                 bits |= bit << shift(i);
             }
         }
@@ -558,7 +558,7 @@ namespace socklib {
             return vec.data();
         }
 
-        static HpkErr huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin, unsigned int& allone) {
+        static HpkErr huffman_decode_achar(unsigned char& c, bitvec_reader& r, h2huffman_tree* t, h2huffman_tree*& fin, std::uint32_t& allone) {
             for (;;) {
                 if (!t) {
                     return HpackError::invalid_value;
@@ -585,7 +585,7 @@ namespace socklib {
             while (!r.eos()) {
                 unsigned char c = 0;
                 h2huffman_tree* fin = nullptr;
-                unsigned int allone = 1;
+                std::uint32_t allone = 1;
                 auto tmp = huffman_decode_achar(c, r, tree, fin, allone);
                 if (!tmp) {
                     if (tmp == HpackError::too_short_number) {
@@ -604,13 +604,13 @@ namespace socklib {
             return true;
         }
 
-        template <unsigned int n>
+        template <std::uint32_t n>
         static HpkErr decode_integer(commonlib2::Deserializer<std::string&>& se, size_t& sz, unsigned char& firstmask) {
             static_assert(n > 0 && n <= 8, "invalid range");
-            constexpr unsigned char msk = static_cast<unsigned char>(~0) >> (8 - n);
+            constexpr unsigned char msk = static_cast<std::uint8_t>(~0) >> (8 - n);
             unsigned char tmp = 0;
 
-            TRY(se.template read_as<unsigned char>(tmp));
+            TRY(se.template read_as<std::uint8_t>(tmp));
             firstmask = tmp & ~msk;
             tmp &= msk;
             sz = tmp;
@@ -622,7 +622,7 @@ namespace socklib {
                 return commonlib2::msb_on<size_t>() >> ((sizeof(size_t) * 8 - 1) - x);
             };
             do {
-                TRY(se.template read_as<unsigned char>(tmp));
+                TRY(se.template read_as<std::uint8_t>(tmp));
                 sz += (tmp & 0x7f) * pow(m);
                 m += 7;
                 if (m > (sizeof(size_t) * 8 - 1)) {
@@ -632,24 +632,24 @@ namespace socklib {
             return true;
         }
 
-        template <unsigned int n>
+        template <std::uint32_t n>
         static HpkErr encode_integer(commonlib2::Serializer<std::string&> se, size_t sz, unsigned char firstmask) {
             static_assert(n > 0 && n <= 8, "invalid range");
-            constexpr unsigned char msk = static_cast<unsigned char>(~0) >> (8 - n);
+            constexpr unsigned char msk = static_cast<std::uint8_t>(~0) >> (8 - n);
             if (firstmask & msk) {
                 return HpackError::invalid_mask;
             }
             if (sz < (size_t)msk) {
-                se.template write_as<unsigned char>(firstmask | sz);
+                se.template write_as<std::uint8_t>(firstmask | sz);
             }
             else {
-                se.template write_as<unsigned char>(firstmask | msk);
+                se.template write_as<std::uint8_t>(firstmask | msk);
                 sz -= msk;
                 while (sz > 0x7f) {
-                    se.template write_as<unsigned char>((sz % 0x80) | 0x80);
+                    se.template write_as<std::uint8_t>((sz % 0x80) | 0x80);
                     sz /= 0x80;
                 }
-                se.template write_as<unsigned char>(sz);
+                se.template write_as<std::uint8_t>(sz);
             }
             return true;
         }
@@ -731,7 +731,7 @@ namespace socklib {
                         }
                     }
                     else {
-                        se.template write_as<unsigned char>(0);
+                        se.template write_as<std::uint8_t>(0);
                         encode_str(se, h.first);
                     }
                     encode_str(se, h.second);
