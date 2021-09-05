@@ -148,14 +148,14 @@ namespace socklib {
 
         template <class F>
         static H2Err write_continuous(F&& write_header, commonlib2::Serializer<std::string>& se, unsigned int fsize,
-                                      std::string& hpacked, H2Flag flag, H2Flag flagcpy, unsigned char padding) {
+                                      std::string& hpacked, H2Flag flag, H2Flag flagcpy, unsigned char& padding, unsigned char plus) {
             unsigned char plus = 0;
             size_t idx = 0;
             if (!any(flag & H2Flag::padded)) {
                 padding = 0;
             }
             else {
-                plus = 1;
+                plus += 1;
             }
             if (hpacked.size() + padding + plus <= fsize) {
                 flag = flagcpy;
@@ -431,7 +431,6 @@ namespace socklib {
             if (any(flag & H2Flag::priority)) {
                 plus += 5;
             }
-            size_t idx = 0;
             auto write_header = [&](unsigned int len, auto& to_write) {
                 TRY(H2Frame::serialize(len, se, t));
                 if (any(flag & H2Flag::padded)) {
@@ -468,7 +467,7 @@ namespace socklib {
                     }
                 }
             }*/
-            TRY(write_continuous(write_header, se, fsize, hpacked, flag, flagcpy, padding));
+            TRY(write_continuous(write_header, se, fsize, hpacked, flag, flagcpy, padding, plus));
             flag = flagcpy;
             return true;
         }
@@ -598,6 +597,25 @@ namespace socklib {
             if (!t->local_settings[(unsigned short)H2PredefinedSetting::enable_push]) {
                 return H2Error::protocol;
             }
+            std::string hpacked;
+            if (!Hpack::encode<true>(header_, hpacked, t->local_table)) {
+                return H2Error::compression;
+            }
+            H2Flag flagcpy = flag;
+            unsigned char plus = 0;
+            flag |= H2Flag::end_headers;
+            auto write_promise = [&](unsigned int len, auto& to_write) {
+                TRY(H2Frame::serialize(len, se, t));
+                if (any(flag & H2Flag::padded)) {
+                    se.write(padding);
+                }
+                se.write_hton(promiseid);
+                se.write_byte(to_write);
+                for (auto i = 0; i < padding; i++) {
+                    se.write('\0');
+                }
+            };
+            write_continuous(write_promise, se, fsize, hpacked, flag, flagcpy, padding, plus);
         }
 
         H2PushPromiseFrame* push_promise() override {
