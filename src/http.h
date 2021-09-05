@@ -196,6 +196,7 @@ namespace socklib {
 
     struct Http {
         friend struct WebSocket;
+        friend struct Http2;
 
        private:
         static bool
@@ -279,8 +280,8 @@ namespace socklib {
             return true;
         }
 
-        static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, size_t timeout = 10, IPMode mode=IPMode::both) {
-            std::shared_ptr<Conn> conn = TCP::serve(sv, port, timeout, "http", true,mode);
+        static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, size_t timeout = 10, IPMode mode = IPMode::both) {
+            std::shared_ptr<Conn> conn = TCP::serve(sv, port, timeout, "http", true, mode);
             if (!conn) return nullptr;
             return std::make_shared<HttpServerConn>(std::move(conn));
         }

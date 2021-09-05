@@ -239,6 +239,7 @@ namespace socklib {
         friend struct H2HeaderFrame;
         friend struct H2SettingsFrame;
         friend struct H2PushPromiseFrame;
+        friend struct H2Stream;
         size_t streamid_max = 0;
         Hpack::DynamicTable local_table;
         Hpack::DynamicTable remote_table;
