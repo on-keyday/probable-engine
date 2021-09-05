@@ -79,6 +79,12 @@ namespace socklib {
 #define TRY(...) \
     if (auto _H_tryres = (__VA_ARGS__); !_H_tryres) return _H_tryres
 
+    struct H2Weight {
+        std::int32_t depends_id = 0;
+        std::uint8_t weight = 0;
+        bool exclusive = false;
+    };
+
     struct H2Frame {
         friend struct H2Stream;
         friend struct Http2Context;
@@ -356,6 +362,10 @@ namespace socklib {
 
        public:
         std::string& payload() {
+            return data_;
+        }
+        std::uint8_t padlen() const {
+            return padding;
         }
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
@@ -427,6 +437,21 @@ namespace socklib {
         std::uint8_t padding = 0;
 
        public:
+        HttpConn::Header& header_map() {
+            return header_;
+        }
+
+        bool get_weight(H2Weight& w) const {
+            if (!any(flag & H2Flag::priority)) return false;
+            w.exclusive = exclusive;
+            w.depends_id = depends;
+            w.weight = weight;
+        }
+
+        std::uint8_t padlen() const {
+            return padding;
+        }
+
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             if (any(flag & H2Flag::padded)) {
@@ -520,6 +545,12 @@ namespace socklib {
         std::uint8_t weight = 0;
 
        public:
+        void get_weight(H2Weight& w) const {
+            w.exclusive = exclusive;
+            w.depends_id = depends;
+            w.weight = weight;
+        }
+
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             return read_depends(exclusive, depends, weight, v.buf);
@@ -544,6 +575,10 @@ namespace socklib {
         std::uint32_t errcode = 0;
 
        public:
+        std::uint32_t code() const {
+            return errcode;
+        }
+
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             commonlib2::Deserializer<std::string&> se(v.buf);
@@ -624,6 +659,18 @@ namespace socklib {
         std::uint8_t padding = 0;
 
        public:
+        HttpConn::Header& header_map() {
+            return header_;
+        }
+
+        std::uint8_t padlen() const {
+            return padding;
+        }
+
+        int id() const {
+            return promiseid;
+        }
+
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             if (!t->remote_settings[(unsigned short)H2PredefinedSetting::enable_push]) {
                 return H2Error::protocol;
@@ -728,6 +775,17 @@ namespace socklib {
         std::string additionaldata;
 
        public:
+        uint32_t code() const {
+            return errcode;
+        }
+        int id() const {
+            return lastid;
+        }
+
+        const std::string& optdata() const {
+            return additionaldata;
+        }
+
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             commonlib2::Deserializer<std::string&> se(v.buf);
@@ -765,8 +823,14 @@ namespace socklib {
             : H2Frame(H2FType::window_update) {}
         friend struct H2Stream;
 
-       public:
+       private:
         std::int32_t value = 0;
+
+       public:
+        std::int32_t update() const {
+            return value;
+        }
+
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
             commonlib2::Deserializer<std::string&> se(v.buf);
