@@ -21,7 +21,7 @@ namespace socklib {
         H2StreamState state = H2StreamState::idle;
         HttpConn::Header header;
         std::string payload;
-        Http2Conn* base = nullptr;
+        Http2Conn* conn = nullptr;
         int depend = 0;
         unsigned char weight = 0;
         bool exclusive = false;
@@ -29,7 +29,7 @@ namespace socklib {
         unsigned int errorcode = 0;
 
         H2Stream(int id, Http2Conn* c)
-            : streamid(id), base(c) {}
+            : streamid(id), conn(c) {}
 
         H2Err recv_apply(std::shared_ptr<H2Frame>& frame) {
             TRY(frame && (frame->streamid == streamid));
@@ -62,10 +62,6 @@ namespace socklib {
                 state = H2StreamState::closed;
             }
         }
-    };
-
-    struct H2Context {
-        Http2Conn* conn;
 
         H2Err send_data(const char* data, size_t size, bool padding = false, unsigned char padlen = 0, bool endstream = false) {
             H2DataFrame frame;
@@ -77,6 +73,28 @@ namespace socklib {
             if (endstream) {
                 frame.flag |= H2Flag::end_stream;
             }
+            return conn->send(frame);
+        }
+
+        H2Err send_header(const HttpConn::Header& header,
+                          bool padding = false, unsigned char padlen = 0, bool endstream = false,
+                          bool has_priority = false, bool exclusive = false, int depends = 0, unsigned char weight = 0) {
+            H2HeaderFrame frame;
+            frame.header_ = header;
+            if (padding) {
+                frame.flag |= H2Flag::padded;
+                frame.padding = padlen;
+            }
+            if (endstream) {
+                frame.flag |= H2Flag::end_stream;
+            }
+            if (has_priority) {
+                frame.flag |= H2Flag::priority;
+                frame.exclusive = exclusive;
+                frame.depends = depends;
+                frame.weight = weight;
+            }
+            return conn->send(frame);
         }
     };
 #undef TRY

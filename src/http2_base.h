@@ -82,7 +82,7 @@ namespace socklib {
     struct H2Frame {
         H2FType type = H2FType::unknown;
         H2Flag flag = H2Flag::none;
-        int streamid;
+        int streamid = 0;
 
         constexpr H2Frame() {}
         constexpr H2Frame(H2FType type)
