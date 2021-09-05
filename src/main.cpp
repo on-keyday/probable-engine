@@ -451,14 +451,14 @@ int main(int, char**) {
     socklib::Hpack::encode<true>(header, res, table);
     socklib::Hpack::decode(decoded, res, other);*/
 
-    auto conn = socklib::Http2::open("https://google.com", false, cacert);
-    if (!conn) return false;
+    auto conn = socklib::Http2::open("https://www.google.com", false, cacert);
+    if (!conn) return -1;
     socklib::H2Stream *st, *c1;
     conn->get_stream(0, st);
     conn->make_stream(1, c1);
     st->send_settings({});
     c1->send_header(
-        {{":authority", "google.com"},
+        {{":authority", "www.google.com"},
          {":scheme", "https"},
          {":method", "GET"},
          {":path", "/"}},
@@ -483,12 +483,18 @@ int main(int, char**) {
                 //std::cout << "data\n";
                 std::cout << d->payload();
                 if (d->is_set(socklib::H2Flag::end_stream)) {
-                    std::cout << "end stream\n";
                     break;
+                }
+                if (c1->send_windowupdate((int)d->payload().size())) {
+                    //std::cout << "window update\n";
                 }
             }
             else if (auto d = frame->header()) {
                 std::cout << "header\n";
+                for (auto& h : d->header_map()) {
+                    std::cout << h.first << ":" << h.second << "\n";
+                }
+                std::cout << "\n";
             }
             else if (auto e = frame->rst_stream()) {
                 std::cout << "rst stream\n";

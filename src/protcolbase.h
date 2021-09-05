@@ -166,7 +166,7 @@ namespace socklib {
         }
 
        private:
-        static bool setupssl(int sock, const char* host, SSL_CTX*& ctx, SSL*& ssl, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0) {
+        static bool setupssl(int sock, const char* host, SSL_CTX*& ctx, SSL*& ssl, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
             bool has_ctx = false, has_ssl = false;
             if (!ctx) {
                 if (ssl) return false;
@@ -208,11 +208,24 @@ namespace socklib {
                 if (!has_ctx) SSL_CTX_free(ctx);
                 return false;
             }
+            if (strictverify) {
+                auto verify = SSL_get_peer_certificate(ssl);
+                if (!verify) {
+                    if (!has_ssl) SSL_free(ssl);
+                    if (!has_ctx) SSL_CTX_free(ctx);
+                    return false;
+                }
+                if (SSL_get_verify_result(ssl) != X509_V_OK) {
+                    return false;
+                }
+                X509_free(verify);
+                return true;
+            }
             return true;
         }
 
        public:
-        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0) {
+        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
             std::shared_ptr<Conn> ret;
             /*::addrinfo *selected = nullptr, *got = nullptr;
             int sock = open_detail(nullptr, true, got, selected, host, port, service);
@@ -232,7 +245,7 @@ namespace socklib {
             }
             auto ret = std::make_shared<SecureConn>(ctx, ssl, sock, selected);
             ::freeaddrinfo(got);*/
-            if (!reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len)) {
+            if (!reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len, strictverify)) {
                 return nullptr;
             }
             return ret;
@@ -263,7 +276,7 @@ namespace socklib {
             return true;
         }
 
-        static bool reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0) {
+        static bool reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
             ::addrinfo *selected = nullptr, *got = nullptr;
             int sock = open_detail(conn, true, got, selected, host, port, service);
             if (sock == invalid_socket) {
@@ -275,7 +288,7 @@ namespace socklib {
             SSL_CTX* ctx = conn ? (SSL_CTX*)conn->get_sslctx() : nullptr;
             SSL* ssl = nullptr;
             if (secure) {
-                if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len)) {
+                if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len, strictverify)) {
                     ::closesocket(sock);
                     ::freeaddrinfo(got);
                     return false;

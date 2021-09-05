@@ -250,7 +250,7 @@ namespace socklib {
             }
             else {*/
             conn = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
-                                    cacert, urlctx.scheme == "https");
+                                    cacert, urlctx.scheme == "https", nullptr, 0, true);
             //}
             if (!conn) return nullptr;
             return std::make_shared<HttpClientConn>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), std::move(path), std::move(query));
@@ -265,7 +265,7 @@ namespace socklib {
             }
             if (conn) {
                 auto res = TCP::reopen_secure(conn->conn, urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
-                                              cacert, urlctx.scheme == "https");
+                                              cacert, urlctx.scheme == "https", nullptr, 0, true);
                 if (!res) return false;
                 conn->host = urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : "");
                 conn->path_ = path;
@@ -273,7 +273,7 @@ namespace socklib {
             }
             else {
                 auto tmp = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
-                                            cacert, urlctx.scheme == "https");
+                                            cacert, urlctx.scheme == "https", nullptr, 0, true);
                 if (!tmp) return false;
                 conn = std::make_shared<HttpClientConn>(std::move(tmp), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), std::move(path), std::move(query));
             }

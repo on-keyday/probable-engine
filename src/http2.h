@@ -192,7 +192,7 @@ namespace socklib {
             if (!Http::setuphttp(url, encoded, port, urlctx, path, query, "https", "https")) {
                 return nullptr;
             }
-            auto conn = TCP::open_secure(urlctx.host.c_str(), port, "https", true, cacert, true, "\2h2", 3);
+            auto conn = TCP::open_secure(urlctx.host.c_str(), port, "https", true, cacert, true, "\2h2", 3, true);
             if (!conn) {
                 return nullptr;
             }
