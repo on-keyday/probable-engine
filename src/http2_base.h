@@ -703,6 +703,12 @@ namespace socklib {
             return true;
         }
 
+        H2Err serialize(unsigned int fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
+            TRY(H2Frame::serialize(4, se, t));
+            se.write_hton(value);
+            return true;
+        }
+
         H2WindowUpdateFrame* window_update() override {
             return this;
         }
