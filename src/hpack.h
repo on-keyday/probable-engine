@@ -801,6 +801,8 @@ namespace socklib {
                 }
                 else if (tmp & 0x20) {  //dynamic table size change
                     //unimplemented
+                    size_t sz = 0;
+                    TRY(decode_integer<5>(se, sz, tmp));
                 }
                 else if ((tmp & 0xf0) == 0) {
                     size_t sz = 0;
