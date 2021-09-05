@@ -481,8 +481,8 @@ int main(int, char**) {
             }
             else if (auto d = frame->data()) {
                 //std::cout << "data\n";
-                std::cout << d->data_;
-                if (any(d->flag & socklib::H2Flag::end_stream)) {
+                std::cout << d->payload();
+                if (d->is_set(socklib::H2Flag::end_stream)) {
                     std::cout << "end stream\n";
                     break;
                 }
