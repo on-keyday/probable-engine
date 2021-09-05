@@ -80,10 +80,15 @@ namespace socklib {
     if (auto _H_tryres = (__VA_ARGS__); !_H_tryres) return _H_tryres
 
     struct H2Frame {
+        friend struct H2Stream;
+        friend struct Http2Context;
+
+       protected:
         H2FType type = H2FType::unknown;
         H2Flag flag = H2Flag::none;
         std::int32_t streamid = 0;
 
+       public:
         constexpr H2Frame() {}
         constexpr H2Frame(H2FType type)
             : type(type) {}
@@ -219,6 +224,10 @@ namespace socklib {
 
         virtual H2WindowUpdateFrame* window_update() {
             return nullptr;
+        }
+
+        bool is_set(H2Flag iflag) const {
+            return any(iflag & flag);
         }
 
         virtual ~H2Frame() noexcept {}

@@ -471,7 +471,7 @@ int main(int, char**) {
             }
             if (auto c = frame->settings()) {
                 std::cout << "settings";
-                if (any(c->flag & socklib::H2Flag::ack)) {
+                if (c->is_set(socklib::H2Flag::ack)) {
                     std::cout << ":ack";
                 }
                 else {
