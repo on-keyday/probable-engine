@@ -63,5 +63,13 @@ namespace socklib {
             }
         }
     };
+
+    struct H2Context {
+        Http2Conn* conn;
+
+        H2Err send_data(const char* data, size_t size) {
+            H2DataFrame frame;
+        }
+    };
 #undef TRY
 }  // namespace socklib

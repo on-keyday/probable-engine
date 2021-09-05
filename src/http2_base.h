@@ -85,6 +85,9 @@ namespace socklib {
         int streamid;
 
         constexpr H2Frame() {}
+        constexpr H2Frame(H2FType type)
+            : type(type) {}
+
         virtual H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn*) {
             type = (H2FType)v.type;
             flag = (H2Flag)v.flag;
@@ -331,6 +334,8 @@ namespace socklib {
     };
 
     struct H2DataFrame : H2Frame {
+        constexpr H2DataFrame()
+            : H2Frame(H2FType::data) {}
         std::string data_;
         unsigned char padding = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
@@ -390,6 +395,8 @@ namespace socklib {
     };
 
     struct H2HeaderFrame : H2Frame {
+        constexpr H2HeaderFrame()
+            : H2Frame(H2FType::header) {}
         HttpConn::Header header_;
         bool exclusive = false;
         int depends = 0;
@@ -478,6 +485,8 @@ namespace socklib {
     };
 
     struct H2PriorityFrame : H2Frame {
+        constexpr H2PriorityFrame()
+            : H2Frame(H2FType::priority) {}
         bool exclusive = false;
         int depends = 0;
         unsigned char weight = 0;
@@ -518,6 +527,8 @@ namespace socklib {
     };
 
     struct H2SettingsFrame : H2Frame {
+        constexpr H2SettingsFrame()
+            : H2Frame(H2FType::settings) {}
         //bool ack = false;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
@@ -567,6 +578,8 @@ namespace socklib {
     };
 
     struct H2PushPromiseFrame : H2Frame {
+        constexpr H2PushPromiseFrame()
+            : H2Frame(H2FType::push_promise) {}
         int promiseid = 0;
         HttpConn::Header header_;
         unsigned char padding = 0;
@@ -626,6 +639,8 @@ namespace socklib {
     };
 
     struct H2PingFrame : H2Frame {
+        constexpr H2PingFrame()
+            : H2Frame(H2FType::ping) {}
         unsigned char data_[8] = {0};
         //bool ack = false;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
@@ -652,6 +667,8 @@ namespace socklib {
     };
 
     struct H2GoAwayFrame : H2Frame {
+        constexpr H2GoAwayFrame()
+            : H2Frame(H2FType::goaway) {}
         int lastid = 0;
         unsigned int errcode = 0;
         std::string additionaldata;
@@ -688,6 +705,8 @@ namespace socklib {
     };
 
     struct H2WindowUpdateFrame : H2Frame {
+        constexpr H2WindowUpdateFrame()
+            : H2Frame(H2FType::window_update) {}
         int value = 0;
         H2Err parse(commonlib2::HTTP2Frame<std::string>& v, Http2Conn* t) override {
             H2Frame::parse(v, t);
