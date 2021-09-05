@@ -150,9 +150,8 @@ namespace socklib {
         }
 
         template <class F>
-        static H2Err write_continuous(F&& write_header, commonlib2::Serializer<std::string>& se, unsigned int fsize,
+        static H2Err write_continuous(int streamid, F&& write_header, commonlib2::Serializer<std::string>& se, unsigned int fsize,
                                       std::string& hpacked, H2Flag flag, H2Flag flagcpy, unsigned char& padding, unsigned char plus) {
-            unsigned char plus = 0;
             size_t idx = 0;
             if (!any(flag & H2Flag::padded)) {
                 padding = 0;
@@ -335,7 +334,7 @@ namespace socklib {
     };
 
     struct H2DataFrame : H2Frame {
-        constexpr H2DataFrame()
+        H2DataFrame()
             : H2Frame(H2FType::data) {}
         std::string data_;
         unsigned char padding = 0;
@@ -396,7 +395,7 @@ namespace socklib {
     };
 
     struct H2HeaderFrame : H2Frame {
-        constexpr H2HeaderFrame()
+        H2HeaderFrame()
             : H2Frame(H2FType::header) {}
         HttpConn::Header header_;
         bool exclusive = false;
@@ -451,6 +450,7 @@ namespace socklib {
                 for (auto i = 0; i < padding; i++) {
                     se.write('\0');
                 }
+                return H2Err(true);
             };
             /*if (hpacked.size() + padding + plus <= fsize) {
                 flag = flagcpy;
@@ -475,7 +475,7 @@ namespace socklib {
                     }
                 }
             }*/
-            TRY(write_continuous(write_header, se, fsize, hpacked, flag, flagcpy, padding, plus));
+            TRY(write_continuous(streamid, write_header, se, fsize, hpacked, flag, flagcpy, padding, plus));
             flag = flagcpy;
             return true;
         }
@@ -579,7 +579,7 @@ namespace socklib {
     };
 
     struct H2PushPromiseFrame : H2Frame {
-        constexpr H2PushPromiseFrame()
+        H2PushPromiseFrame()
             : H2Frame(H2FType::push_promise) {}
         int promiseid = 0;
         HttpConn::Header header_;
@@ -628,8 +628,9 @@ namespace socklib {
                 for (auto i = 0; i < padding; i++) {
                     se.write('\0');
                 }
+                return H2Err(true);
             };
-            TRY(write_continuous(write_promise, se, fsize, hpacked, flag, flagcpy, padding, plus));
+            TRY(write_continuous(streamid, write_promise, se, fsize, hpacked, flag, flagcpy, padding, plus));
             flag = flagcpy;
             return true;
         }
@@ -668,7 +669,7 @@ namespace socklib {
     };
 
     struct H2GoAwayFrame : H2Frame {
-        constexpr H2GoAwayFrame()
+        H2GoAwayFrame()
             : H2Frame(H2FType::goaway) {}
         int lastid = 0;
         unsigned int errcode = 0;

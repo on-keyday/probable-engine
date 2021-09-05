@@ -27,6 +27,7 @@ namespace socklib {
         bool exclusive = false;
 
         unsigned int errorcode = 0;
+        H2Stream() {}
 
         H2Stream(int id, Http2Conn* c)
             : streamid(id), conn(c) {}
@@ -101,7 +102,7 @@ namespace socklib {
             return conn->send(frame);
         }
 
-        template <class Setting = std::map<std::string, std::string>>
+        template <class Setting = std::map<unsigned short, unsigned int>>
         H2Err send_settings(Setting&& settings, bool ack = false) {
             TRY(conn && streamid == 0);
             H2SettingsFrame frame;
@@ -130,11 +131,12 @@ namespace socklib {
     };
 
     struct Http2Context {
-        Http2Conn* conn = nullptr;
+        std::shared_ptr<Http2Conn> conn = nullptr;
         bool server = false;
         std::map<int, H2Stream> streams;
         int maxid = 0;
         H2Err apply(std::shared_ptr<H2Frame>& frame, H2Stream*& stream) {
+            stream = nullptr;
             TRY((bool)frame);
             TRY(frame->streamid >= 0);
             if (auto found = streams.find(frame->streamid); found != streams.end()) {
@@ -142,30 +144,51 @@ namespace socklib {
                 return found->second.recv_apply(frame);
             }
             else {
-                auto& tmp = streams[frame->streamid] = H2Stream(frame->streamid, conn);
+                auto& tmp = streams[frame->streamid] = H2Stream(frame->streamid, conn.get());
                 stream = &tmp;
                 return tmp.recv_apply(frame);
             }
         }
+
+        bool make_stream(int id, H2Stream*& stream) {
+            if (id <= 0) return false;
+            if (auto found = streams.find(id); found != streams.end()) {
+                return false;
+            }
+            if ((server && id % 2) || (!server && 1 != id % 2)) {
+                return false;
+            }
+            stream = &(streams[id] = H2Stream(id, conn.get()));
+            return true;
+        }
+
+        bool get_stream(int id, H2Stream*& stream) {
+            if (id <= 0) return false;
+            if (auto found = streams.find(id); found != streams.end()) {
+                stream = &found->second;
+                return true;
+            }
+            return false;
+        }
     };
 
     struct Http2 {
-        static std::shared_ptr<Http2Conn> open(Http2Context& ctx, const char* url, bool encoded = false, const char* cacert = nullptr) {
+        static bool open(Http2Context& ctx, const char* url, bool encoded = false, const char* cacert = nullptr) {
             unsigned short port = 0;
             commonlib2::URLContext<std::string> urlctx;
             std::string path, query;
             if (!Http::setuphttp(url, encoded, port, urlctx, path, query, "https", "https")) {
-                return nullptr;
+                return false;
             }
             auto conn = TCP::open_secure(urlctx.host.c_str(), port, "https", true, cacert, true, "\2h2", 3);
             if (!conn) {
-                return nullptr;
+                return false;
             }
-            unsigned char* data = nullptr;
+            const unsigned char* data = nullptr;
             unsigned int len = 0;
             SSL_get0_alpn_selected((SSL*)conn->get_ssl(), &data, &len);
             if (len != 2 || !data || data[0] != 'h' || data[1] != '2') {
-                return nullptr;
+                return false;
             }
             if (!conn->write("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
                 return false;
@@ -173,8 +196,8 @@ namespace socklib {
             auto ret = std::make_shared<Http2Conn>(std::move(conn));
             ctx.streams[0] = H2Stream(0, ret.get());
             ctx.server = false;
-            ctx.conn = ret.get();
-            return ret;
+            ctx.conn = ret;
+            return true;
         }
     };
 #undef TRY

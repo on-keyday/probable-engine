@@ -449,4 +449,23 @@ int main(int, char**) {
     std::string res;
     socklib::Hpack::encode<true>(header, res, table);
     socklib::Hpack::decode(decoded, res, other);
+    socklib::Http2Context ctx;
+    if (!socklib::Http2::open(ctx, "https://google.com", false, cacert)) {
+        return false;
+    }
+    socklib::H2Stream* st;
+    ctx.get_stream(0, st);
+    st->send_settings({});
+    st->send_header(
+        {{":authority", "google.com"},
+         {":scheme", "https"},
+         {":method", "GET"},
+         {":path", "/"}});
+    while (true) {
+        if (socklib::Selecter::waitone(ctx.conn->borrow(), 1, 0)) {
+            std::shared_ptr<socklib::H2Frame> frame;
+            if (auto e = ctx.conn->recv(frame); !e) {
+            }
+        }
+    }
 }
