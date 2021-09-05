@@ -427,7 +427,7 @@ namespace socklib {
             : str(in) {}
 
         bool get() const {
-            if (idx == str.size()) return false;
+            if (idx == str.size()) return true;
             return (bool)(((unsigned char)str[idx]) & (1 << (7 - pos)));
         }
 
@@ -451,6 +451,10 @@ namespace socklib {
             }
             pos--;
             return true;
+        }
+
+        bool eos() const {
+            return idx == str.size();
         }
     };
 
@@ -564,11 +568,12 @@ namespace socklib {
                     fin = t;
                     return true;
                 }
-                h2huffman_tree* next = r.get() ? t->one : t->zero;
-                allone = (allone && t->one == next) ? allone + 1 : 0;
+                bool f = r.get();
                 if (!r.incremant()) {
                     return HpackError::too_short_number;
                 }
+                h2huffman_tree* next = f ? t->one : t->zero;
+                allone = (allone && t->one == next) ? allone + 1 : 0;
                 t = next;
             }
             //return huffman_decode_achar(c, r, next, fin, allone);
@@ -577,7 +582,7 @@ namespace socklib {
         static HpkErr huffman_decode(std::string& res, std::string& src) {
             bitvec_reader r(src);
             auto tree = h2huffman_tree::tree();
-            while (true) {
+            while (!r.eos()) {
                 unsigned char c = 0;
                 h2huffman_tree* fin = nullptr;
                 unsigned int allone = 1;
