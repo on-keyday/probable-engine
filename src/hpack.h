@@ -788,14 +788,9 @@ namespace socklib {
                         res.emplace(dymap[idx - 63].first, dymap[idx - 63].second);
                     }
                 }
-                else if (tmp & 0x40 || tmp & 0x20) {
+                else if (tmp & 0x40) {
                     size_t sz = 0;
-                    if (tmp & 0x40) {
-                        TRY(decode_integer<6>(se, sz, tmp));
-                    }
-                    else {
-                        TRY(decode_integer<5>(se, sz, tmp));
-                    }
+                    TRY(decode_integer<6>(se, sz, tmp));
                     if (sz == 0) {
                         TRY(read_two_literal());
                     }
@@ -803,6 +798,9 @@ namespace socklib {
                         TRY(read_idx_and_literal(sz));
                     }
                     dymap.push_back({key, value});
+                }
+                else if (tmp & 0x20) {  //dynamic table size change
+                    //unimplemented
                 }
                 else if ((tmp & 0xf0) == 0) {
                     size_t sz = 0;
