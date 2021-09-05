@@ -368,6 +368,10 @@ namespace PROJECT_NAME {
         }
 
         bool seek(size_t p, bool strict = false) {
+            if(p == 0){
+                this->pos=0;
+                return true;
+            }
             auto sz = buf_size(buf);
             if (sz < p) {
                 if (strict) return false;
