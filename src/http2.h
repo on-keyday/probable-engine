@@ -189,7 +189,7 @@ namespace socklib {
             unsigned short port = 0;
             commonlib2::URLContext<std::string> urlctx;
             std::string path, query;
-            if (!Http::setuphttp(url, encoded, port, urlctx, path, query, "https", "https")) {
+            if (!Http1::setuphttp(url, encoded, port, urlctx, path, query, "https", "https")) {
                 return nullptr;
             }
             auto conn = TCP::open_secure(urlctx.host.c_str(), port, "https", true, cacert, true, "\2h2", 3, true);

@@ -8,7 +8,7 @@
 
 namespace socklib {
     struct HttpConn : public AppLayer {
-        friend struct Http;
+        friend struct Http1;
         using Header = std::multimap<std::string, std::string>;
 
        protected:
@@ -194,7 +194,7 @@ namespace socklib {
         }
     };
 
-    struct Http {
+    struct Http1 {
         friend struct WebSocket;
         friend struct Http2;
 

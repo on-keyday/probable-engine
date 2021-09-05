@@ -1,7 +1,7 @@
 
 #include <iostream>
 
-#include "http.h"
+#include "http1.h"
 #include "websocket.h"
 
 #include <reader.h>
@@ -74,7 +74,7 @@ void httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const ch
     std::cout << statuscode << " " << conn->response().find(":phrase")->second << "\n";
     if (statuscode >= 301 && statuscode <= 308) {
         if (auto found = conn->response().find("location"); found != conn->response().end()) {
-            if (socklib::Http::reopen(conn, found->second.c_str(), true, cacert)) {
+            if (socklib::Http1::reopen(conn, found->second.c_str(), true, cacert)) {
                 std::cout << "redirect\n";
                 conn->send(conn->method().c_str());
                 conn->recv(httprecv, false, cacert, callback);
@@ -88,7 +88,7 @@ void httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const ch
 auto cacert = "D:/CommonLib/netsoft/cacert.pem";
 
 void client_test(const char* url) {
-    auto conn = socklib::Http::open(url, false, cacert);
+    auto conn = socklib::Http1::open(url, false, cacert);
     if (!conn) {
         std::cout << "connection failed\n";
 #ifdef _WIN32
@@ -392,7 +392,7 @@ void server_proc() {
     }).detach();
 
     while (!proc_end) {
-        auto res = socklib::Http::serve(sv, 8090);
+        auto res = socklib::Http1::serve(sv, 8090);
         if (sv.suspended()) {
             if (res) res->close();
             Sleep(1000);
@@ -461,7 +461,7 @@ int main(int, char**) {
         {{":authority", "nghttp2.org"},
          {":scheme", "https"},
          {":method", "GET"},
-         {":path", "/httpbin/"}},
+         {":path", "/httpbin/uuid"}},
         false, 0, true);
     while (true) {
         if (conn->recvable() || socklib::Selecter::waitone(conn->borrow(), 1, 0)) {
@@ -493,7 +493,12 @@ int main(int, char**) {
             else if (auto d = frame->header()) {
                 std::cout << "header\n";
                 for (auto& h : d->header_map()) {
-                    std::cout << h.first << ":" << h.second << "\n";
+                    if (h.first == ":status") {
+                        std::cout << "HTTP/2.0 " << h.second << "\n";
+                    }
+                    else {
+                        std::cout << h.first << ":" << h.second << "\n";
+                    }
                 }
                 std::cout << "\n";
             }

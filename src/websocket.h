@@ -1,6 +1,6 @@
 #pragma once
 #include "protcolbase.h"
-#include "http.h"
+#include "http1.h"
 #include <serializer.h>
 #include <random>
 
@@ -371,12 +371,12 @@ namespace socklib {
             URLContext<std::string> ctx;
             std::string path, query;
             unsigned short port = 0;
-            if (!Http::setuphttp(url, encoded, port, ctx, path, query, "ws", "wss")) {
+            if (!Http1::setuphttp(url, encoded, port, ctx, path, query, "ws", "wss")) {
                 return nullptr;
             }
             auto httpurl = (ctx.scheme == "wss" ? "https://" : "http://") + ctx.host +
                            (ctx.port.size() ? ":" + ctx.port : "") + path + query;
-            auto client = Http::open(httpurl.c_str(), true, cacert);
+            auto client = Http1::open(httpurl.c_str(), true, cacert);
             if (!client) return nullptr;
             HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version", "13"}};
             std::random_device device;
