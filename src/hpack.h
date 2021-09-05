@@ -427,16 +427,14 @@ namespace socklib {
             : str(in) {}
 
         bool get() const {
+            if (idx == str.size()) return false;
             return (bool)(((unsigned char)str[idx]) & (1 << (7 - pos)));
         }
 
         bool incremant() {
+            if (idx == str.size()) return false;
             pos++;
             if (pos == 8) {
-                if (str.size() == idx + 1) {
-                    pos = 7;
-                    return false;
-                }
                 idx++;
                 pos = 0;
             }

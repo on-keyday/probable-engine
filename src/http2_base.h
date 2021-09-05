@@ -284,10 +284,12 @@ namespace socklib {
                 r.readwhile(commonlib2::http2frame_reader, frame);
                 if (frame.continues) {
                     TRY(r.ref().reading());
+                    continue;
                 }
                 if (!frame.succeed) {
                     return false;
                 }
+                break;
             }
             r.ref().ref().erase(0, 9 + frame.buf.size());
             r.seek(0);
@@ -416,7 +418,7 @@ namespace socklib {
             if (!any(flag & H2Flag::end_headers)) {
                 TRY(t->read_continuous(v.id, v.buf));
             }
-            if (!Hpack::decode(header_, v.buf, t->remote_table)) {
+            if (auto e = Hpack::decode(header_, v.buf, t->remote_table); !e) {
                 return H2Error::compression;
             }
             return true;

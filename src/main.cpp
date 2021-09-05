@@ -429,6 +429,7 @@ int main(int, char**) {
     if (src != dec) {
         throw "error!";
     }*/
+    /*
     socklib::Hpack::DynamicTable table, other;
     socklib::HttpConn::Header header, decoded;
     const char src[] = {
@@ -448,7 +449,7 @@ int main(int, char**) {
     socklib::Hpack::decode(header, sc, table);
     std::string res;
     socklib::Hpack::encode<true>(header, res, table);
-    socklib::Hpack::decode(decoded, res, other);
+    socklib::Hpack::decode(decoded, res, other);*/
     socklib::Http2Context ctx;
     if (!socklib::Http2::open(ctx, "https://google.com", false, cacert)) {
         return false;
@@ -469,6 +470,7 @@ int main(int, char**) {
                 return -1;
             }
             if (auto c = frame->settings()) {
+                std::cout << "settings\n";
                 if (any(c->flag & socklib::H2Flag::ack)) {
                 }
                 else {
