@@ -7,6 +7,26 @@
 #include <atomic>
 
 namespace socklib {
+
+    constexpr const char* reason_phrase(unsigned short status) {
+        switch (status) {
+            case 100:
+                return "Continue";
+            case 101:
+                return "Switching Protocols";
+            case 103:
+                return "Early Hints";
+            case 200:
+                return "OK";
+            case 202:
+                return "Created";
+            case 203:
+                return "Accepted";
+            default:
+                return "Unknown";
+        }
+    }
+
     struct HttpConn : public AppLayer {
         friend struct Http1;
         using Header = std::multimap<std::string, std::string>;
