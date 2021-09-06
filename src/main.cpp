@@ -410,6 +410,8 @@ void server_proc() {
     }
 }
 
+#include "http2.h"
+
 void testhttp2() {
     /*std::string str, dec;
     const char* src =
@@ -517,8 +519,6 @@ void testhttp2() {
         }
     }
 }
-
-#include "http2.h"
 
 int main(int, char**) {
     server_proc();
