@@ -410,10 +410,7 @@ void server_proc() {
     }
 }
 
-#include "http2.h"
-
-int main(int, char**) {
-    //server_proc();
+void testhttp2() {
     /*std::string str, dec;
     const char* src =
         (const char*)
@@ -460,7 +457,7 @@ int main(int, char**) {
                                    {":path", "/"}};
 
     auto conn = socklib::Http2::open("https://www.google.com", false, cacert);
-    if (!conn) return -1;
+    if (!conn) return;
     socklib::H2Stream *st, *c1;
     conn->get_stream(0, st);
     conn->get_stream(1, c1);
@@ -470,7 +467,7 @@ int main(int, char**) {
             std::shared_ptr<socklib::H2Frame> frame;
             if (auto e = conn->recv(frame); !e) {
                 std::cout << "error\n";
-                return -1;
+                return;
             }
             if (auto c = frame->settings()) {
                 std::cout << "settings";
@@ -519,4 +516,10 @@ int main(int, char**) {
             }
         }
     }
+}
+
+#include "http2.h"
+
+int main(int, char**) {
+    server_proc();
 }
