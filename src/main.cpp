@@ -429,7 +429,7 @@ int main(int, char**) {
     if (src != dec) {
         throw "error!";
     }*/
-    /*
+
     socklib::Hpack::DynamicTable table, other;
     socklib::HttpConn::Header header, decoded;
     const char src[] = {
@@ -444,25 +444,25 @@ int main(int, char**) {
         0x05, 0x68, 0x74, 0x74, 0x70, 0x73,                                       // 5 https
         0x00,                                                                     // 圧縮情報
         0x0a, 0x3a, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79,         // 10 :authority
-        0x0b, 0x6e, 0x67, 0x68, 0x74, 0x74, 0x70, 0x32, 0x2e, 0x6f, 0x72, 0x67};  // 11 nghttp2.org
+        0x0b, 0x6e, 0x67, 0x68, 0x74, 0x74, 0x70, 0x32, 0x2e, 0x6f, 0x72, 0x67};  // 11 nghttp2.org*/
     std::string sc(src, sizeof(src));
-    socklib::Hpack::decode(header, sc, table);
+    uint32_t maxi = ~0;
+    socklib::Hpack::decode(header, sc, table, maxi);
     std::string res;
-    socklib::Hpack::encode<true>(header, res, table);
-    socklib::Hpack::decode(decoded, res, other);*/
 
-    auto conn = socklib::Http2::open("https://nghttp2.org/httpbin/", false, cacert);
+    socklib::HttpConn::Header h = {{":authority", "google.com"},
+                                   {":scheme", "https"},
+                                   {":method", "GET"},
+                                   {":path", "/"}};
+    socklib::Hpack::encode<true>(h, res, table, maxi);
+    socklib::Hpack::decode(decoded, res, other, maxi);
+
+    auto conn = socklib::Http2::open("https://google.com", false, cacert);
     if (!conn) return -1;
     socklib::H2Stream *st, *c1;
     conn->get_stream(0, st);
     conn->make_stream(1, c1);
     st->send_settings({});
-    c1->send_header(
-        {{":authority", "nghttp2.org"},
-         {":scheme", "https"},
-         {":method", "GET"},
-         {":path", "/httpbin/uuid"}},
-        false, 0, true);
     while (true) {
         if (conn->recvable() || socklib::Selecter::waitone(conn->borrow(), 1, 0)) {
             std::shared_ptr<socklib::H2Frame> frame;
@@ -474,6 +474,7 @@ int main(int, char**) {
                 std::cout << "settings";
                 if (c->is_set(socklib::H2Flag::ack)) {
                     std::cout << ":ack";
+                    c1->send_header(h, false, 0, true);
                 }
                 else {
                     st->send_settings({}, true);
@@ -481,7 +482,7 @@ int main(int, char**) {
                 std::cout << "\n";
             }
             else if (auto d = frame->data()) {
-                //std::cout << "data\n";
+                std::cout << "data\n";
                 std::cout << d->payload();
                 if (d->is_set(socklib::H2Flag::end_stream)) {
                     break;
@@ -504,6 +505,7 @@ int main(int, char**) {
             }
             else if (auto e = frame->rst_stream()) {
                 std::cout << "rst stream\n";
+                std::cout << e->code();
                 break;
             }
             else if (auto e = frame->goaway()) {

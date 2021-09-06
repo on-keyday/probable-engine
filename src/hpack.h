@@ -753,7 +753,6 @@ namespace socklib {
                             tablesize -= dymap.back().second.size();
                             dymap.pop_back();
                         }
-                        return true;
                     }
                 }
             }
@@ -817,12 +816,9 @@ namespace socklib {
                 }
                 else if (tmp & 0x40) {
                     size_t sz = 0;
-                    if (tmp & 0x40) {
-                        TRY(decode_integer<6>(se, sz, tmp));
-                    }
-                    else {
-                        TRY(decode_integer<4>(se, sz, tmp));
-                    }
+
+                    TRY(decode_integer<6>(se, sz, tmp));
+
                     if (sz == 0) {
                         TRY(read_two_literal());
                     }

@@ -171,10 +171,10 @@ namespace socklib {
                 plus += 1;
             }
             if (hpacked.size() + padding + plus <= fsize) {
-                flag = flagcpy;
                 TRY(write_header((std::uint32_t)(hpacked.size() + padding + plus), hpacked));
             }
             else {
+                flag = flagcpy;
                 std::string_view view(hpacked.data(), hpacked.data() + fsize - (padding + plus));
                 TRY(write_header(fsize, view));
                 size_t idx = fsize - (padding + plus);
