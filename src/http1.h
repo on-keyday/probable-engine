@@ -309,6 +309,8 @@ namespace socklib {
     struct Http1 {
         friend struct WebSocket;
         friend struct Http2;
+        friend struct HttpClient;
+        friend struct HttpServer;
 
        private:
         static bool

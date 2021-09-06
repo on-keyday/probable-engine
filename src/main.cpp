@@ -428,7 +428,7 @@ int main(int, char**) {
     socklib::Hpack::decode_str(dec, de);
     if (src != dec) {
         throw "error!";
-    }*/
+    }*
 
     socklib::Hpack::DynamicTable table, other;
     socklib::HttpConn::Header header, decoded;
@@ -444,24 +444,26 @@ int main(int, char**) {
         0x05, 0x68, 0x74, 0x74, 0x70, 0x73,                                       // 5 https
         0x00,                                                                     // 圧縮情報
         0x0a, 0x3a, 0x61, 0x75, 0x74, 0x68, 0x6f, 0x72, 0x69, 0x74, 0x79,         // 10 :authority
-        0x0b, 0x6e, 0x67, 0x68, 0x74, 0x74, 0x70, 0x32, 0x2e, 0x6f, 0x72, 0x67};  // 11 nghttp2.org*/
+        0x0b, 0x6e, 0x67, 0x68, 0x74, 0x74, 0x70, 0x32, 0x2e, 0x6f, 0x72, 0x67};  // 11 nghttp2.org*
     std::string sc(src, sizeof(src));
     uint32_t maxi = ~0;
     socklib::Hpack::decode(header, sc, table, maxi);
     std::string res;
 
-    socklib::HttpConn::Header h = {{":authority", "google.com"},
+    socklib::Hpack::encode<true>(h, res, table, maxi);
+    socklib::Hpack::decode(decoded, res, other, maxi);
+    */
+
+    socklib::HttpConn::Header h = {{":authority", "www.google.com"},
                                    {":scheme", "https"},
                                    {":method", "GET"},
                                    {":path", "/"}};
-    socklib::Hpack::encode<true>(h, res, table, maxi);
-    socklib::Hpack::decode(decoded, res, other, maxi);
 
-    auto conn = socklib::Http2::open("https://google.com", false, cacert);
+    auto conn = socklib::Http2::open("https://www.google.com", false, cacert);
     if (!conn) return -1;
     socklib::H2Stream *st, *c1;
     conn->get_stream(0, st);
-    conn->make_stream(1, c1);
+    conn->get_stream(1, c1);
     st->send_settings({});
     while (true) {
         if (conn->recvable() || socklib::Selecter::waitone(conn->borrow(), 1, 0)) {
@@ -482,7 +484,7 @@ int main(int, char**) {
                 std::cout << "\n";
             }
             else if (auto d = frame->data()) {
-                std::cout << "data\n";
+                //std::cout << "data\n";
                 std::cout << d->payload();
                 if (d->is_set(socklib::H2Flag::end_stream)) {
                     break;
@@ -495,7 +497,11 @@ int main(int, char**) {
                 std::cout << "header\n";
                 for (auto& h : d->header_map()) {
                     if (h.first == ":status") {
-                        std::cout << "HTTP/2.0 " << h.second << "\n";
+                        auto m_0 = [](auto c) {
+                            return c - '0';
+                        };
+                        auto code = m_0(h.second[0]) * 100 + m_0(h.second[1]) * 10 + m_0(h.second[2]);
+                        std::cout << "HTTP/2.0 " << h.second << " " << socklib::reason_phrase(code) << "\n";
                     }
                     else {
                         std::cout << h.first << ":" << h.second << "\n";

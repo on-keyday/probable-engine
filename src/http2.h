@@ -19,6 +19,8 @@ namespace socklib {
     struct H2Stream {
         int streamid = 0;
         H2StreamState state = H2StreamState::idle;
+        std::string path;
+        std::string query;
         HttpConn::Header header;
         std::string payload;
         Http2Conn* conn = nullptr;
@@ -145,8 +147,9 @@ namespace socklib {
         bool server = false;
         std::map<int, H2Stream> streams;
         int maxid = 0;
-        Http2Context(std::shared_ptr<Conn>&& conn)
-            : Http2Conn(std::move(conn)) {}
+        std::string host;
+        Http2Context(std::shared_ptr<Conn>&& conn, std::string&& host)
+            : Http2Conn(std::move(conn)), host(std::move(host)) {}
 
         H2Err apply(std::shared_ptr<H2Frame>& frame, H2Stream*& stream) {
             stream = nullptr;
@@ -163,7 +166,7 @@ namespace socklib {
             }
         }
 
-        bool make_stream(int id, H2Stream*& stream) {
+        bool make_stream(int id, H2Stream*& stream, const std::string& path, const std::string& query) {
             if (id <= 0) return false;
             if (auto found = streams.find(id); found != streams.end()) {
                 return false;
@@ -171,7 +174,10 @@ namespace socklib {
             if ((server && id % 2) || (!server && 1 != id % 2)) {
                 return false;
             }
-            stream = &(streams[id] = H2Stream(id, this));
+            auto& tmp = streams[id] = H2Stream(id, this);
+            tmp.path = path;
+            tmp.query = query;
+            stream = &tmp;
             return true;
         }
 
@@ -206,9 +212,12 @@ namespace socklib {
             if (!conn->write("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
                 return nullptr;
             }
-            auto ret = std::make_shared<Http2Context>(std::move(conn));
+            auto ret = std::make_shared<Http2Context>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""));
             ret->streams[0] = H2Stream(0, ret.get());
             ret->server = false;
+            auto& tmp = ret->streams[1] = H2Stream(1, ret.get());
+            tmp.path = std::move(path);
+            tmp.query = std::move(query);
             return ret;
         }
     };
