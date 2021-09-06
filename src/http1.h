@@ -8,7 +8,7 @@
 
 namespace socklib {
 
-    constexpr const char* reason_phrase(unsigned short status) {
+    constexpr const char* reason_phrase(unsigned short status, bool dav = false) {
         switch (status) {
             case 100:
                 return "Continue";
@@ -82,8 +82,8 @@ namespace socklib {
                 return "Expectation Failed";
             case 418:
                 return "I'm a teapot";
-            case 422:
-                return "Unprocessable Entity";
+            case 421:
+                return "Misdirected Request";
             case 425:
                 return "Too Early";
             case 426:
@@ -108,17 +108,38 @@ namespace socklib {
                 return "HTTP Version Not Supported";
             case 506:
                 return "Variant Also Negotiates";
-            case 507:
-                return "Insufficient Storage";
-            case 508:
-                return "Loop Detected";
             case 510:
                 return "Not Extended";
             case 511:
                 return "Network Authentication Required";
             default:
-                return "Unknown";
+                break;
         }
+        if (dav) {
+            switch (status) {
+                case 102:
+                    return "Processing";
+                case 207:
+                    return "Multi-Status";
+                case 208:
+                    return "Already Reported";
+                case 226:
+                    return "IM Used";
+                case 422:
+                    return "Unprocessable Entity";
+                case 423:
+                    return "Locked";
+                case 424:
+                    return "Failed Dependency";
+                case 507:
+                    return "Insufficient Storage";
+                case 508:
+                    return "Loop Detected";
+                default:
+                    break;
+            }
+        }
+        return "Unknown";
     }
 
     struct HttpConn : public AppLayer {
