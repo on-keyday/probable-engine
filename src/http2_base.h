@@ -256,7 +256,9 @@ namespace socklib {
         friend struct H2Stream;
         size_t streamid_max = 0;
         Hpack::DynamicTable local_table;
+        //std::int32_t local_table_size = 0;
         Hpack::DynamicTable remote_table;
+        //std::int32_t remote_table_size = 0;
         commonlib2::Reader<SockReader> r;
         SettingTable remote_settings;
         SettingTable local_settings;
@@ -464,7 +466,7 @@ namespace socklib {
             if (!any(flag & H2Flag::end_headers)) {
                 TRY(t->read_continuous(v.id, v.buf));
             }
-            if (auto e = Hpack::decode(header_, v.buf, t->remote_table); !e) {
+            if (auto e = Hpack::decode(header_, v.buf, t->remote_table, t->remote_settings[(unsigned short)H2PredefinedSetting::header_table_size]); !e) {
                 return H2Error::compression;
             }
             return true;
@@ -472,7 +474,7 @@ namespace socklib {
 
         H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string>& se, Http2Conn* t) override {
             std::string hpacked;
-            if (!Hpack::encode<true>(header_, hpacked, t->local_table)) {
+            if (!Hpack::encode<true>(header_, hpacked, t->local_table, t->local_settings[(unsigned short)H2PredefinedSetting::header_table_size])) {
                 return H2Error::compression;
             }
             H2Flag flagcpy = flag;
@@ -688,7 +690,7 @@ namespace socklib {
             if (!any(flag & H2Flag::end_headers)) {
                 TRY(t->read_continuous(v.id, v.buf));
             }
-            if (!Hpack::decode(header_, v.buf, t->remote_table)) {
+            if (!Hpack::decode(header_, v.buf, t->remote_table, t->remote_settings[(unsigned short)H2PredefinedSetting::header_table_size])) {
                 return H2Error::compression;
             }
             return true;
@@ -699,7 +701,7 @@ namespace socklib {
                 return H2Error::protocol;
             }
             std::string hpacked;
-            if (!Hpack::encode<true>(header_, hpacked, t->local_table)) {
+            if (!Hpack::encode<true>(header_, hpacked, t->local_table, t->local_settings[(unsigned short)H2PredefinedSetting::header_table_size])) {
                 return H2Error::compression;
             }
             H2Flag flagcpy = flag;

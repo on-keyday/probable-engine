@@ -680,7 +680,7 @@ namespace socklib {
             return true;
         }
 
-        using DynamicTable = std::vector<std::pair<std::string, std::string>>;
+        using DynamicTable = std::deque<std::pair<std::string, std::string>>;
 
        private:
         template <class F>
@@ -703,10 +703,19 @@ namespace socklib {
             return true;
         }
 
+        static size_t calc_table_size(DynamicTable& table) {
+            size_t size = 32;
+            for (auto& e : table) {
+                size += e.first.size();
+                size += e.second.size();
+            }
+            return size;
+        }
+
        public:
         template <bool adddy = false>
         static HpkErr encode(HttpConn::Header& src, std::string& res,
-                             DynamicTable& dymap) {
+                             DynamicTable& dymap, std::uint32_t maxtablesize) {
             commonlib2::Serializer<std::string&> se(res);
             for (auto& h : src) {
                 size_t idx = 0;
@@ -736,7 +745,15 @@ namespace socklib {
                     }
                     encode_str(se, h.second);
                     if (adddy) {
-                        dymap.push_back({h.first, h.second});
+                        dymap.push_front({h.first, h.second});
+                        size_t tablesize = calc_table_size(dymap);
+                        while (tablesize > maxtablesize) {
+                            if (!dymap.size()) return false;
+                            tablesize -= dymap.back().first.size();
+                            tablesize -= dymap.back().second.size();
+                            dymap.pop_back();
+                        }
+                        return true;
                     }
                 }
             }
@@ -744,7 +761,17 @@ namespace socklib {
         }
 
         static HpkErr decode(HttpConn::Header& res, std::string& src,
-                             DynamicTable& dymap) {
+                             DynamicTable& dymap, std::uint32_t& maxtablesize) {
+            auto update_dymap = [&] {
+                size_t tablesize = calc_table_size(dymap);
+                while (tablesize > maxtablesize) {
+                    if (!dymap.size()) return false;
+                    tablesize -= dymap.back().first.size();
+                    tablesize -= dymap.back().second.size();
+                    dymap.pop_back();
+                }
+                return true;
+            };
             commonlib2::Deserializer<std::string&> se(src);
             while (!se.base_reader().ceof()) {
                 unsigned char tmp = se.base_reader().achar();
@@ -790,21 +817,30 @@ namespace socklib {
                 }
                 else if (tmp & 0x40) {
                     size_t sz = 0;
-                    TRY(decode_integer<6>(se, sz, tmp));
+                    if (tmp & 0x40) {
+                        TRY(decode_integer<6>(se, sz, tmp));
+                    }
+                    else {
+                        TRY(decode_integer<4>(se, sz, tmp));
+                    }
                     if (sz == 0) {
                         TRY(read_two_literal());
                     }
                     else {
                         TRY(read_idx_and_literal(sz));
                     }
-                    dymap.push_back({key, value});
+                    dymap.push_front({key, value});
+                    TRY(update_dymap());
                 }
                 else if (tmp & 0x20) {  //dynamic table size change
                     //unimplemented
                     size_t sz = 0;
                     TRY(decode_integer<5>(se, sz, tmp));
+                    if (maxtablesize > 0x80000000) return HpackError::too_large_number;
+                    maxtablesize = (std::int32_t)sz;
+                    TRY(update_dymap());
                 }
-                else if ((tmp & 0xf0) == 0) {
+                else {
                     size_t sz = 0;
                     TRY(decode_integer<4>(se, sz, tmp));
                     if (sz == 0) {
@@ -814,9 +850,9 @@ namespace socklib {
                         TRY(read_idx_and_literal(sz));
                     }
                 }
-                else {
+                /*else {
                     return false;
-                }
+                }*/
             }
             return true;
         }
