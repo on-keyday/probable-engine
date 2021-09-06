@@ -448,6 +448,7 @@ namespace socklib {
             w.exclusive = exclusive;
             w.depends_id = depends;
             w.weight = weight;
+            return true;
         }
 
         std::uint8_t padlen() const {

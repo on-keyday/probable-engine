@@ -64,6 +64,7 @@ namespace socklib {
                 errorcode = r->errcode;
                 state = H2StreamState::closed;
             }
+            return true;
         }
 
         H2Err send_data(const char* data, size_t size, bool padding = false, std::uint8_t padlen = 0, bool endstream = false) {
