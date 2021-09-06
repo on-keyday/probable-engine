@@ -266,6 +266,19 @@ namespace socklib {
        public:
         Http2Conn(std::shared_ptr<Conn>&& in)
             : AppLayer(std::move(in)), r(conn) {
+            auto setdefault = [](auto& s) {
+                constexpr auto k = [](H2PredefinedSetting c) {
+                    return (unsigned short)c;
+                };
+                s[k(H2PredefinedSetting::header_table_size)] = 4096;
+                s[k(H2PredefinedSetting::enable_push)] = 1;
+                s[k(H2PredefinedSetting::max_concurrent_streams)] = ~0;
+                s[k(H2PredefinedSetting::initial_window_size)] = 65535;
+                s[k(H2PredefinedSetting::max_frame_size)] = 16384;
+                s[k(H2PredefinedSetting::max_header_list_size)] = ~0;
+            };
+            setdefault(local_settings);
+            setdefault(remote_settings);
         }
 
        protected:
@@ -528,7 +541,6 @@ namespace socklib {
                 }
             }*/
             TRY(write_continuous(streamid, write_header, se, fsize, hpacked, flag, flagcpy, padding, plus));
-            flag = flagcpy;
             return true;
         }
 

@@ -764,7 +764,9 @@ namespace socklib {
             auto update_dymap = [&] {
                 size_t tablesize = calc_table_size(dymap);
                 while (tablesize > maxtablesize) {
-                    if (!dymap.size()) return false;
+                    if (!dymap.size()) {
+                        return false;
+                    }
                     tablesize -= dymap.back().first.size();
                     tablesize -= dymap.back().second.size();
                     dymap.pop_back();
