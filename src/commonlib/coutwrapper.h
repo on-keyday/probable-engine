@@ -41,15 +41,15 @@ namespace PROJECT_NAME {
             if (Flag()) return true;
             Flag() = true;
 #ifdef _WIN32
-            if (_setmode(_fileno(stdin), COMMONLIB_IOWRAP_IO_CHARMODE) == -1) {
+            if (_setmode(_fileno(stdin), COMMONLIB_IOWRAP_IN_CHARMODE) == -1) {
                 err = "error:text input mode change failed";
                 return false;
             }
-            if (_setmode(_fileno(stdout), COMMONLIB_IOWRAP_IO_CHARMODE) == -1) {
+            if (_setmode(_fileno(stdout), COMMONLIB_IOWRAP_OUT_CHARMODE) == -1) {
                 err = "error:text output mode change failed\n";
                 return false;
             }
-            if (_setmode(_fileno(stderr), COMMONLIB_IOWRAP_IO_CHARMODE) == -1) {
+            if (_setmode(_fileno(stderr), COMMONLIB_IOWRAP_OUT_CHARMODE) == -1) {
                 err = "error:text error mode change failed\n";
                 return false;
             }
