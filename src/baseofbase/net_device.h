@@ -27,4 +27,14 @@ namespace socklib {
         void *ctx = nullptr;
     };
 
+    struct net_interface {
+        int protocol_family;
+    };
+
+    struct ip_context;
+
+    struct net_context {
+        ip_context *ipctx;
+    };
+
 }  // namespace socklib

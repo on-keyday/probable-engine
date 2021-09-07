@@ -17,7 +17,7 @@
 namespace PROJECT_NAME {
 
     template <class T,class C=char>
-    T translate_byte_as_is(const C* s) {
+    constexpr T translate_byte_as_is(const C* s) {
         T res = T();
         res.~T();
         char* res_p = (char*)&res;
@@ -28,7 +28,7 @@ namespace PROJECT_NAME {
     }
 
     template <class T,class C=char>
-    T translate_byte_reverse(const C* s) {
+    constexpr T translate_byte_reverse(const C* s) {
         T res = T();
         res.~T();
         char* res_p = (char*)&res;
@@ -54,7 +54,7 @@ namespace PROJECT_NAME {
     }
 
     template <class T,class C>
-    T translate_byte_net_and_host(const C* s) {
+    constexpr T translate_byte_net_and_host(const C* s) {
 #if defined(__BIG_ENDIAN__)
         return translate_byte_as_is<T>(s);
 #elif defined(__LITTLE_ENDIAN__)
