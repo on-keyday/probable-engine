@@ -1,5 +1,5 @@
 #pragma once
-#include "protcolbase.h"
+#include "../transport/tcp.h"
 #include <net_helper.h>
 
 #include "hpack.h"
@@ -517,29 +517,6 @@ namespace socklib {
                 }
                 return H2Err(true);
             };
-            /*if (hpacked.size() + padding + plus <= fsize) {
-                flag = flagcpy;
-                TRY(write_header((std::uint32_t)(hpacked.size() + padding + plus), hpacked));
-            }
-            else {
-                std::string_view view(hpacked.data(), hpacked.data() + fsize - (padding + plus));
-                TRY(write_header(fsize, view));
-                size_t idx = fsize - (padding + plus);
-                while (hpacked.size() - idx) {
-                    if (hpacked.size() - idx <= fsize) {
-                        view = std::string_view(hpacked.data() + idx, hpacked.data() + hpacked.size());
-                        idx = hpacked.size();
-                        H2Frame::serialize_impl(view.size(), streamid, H2FType::continuation, H2Flag::end_headers, se);
-                        se.write(view);
-                    }
-                    else {
-                        view = std::string_view(hpacked.data() + idx, hpacked.data() + idx + fsize);
-                        idx += fsize;
-                        H2Frame::serialize_impl(view.size(), streamid, H2FType::continuation, H2Flag::none, se);
-                        se.write(view);
-                    }
-                }
-            }*/
             TRY(write_continuous(streamid, write_header, se, fsize, hpacked, flag, flagcpy, padding, plus));
             return true;
         }

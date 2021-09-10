@@ -3,6 +3,11 @@
 #include <learnstd.h>
 #include <memory>
 #include <map>
+
+#ifdef _WIN32
+//#include <wepoll.h>
+#endif
+
 namespace socklib {
     struct EpollCtx {
        private:

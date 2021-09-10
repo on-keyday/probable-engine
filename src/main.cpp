@@ -1,8 +1,8 @@
 
 #include <iostream>
 
-#include "http1.h"
-#include "websocket.h"
+#include "application/http1.h"
+#include "application/websocket.h"
 
 #include <reader.h>
 #include <net_helper.h>
@@ -410,7 +410,7 @@ void server_proc() {
     }
 }
 
-#include "http2.h"
+#include "application/http2.h"
 
 void testhttp2() {
     /*std::string str, dec;

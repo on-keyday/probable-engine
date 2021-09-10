@@ -1,6 +1,7 @@
 #pragma once
 
-#include "protcolbase.h"
+#include "../transport/tcp.h"
+#include "../transport/conn_struct_base.h"
 #include <net_helper.h>
 
 #include <thread>
