@@ -166,14 +166,27 @@ namespace socklib {
             }
         }
 
+        bool is_valid_id(int id) {
+            return maxid < id && ((server && id % 2) || (!server && 1 != id % 2));
+        }
+
+        bool make_stream(H2Stream*& stream, const std::string& path, const std::string& query) {
+            return make_stream(is_valid_id(maxid + 1) ? maxid + 1 : maxid + 2, stream, path, query);
+        }
+
+        bool get_stream(H2Stream*& stream) {
+            return get_stream(maxid, stream);
+        }
+
         bool make_stream(int id, H2Stream*& stream, const std::string& path, const std::string& query) {
             if (id <= 0) return false;
             if (auto found = streams.find(id); found != streams.end()) {
                 return false;
             }
-            if ((server && id % 2) || (!server && 1 != id % 2)) {
+            if (is_valid_id(id)) {
                 return false;
             }
+            maxid = id;
             auto& tmp = streams[id] = H2Stream(id, this);
             tmp.path = path;
             tmp.query = query;
@@ -218,6 +231,7 @@ namespace socklib {
             auto& tmp = ret->streams[1] = H2Stream(1, ret.get());
             tmp.path = std::move(path);
             tmp.query = std::move(query);
+            ret->maxid = 1;
             return ret;
         }
     };

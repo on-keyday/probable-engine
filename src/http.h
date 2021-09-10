@@ -17,32 +17,63 @@ namespace socklib {
             commonlib2::URLContext<std::string> urlctx;
             std::string path, query;
             if (!Http1::setuphttp(url, encoded, port, urlctx, path, query)) {
-                return nullptr;
+                return false;
             }
+            bool secure = urlctx.scheme == "https";
             auto tcon = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
-                                         cacert, urlctx.scheme == "https", "\x02h2\x08http/1.1", 3, true);
+                                         cacert, secure, "\x02h2\x08http/1.1", 3, true);
             if (!tcon) {
-                return nullptr;
+                return false;
             }
+
             const unsigned char* data = nullptr;
             unsigned int len = 0;
-            SSL_get0_alpn_selected((SSL*)tcon->get_ssl(), &data, &len);
-            if (!data) {
-                return nullptr;
+            if (secure) {
+                SSL_get0_alpn_selected((SSL*)tcon->get_ssl(), &data, &len);
+                if (!data) {
+                    return nullptr;
+                }
             }
-            if (strncmp("http/1.1", (const char*)data, 8) == 0) {
-                conn.h1 = std::make_shared<HttpClientConn>(std::move(tcon), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), std::move(path), std::move(query));
+            auto hosts = urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : "");
+            if (!secure || strncmp("http/1.1", (const char*)data, 8) == 0) {
+                conn.h1 = std::make_shared<HttpClientConn>(std::move(tcon), std::move(hosts), std::move(path), std::move(query));
                 version = 1;
             }
             else if (strncmp("h2", (const char*)data, 2) == 0) {
                 if (!tcon->write("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")) {
                     return false;
                 }
-                conn.h2 = std::make_shared<HttpClientConn>(std::move(tcon));
+                conn.h2 = std::make_shared<Http2Context>(std::move(tcon), std::move(hosts));
                 conn.h2->streams[0] = H2Stream(0, conn.h2.get());
                 conn.h2->server = false;
                 version = 2;
-                conn.h2->streams[1] = H2Stream(1, conn.h2.get());
+                auto& h = conn.h2->streams[1];
+                h = H2Stream(1, conn.h2.get());
+                h.path = std::move(path);
+                h.query = std::move(query);
+                conn.h2->maxid = 1;
+            }
+            else {
+                return false;
+            }
+            return true;
+        }
+
+        HttpConn::Header* GET(const char* path) {
+            if (version == 0) return nullptr;
+            std::string tmp;
+            if (!path) {
+                if (version == 2) {
+                    H2Stream* st;
+                    if (!conn.h2->get_stream(st)) {
+                        return nullptr;
+                    }
+                    tmp = st->path + st->query;
+                }
+                else {
+                    tmp = conn.h1->path() + conn.h1->query();
+                }
+                path = tmp.c_str();
             }
         }
     };

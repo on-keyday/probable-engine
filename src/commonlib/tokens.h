@@ -5,8 +5,8 @@
 */
 
 #pragma once
-#include <basic_helper.h>
-#include <reader.h>
+#include "basic_helper.h"
+#include "reader.h"
 
 #include <string>
 #include <vector>
@@ -60,12 +60,12 @@ namespace PROJECT_NAME {
 
     struct Tokens {
         std::vector<Token> token;
-        Token* current = nullptr;
+        //Token* current = nullptr;
         size_t readbegin = 0;
         size_t readend = 0;
         TokenBehavior flag = TokenBehavior::increment;
         template <class Buf>
-        bool operator()(Reader<Buf>& r) {
+        bool operator()(Reader<Buf>& r,Token*& current) {
             auto tmp = r.readpos();
             for (auto& i : token) {
                 if (i(r, any(flag & TokenBehavior::identifier))) {
@@ -79,7 +79,7 @@ namespace PROJECT_NAME {
         }
 
         template <class Buf>
-        bool operator()(Reader<Buf>& r, size_t s) {
+        bool operator()(Reader<Buf>& r, size_t s,Token*& current) {
             if (s >= token.size()) return false;
             auto tmp = r.readpos();
             if (token[s](r)) {
@@ -152,6 +152,7 @@ namespace PROJECT_NAME {
     struct TokenManager {
        private:
         TokenHierarchy& tokenbase;
+        Token* _current=nullptr;
         Reader<Buf>& r;
         size_t _position = 0;
         size_t depth = 0;
@@ -185,6 +186,15 @@ namespace PROJECT_NAME {
             return tokenbase.get().size() == 0;
         }
 
+        template<class T,class U>
+        bool get_pos_and_idx(T pos,U idx,size_t& pos_,size_t& idx_){
+            pos_ = (size_t)pos;
+            idx_ = (size_t)idx;
+            if (pos_ >= tokenbase.get().size()) return false;
+            if (idx_ >= tokenbase.get()[pos_].token.size()) return false;
+            return true;
+        }
+
        public:
         TokenManager(Reader<Buf>& in_r, TokenHierarchy& h)
             : r(in_r), tokenbase(h) {}
@@ -195,7 +205,7 @@ namespace PROJECT_NAME {
         }
 
         Token* current() {
-            return get().current;
+            return _current;
         }
 
         Reader<Buf>& reader() {
@@ -209,6 +219,15 @@ namespace PROJECT_NAME {
         bool setpos(size_t sz) {
             if (sz >= tokenbase.get().size()) return false;
             _position = sz;
+            return true;
+        }
+
+        size_t getdepth()const{
+            return depth;
+        }
+
+        bool setdepth(size_t sz){
+            depth=sz;
             return true;
         }
 
@@ -254,17 +273,25 @@ namespace PROJECT_NAME {
         }
         bool operator()() {
             if (zero()) return false;
-            return get()(r);
+            return get()(r,_current);
         }
 
         bool operator()(size_t pos) {
             if (zero()) return false;
-            return get()(r, pos);
+            return get()(r, pos,_current);
         }
 
         template <class T>
         bool operator()(T pos) {
             return (*this)((size_t)pos);
+        }
+
+        template <class T,class U>
+        bool operator()(T pos,U idx) {
+            size_t pos_ ,idx_;
+            if(!get_pos_and_idx(pos,idx,pos_,idx_))return false;
+            Tokens& c=tokenbase.get()[pos_];
+            return c(r,idx,_current);
         }
 
         bool has(TokenBehavior flag) const {
@@ -294,10 +321,8 @@ namespace PROJECT_NAME {
 
         template <class T, class U>
         Token* get_token(T pos, U idx) {
-            size_t pos_ = (size_t)pos;
-            size_t idx_ = (size_t)idx;
-            if (pos_ >= tokenbase.get().size()) return nullptr;
-            if (idx_ >= tokenbase.get()[pos_].token.size()) return nullptr;
+            size_t pos_ ,idx_;
+            if(!get_pos_and_idx(pos,idx,pos_,idx_))return nullptr;
             return &tokenbase.get()[pos_].token[idx_];
         }
     };
