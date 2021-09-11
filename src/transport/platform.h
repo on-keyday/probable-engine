@@ -22,9 +22,9 @@
 #endif
 
 #include <string>
-#include <string.h>
+#include <cstring>
 #include <stdexcept>
-#include <time.h>
+#include <ctime>
 
 #if !defined(_WIN32) || (defined(__GNUC__) && !defined(__clang__))
 #define memcpy_s(dst, dsz, src, ssz) memcpy(dst, src, ssz)
