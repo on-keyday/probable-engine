@@ -3,6 +3,5 @@
 #include "sockbase.h"
 
 namespace socklib {
-    struct UDP {
-    };
+
 }  // namespace socklib

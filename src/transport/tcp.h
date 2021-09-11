@@ -216,24 +216,6 @@ namespace socklib {
        public:
         static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
             std::shared_ptr<Conn> ret;
-            /*::addrinfo *selected = nullptr, *got = nullptr;
-            int sock = open_detail(nullptr, true, got, selected, host, port, service);
-            if (sock == invalid_socket) {
-                return nullptr;
-            }
-            SSL_CTX* ctx = nullptr;
-            SSL* ssl = nullptr;
-            if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len)) {
-                ::closesocket(sock);
-                ::freeaddrinfo(got);
-                return nullptr;
-            }
-            if (noblock) {
-                u_long l = 1;
-                ::ioctlsocket(sock, FIONBIO, &l);
-            }
-            auto ret = std::make_shared<SecureConn>(ctx, ssl, sock, selected);
-            ::freeaddrinfo(got);*/
             if (!reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len, strictverify)) {
                 return nullptr;
             }
