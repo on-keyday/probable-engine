@@ -192,7 +192,8 @@ namespace socklib {
 
         bool on_error(time_t begintime, time_t timeout) {
             set_os_error(err);
-            if (timeout >= 0 && std::time(nullptr) - begintime > timeout) {
+            auto nowtime = std::time(nullptr);
+            if (timeout >= 0 && nowtime - begintime > timeout) {
                 return true;
             }
             if (!suspend && is_waiting(err)) {
