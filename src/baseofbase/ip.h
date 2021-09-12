@@ -23,11 +23,13 @@ namespace socklib {
 
     union ipv4addr_t {
         std::uint8_t by[4];
+        std::uint16_t wo[2];
         std::uint32_t dw;
     };
 
     union ipv6addr_t {
         std::uint8_t by[16];
+        std::uint16_t wo[8];
         std::uint32_t dw[4];
         std::uint64_t qw[2];
     };
