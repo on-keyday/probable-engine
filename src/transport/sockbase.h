@@ -3,9 +3,20 @@
 
 #include "platform.h"
 
+#include <enumext.h>
+
+#include "cancel.h"
+
 namespace socklib {
     constexpr int invalid_socket = -1;
     constexpr size_t intmaximum = static_cast<size_t>(static_cast<unsigned int>(~0) >> 1);
+
+    enum class SockError {
+        none,
+        unknown,
+    };
+
+    using SockErr = commonlib2::EnumWrap<SockError, SockError::none, SockError::unknown>;
 
     struct Network {
        private:
@@ -190,12 +201,14 @@ namespace socklib {
             return true;
         }
 
-        bool on_error(time_t begintime, time_t timeout) {
+        bool on_error(CancelContext* cancel /*time_t begintime, time_t timeout*/) {
             set_os_error(err);
+            /*
             auto nowtime = std::time(nullptr);
             if (timeout >= 0 && nowtime - begintime > timeout) {
                 return true;
-            }
+            }*/
+            if (cancel && cancel->on_cancel()) return true;
             if (!suspend && is_waiting(err)) {
                 return false;
             }
@@ -231,8 +244,9 @@ namespace socklib {
 
        private:
        public:
-        virtual bool write(const char* data, size_t size, time_t timeout = ~0) {
+        virtual bool write(const char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) {
             if (!is_opened()) return 0;
+            OsErrorContext ctx(cancel_when_block, cancel);
             size_t count = 0;
             size_t sz = size;
             time_t begintime = std::time(nullptr);
@@ -240,10 +254,13 @@ namespace socklib {
                 while (true) {
                     auto res = ::send(sock, data + count, sz < intmaximum ? (int)sz : (int)intmaximum, 0);
                     if (res < 0) {
-                        if (!on_error(begintime, timeout)) {
+                        /*if (!on_error(begintime, timeout)) {
                             continue;
+                        }*/
+                        if (ctx.on_cancel()) {
+                            return false;
                         }
-                        return false;
+                        continue;
                     }
                     break;
                 }
@@ -258,19 +275,23 @@ namespace socklib {
             return write(str.data(), str.size());
         }
 
-        virtual bool writeto(const char* data, size_t size, time_t timeout = ~0) {
+        virtual bool writeto(const char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) {
             if (!is_opened()) return false;
+            OsErrorContext ctx(cancel_when_block, cancel);
             size_t count = 0;
             size_t sz = size;
-            time_t begintime = std::time(nullptr);
+            //time_t begintime = std::time(nullptr);
             while (sz) {
                 while (true) {
                     auto res = ::sendto(sock, data + count, sz < intmaximum ? (int)sz : (int)intmaximum, 0, addr->ai_addr, addr->ai_addrlen);
                     if (res < 0) {
-                        if (!on_error(begintime, timeout)) {
+                        /*if (!on_error(begintime, timeout)) {
                             continue;
+                        }*/
+                        if (ctx.on_cancel()) {
+                            return false;
                         }
-                        return false;
+                        continue;
                     }
                     break;
                 }
@@ -281,29 +302,34 @@ namespace socklib {
             return true;
         }
 
-        [[nodiscard]] virtual size_t read(char* data, size_t size, time_t timeout = ~0) {
+        [[nodiscard]] virtual size_t read(char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) {
             if (!is_opened()) return 0;
-            time_t begintime = std::time(nullptr);
+            //time_t begintime = std::time(nullptr);
+            OsErrorContext ctx(cancel_when_block, cancel);
             int res = 0;
             while (true) {
                 res = ::recv(sock, data, size < intmaximum ? (int)size : intmaximum, 0);
                 if (res < 0) {
-                    set_os_error(err);
+                    /*set_os_error(err);
                     if (!on_error(begintime, timeout)) {
                         continue;
                     }
-                    return ~0;
+                    return ~0;*/
+                    if (ctx.on_cancel()) {
+                        return ~0;
+                    }
+                    continue;
                 }
                 break;
             }
             return (size_t)res;
         }
 
-        [[nodiscard]] virtual size_t read(std::string& buf, time_t timeout = ~0) {
+        [[nodiscard]] virtual size_t read(std::string& buf, CancelContext* cancel = nullptr, bool cancel_when_block = false) {
             size_t ret = 0;
             while (true) {
                 char tmp[1024] = {0};
-                auto res = read(tmp, 1024, timeout);
+                auto res = read(tmp, 1024, cancel, cancel_when_block);
                 if (res == ~0 || res == 0) {
                     return res;
                 }
@@ -350,13 +376,20 @@ namespace socklib {
             return true;
         }
 
-        virtual bool write(const char* data, size_t size, time_t timeout = ~0) override {
+        virtual bool write(const char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) override {
             if (!ssl) return Conn::write(data, size);
-            time_t begintime = std::time(nullptr);
+            SSLErrorContext ctx(ssl, cancel, cancel_when_block);
+            //time_t begintime = std::time(nullptr);
             while (true) {
                 size_t w;
                 if (!SSL_write_ex(ssl, data, size, &w)) {
-                    if (ssl_failed(begintime, timeout)) {
+                    /*if (ssl_failed(begintime, timeout)) {
+                        return false;
+                    }*/
+                    if (ctx.on_cancel()) {
+                        if (ctx.reason() == CancelReason::ssl_error || ctx.reason() == CancelReason::os_error) {
+                            noshutdown = true;
+                        }
                         return false;
                     }
                     continue;
@@ -372,7 +405,7 @@ namespace socklib {
 
        private:
         bool noshutdown = false;
-
+        /*
         bool ssl_failed(time_t begintime, time_t timeout) {
             auto reason = SSL_get_error(ssl, 0);
             bool retry = false;
@@ -388,21 +421,29 @@ namespace socklib {
             }
             noshutdown = true;
             return true;
-        }
+        }*/
 
        public:
-        [[nodiscard]] virtual size_t read(char* data, size_t size, time_t timeout = ~0) override {
+        [[nodiscard]] virtual size_t read(char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) override {
             if (!ssl) return Conn::read(data, size);
+            SSLErrorContext ctx(ssl, cancel, cancel_when_block);
             size_t red = 0;
             time_t begintime = std::time(nullptr);
             while (!SSL_read_ex(ssl, data, size, &red)) {
-                if (!ssl_failed(begintime, timeout)) continue;
-                return ~0;
+                /*if (!ssl_failed(begintime, timeout)) continue;
+                return ~0;*/
+                if (ctx.on_cancel()) {
+                    if (ctx.reason() == CancelReason::ssl_error || ctx.reason() == CancelReason::os_error) {
+                        noshutdown = true;
+                    }
+                    return ~0;
+                }
+                continue;
             }
             return red;
         }
 
-        [[nodiscard]] virtual size_t read(std::string& buf, time_t timeout = ~0) override {
+        /*[[nodiscard]] virtual size_t read(std::string& buf, time_t timeout = ~0) override {
             if (!ssl) return Conn::read(buf);
             size_t ret = 0;
             while (true) {
@@ -418,15 +459,16 @@ namespace socklib {
                 }
             }
             return ret;
-        }
+        }*/
 
         virtual void close() override {
             if (ssl) {
                 if (!noshutdown) {
+                    SSLErrorContext ctx(ssl);
                     while (true) {
                         auto res = SSL_shutdown(ssl);
                         if (res < 0) {
-                            if (!ssl_failed(0, ~0)) continue;
+                            if (!ctx.on_cancel()) continue;
                             break;
                         }
                         else if (res == 0) {

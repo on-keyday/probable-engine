@@ -29,7 +29,8 @@ namespace socklib {
 
         bool reading() const {
             if (on_eof) return false;
-            auto res = base->read(buffer, timeout);
+            TimeoutContext cancel(timeout, nullptr);
+            auto res = base->read(buffer, &cancel);
             if (res == ~0 || res == 0) {
                 on_eof = true;
             }
@@ -92,4 +93,4 @@ namespace socklib {
         virtual ~AppLayer() {}
     };
 
-}
+}  // namespace socklib
