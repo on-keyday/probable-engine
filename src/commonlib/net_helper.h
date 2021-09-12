@@ -482,6 +482,7 @@ namespace PROJECT_NAME {
         if (status.size() < 2) return false;
         ret.emplace(":method", status[0]);
         ret.emplace(":path", status[1]);
+        if(status.size()>=3)ret.emplace(":version",status[2]);
         if(!parse_httpheader<Str>(r,ret))return false;
         if(!ignore_body){
             parse_httpbody<Str>(ret, r);
@@ -502,6 +503,7 @@ namespace PROJECT_NAME {
     bool  parse_httpresponse(Reader<Buf>& r,Map& ret,bool ignore_body=false) {
         auto status = split(getline(r, false), " ");
         if (status.size() < 3) return false;
+        ret.emplace(":version",status[0]);
         ret.emplace(":status", status[1]);
         std::string phrase=status[2];
         for(auto i=3;i<status.size();i++){
