@@ -15,7 +15,7 @@ namespace socklib {
         unknwon,
     };
 
-    //like golang context.Context
+    //like golang context.Context (only canceler)
     struct CancelContext {
        protected:
         CancelContext* parent = nullptr;
@@ -105,11 +105,11 @@ namespace socklib {
 
        public:
         virtual bool on_cancel() override {
-            if (CancelContext::on_cancel()) return true;
             auto reason = SSL_get_error(ssl, 0);
             switch (reason) {
                 case (SSL_ERROR_WANT_READ):
                 case (SSL_ERROR_WANT_WRITE):
+                    if (CancelContext::on_cancel()) return true;
                     return false;
                 case (SSL_ERROR_SYSCALL):
                     if (OsErrorContext::on_cancel()) {
@@ -125,7 +125,7 @@ namespace socklib {
     };
 
     //MustCancelContext is used with non-blocking socket
-    //when blocked, on_cancel is called
+    //When blocked, on_cancel is called
     struct MustCancelContext : CancelContext {
         using CancelContext::CancelContext;
         virtual bool on_cancel() override {
