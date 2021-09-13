@@ -443,7 +443,7 @@ namespace socklib {
             InterruptContext interrupt(suspend, cancel);
             SSLErrorContext ctx(ssl, &interrupt, cancel_when_block);
             size_t red = 0;
-            time_t begintime = std::time(nullptr);
+            //time_t begintime = std::time(nullptr);
             while (!SSL_read_ex(ssl, data, size, &red)) {
                 /*if (!ssl_failed(begintime, timeout)) continue;
                 return ~0;*/
