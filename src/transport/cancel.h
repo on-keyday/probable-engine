@@ -152,7 +152,7 @@ namespace socklib {
 
        public:
         InterruptContext(Flag& f, CancelContext* parent = nullptr)
-            : flag(f) {}
+            : flag(f), CancelContext(parent) {}
 
         virtual bool cancel() override {
             flag = Flag(true);
