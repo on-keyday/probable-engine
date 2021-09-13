@@ -246,7 +246,8 @@ namespace socklib {
        public:
         virtual bool write(const char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) {
             if (!is_opened()) return 0;
-            OsErrorContext ctx(cancel_when_block, cancel);
+            InterruptContext interrupt(suspend, cancel);
+            OsErrorContext ctx(cancel_when_block, &interrupt);
             size_t count = 0;
             size_t sz = size;
             time_t begintime = std::time(nullptr);
@@ -277,7 +278,8 @@ namespace socklib {
 
         virtual bool writeto(const char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) {
             if (!is_opened()) return false;
-            OsErrorContext ctx(cancel_when_block, cancel);
+            InterruptContext interrupt(suspend, cancel);
+            OsErrorContext ctx(cancel_when_block, &interrupt);
             size_t count = 0;
             size_t sz = size;
             //time_t begintime = std::time(nullptr);
@@ -305,7 +307,8 @@ namespace socklib {
         [[nodiscard]] virtual size_t read(char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) {
             if (!is_opened()) return 0;
             //time_t begintime = std::time(nullptr);
-            OsErrorContext ctx(cancel_when_block, cancel);
+            InterruptContext interrupt(suspend, cancel);
+            OsErrorContext ctx(cancel_when_block, &interrupt);
             int res = 0;
             while (true) {
                 res = ::recv(sock, data, size < intmaximum ? (int)size : intmaximum, 0);
@@ -378,7 +381,8 @@ namespace socklib {
 
         virtual bool write(const char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) override {
             if (!ssl) return Conn::write(data, size);
-            SSLErrorContext ctx(ssl, cancel, cancel_when_block);
+            InterruptContext interrupt(suspend, cancel);
+            SSLErrorContext ctx(ssl, &interrupt, cancel_when_block);
             //time_t begintime = std::time(nullptr);
             while (true) {
                 size_t w;
@@ -426,7 +430,8 @@ namespace socklib {
        public:
         [[nodiscard]] virtual size_t read(char* data, size_t size, CancelContext* cancel = nullptr, bool cancel_when_block = false) override {
             if (!ssl) return Conn::read(data, size);
-            SSLErrorContext ctx(ssl, cancel, cancel_when_block);
+            InterruptContext interrupt(suspend, cancel);
+            SSLErrorContext ctx(ssl, &interrupt, cancel_when_block);
             size_t red = 0;
             time_t begintime = std::time(nullptr);
             while (!SSL_read_ex(ssl, data, size, &red)) {

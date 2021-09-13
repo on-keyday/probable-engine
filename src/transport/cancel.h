@@ -10,6 +10,7 @@ namespace socklib {
         os_error,
         ssl_error,
         timeout,
+        interrupt,
         unknwon,
     };
 
@@ -142,6 +143,31 @@ namespace socklib {
         virtual bool cancel() override {
             timeout = 0;
             return true;
+        }
+    };
+
+    template <class Flag = bool>
+    struct InterruptContext : CancelContext {
+       private:
+        Flag& flag;
+
+       public:
+        InterruptContext(Flag& f, CancelContext* parent = nullptr)
+            : flag(f) {}
+
+        virtual bool cancel() override {
+            flag = Flag(true);
+            return true;
+        }
+
+        virtual bool on_cancel() override {
+            if (CancelContext::on_cancel()) return true;
+            if ((bool)flag) {
+                reason_ = CancelReason::interrupt;
+                canceled = true;
+                return true;
+            }
+            return false;
         }
     };
 }  // namespace socklib
