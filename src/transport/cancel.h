@@ -105,8 +105,8 @@ namespace socklib {
 
        public:
         virtual bool on_cancel() override {
-            auto reason = SSL_get_error(ssl, 0);
-            switch (reason) {
+            sslerr = SSL_get_error(ssl, 0);
+            switch (sslerr) {
                 case (SSL_ERROR_WANT_READ):
                 case (SSL_ERROR_WANT_WRITE):
                     if (CancelContext::on_cancel()) return true;

@@ -259,6 +259,9 @@ namespace socklib {
                             continue;
                         }*/
                         if (ctx.on_cancel()) {
+                            if (ctx.reason() == CancelReason::os_error) {
+                                err = ctx.err;
+                            }
                             return false;
                         }
                         continue;
@@ -291,6 +294,9 @@ namespace socklib {
                             continue;
                         }*/
                         if (ctx.on_cancel()) {
+                            if (ctx.reason() == CancelReason::os_error) {
+                                err = ctx.err;
+                            }
                             return false;
                         }
                         continue;
@@ -319,6 +325,9 @@ namespace socklib {
                     }
                     return ~0;*/
                     if (ctx.on_cancel()) {
+                        if (ctx.reason() == CancelReason::os_error) {
+                            err = ctx.err;
+                        }
                         return ~0;
                     }
                     continue;
@@ -392,6 +401,7 @@ namespace socklib {
                     }*/
                     if (ctx.on_cancel()) {
                         if (ctx.reason() == CancelReason::ssl_error || ctx.reason() == CancelReason::os_error) {
+                            err = ctx.err;
                             noshutdown = true;
                         }
                         return false;
@@ -439,6 +449,7 @@ namespace socklib {
                 return ~0;*/
                 if (ctx.on_cancel()) {
                     if (ctx.reason() == CancelReason::ssl_error || ctx.reason() == CancelReason::os_error) {
+                        err = ctx.err;
                         noshutdown = true;
                     }
                     return ~0;
