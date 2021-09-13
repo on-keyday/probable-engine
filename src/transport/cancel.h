@@ -48,7 +48,6 @@ namespace socklib {
         }
 
         CancelReason deep_reason() const {
-            if (reason_ == CancelReason::nocanceled) return reason_;
             if (parent && reason_ == CancelReason::cancel_by_parent) return parent->deep_reason();
             return reason_;
         }
