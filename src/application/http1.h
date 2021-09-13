@@ -236,10 +236,10 @@ namespace socklib {
             return done;
         }
 
-        bool recv(bool igbody = false, time_t timeout = ~0) {
+        bool recv(bool igbody = false, CancelContext* cancel = nullptr) {
             if (!done || recving) return false;
             recving = true;
-            commonlib2::Reader<SockReader> r(SockReader(conn, timeout));
+            commonlib2::Reader<SockReader> r(SockReader(conn, cancel));
             struct {
                 decltype(r)& r;
                 decltype(header)& h;
@@ -293,10 +293,10 @@ namespace socklib {
             return header;
         }
 
-        bool recv(time_t timeout = ~0) {
+        bool recv(CancelContext* cancel = nullptr) {
             if (recving) return false;
             recving = true;
-            commonlib2::Reader<SockReader> r(SockReader(conn, timeout));
+            commonlib2::Reader<SockReader> r(SockReader(conn, cancel));
             header.clear();
             if (!commonlib2::parse_httprequest(r, header)) {
                 return false;

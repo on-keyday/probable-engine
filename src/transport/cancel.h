@@ -11,6 +11,7 @@ namespace socklib {
         ssl_error,
         timeout,
         interrupt,
+        mustcancel,
         unknwon,
     };
 
@@ -50,6 +51,10 @@ namespace socklib {
         CancelReason deep_reason() const {
             if (parent && reason_ == CancelReason::cancel_by_parent) return parent->deep_reason();
             return reason_;
+        }
+
+        void set_parent(CancelContext* ctx) {
+            parent = ctx;
         }
 
         virtual ~CancelContext() {}
@@ -119,6 +124,15 @@ namespace socklib {
         }
     };
 
+    struct MustCancelContext : CancelContext {
+        using CancelContext::CancelContext;
+        virtual bool on_cancel() override {
+            reason_ = CancelReason::mustcancel;
+            canceled = true;
+            return true;
+        }
+    };
+
     struct TimeoutContext : CancelContext {
        private:
         std::time_t timeout = 0, begintime = 0;
@@ -126,7 +140,7 @@ namespace socklib {
        public:
         using CancelContext::CancelContext;
 
-        TimeoutContext(std::time_t timeout, CancelContext* parent)
+        TimeoutContext(std::time_t timeout, CancelContext* parent = nullptr)
             : timeout(timeout), begintime(std::time(nullptr)), CancelContext(parent) {}
         virtual bool on_cancel() override {
             if (CancelContext::on_cancel()) return true;

@@ -250,7 +250,7 @@ namespace socklib {
             OsErrorContext ctx(cancel_when_block, &interrupt);
             size_t count = 0;
             size_t sz = size;
-            time_t begintime = std::time(nullptr);
+            //time_t begintime = std::time(nullptr);
             while (sz) {
                 while (true) {
                     auto res = ::send(sock, data + count, sz < intmaximum ? (int)sz : (int)intmaximum, 0);

@@ -9,11 +9,11 @@ namespace socklib {
         mutable bool on_eof = false;
         void (*callback)(void*, bool) = nullptr;
         void* ctx = nullptr;
-        time_t timeout = ~0;
+        CancelContext* cancel = nullptr;
 
        public:
-        SockReader(std::shared_ptr<Conn> r, time_t timeout = ~0)
-            : base(r), timeout(timeout) {}
+        SockReader(std::shared_ptr<Conn> r, CancelContext* cancel = nullptr)
+            : base(r), cancel(cancel) {}
         void setcallback(decltype(callback) cb, void* ct) {
             callback = cb;
             ctx = ct;
@@ -29,8 +29,7 @@ namespace socklib {
 
         bool reading() const {
             if (on_eof) return false;
-            TimeoutContext cancel(timeout, nullptr);
-            auto res = base->read(buffer, &cancel);
+            auto res = base->read(buffer, cancel);
             if (res == ~0 || res == 0) {
                 on_eof = true;
             }
