@@ -144,6 +144,18 @@ namespace socklib {
 
         TimeoutContext(std::time_t timeout, CancelContext* parent = nullptr)
             : timeout(timeout), begintime(std::time(nullptr)), CancelContext(parent) {}
+
+        TimeoutContext(TimeoutContext&& in)
+            : timeout(in.timeout), begintime(in.begintime), CancelContext(in.parent) {}
+
+        TimeoutContext& operator=(TimeoutContext&& in) {
+            timeout = in.timeout;
+            in.timeout = 0;
+            begintime = in.begintime;
+            parent = in.parent;
+            in.parent = nullptr;
+        }
+
         virtual bool on_cancel() override {
             if (CancelContext::on_cancel()) return true;
             auto nowtime = std::time(nullptr);
