@@ -15,7 +15,7 @@ namespace socklib {
         unknwon,
     };
 
-    //like golang ctx.Context
+    //like golang context.Context
     struct CancelContext {
        protected:
         CancelContext* parent = nullptr;
@@ -124,6 +124,8 @@ namespace socklib {
         }
     };
 
+    //MustCancelContext is used with non-blocking socket
+    //when blocked, on_cancel is called
     struct MustCancelContext : CancelContext {
         using CancelContext::CancelContext;
         virtual bool on_cancel() override {
