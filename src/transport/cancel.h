@@ -154,6 +154,7 @@ namespace socklib {
             begintime = in.begintime;
             parent = in.parent;
             in.parent = nullptr;
+            return *this;
         }
 
         virtual bool on_cancel() override {
