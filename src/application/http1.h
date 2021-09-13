@@ -299,6 +299,7 @@ namespace socklib {
             commonlib2::Reader<SockReader> r(SockReader(conn, cancel));
             header.clear();
             if (!commonlib2::parse_httprequest(r, header)) {
+                recving = false;
                 return false;
             }
             if (auto found = header.find(":path"); found != header.end()) {
