@@ -174,6 +174,16 @@ namespace socklib {
         }
     };
 
+    //SleeperContext is used for cpu load reduction
+    struct SleeperContext : CancelContext {
+        using CancelContext::CancelContext;
+        virtual bool on_cancel() override {
+            if (CancelContext::on_cancel()) return true;
+            Sleep(1);
+            return false;
+        }
+    };
+
     template <class Flag = bool>
     struct InterruptContext : CancelContext {
        private:
