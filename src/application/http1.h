@@ -215,6 +215,10 @@ namespace socklib {
         HttpClientConn(std::shared_ptr<Conn>&& in, std::string&& hostname, std::string&& path, std::string&& query)
             : HttpConn(std::move(in), std::move(hostname), std::move(path), std::move(query)) {}
 
+        std::string& remain_buffer() {
+            return tmpbuffer;
+        }
+
         Header& response() {
             return header;
         }
@@ -241,6 +245,9 @@ namespace socklib {
             if (!done || recving) return false;
             recving = true;
             commonlib2::Reader<SockReader> r(SockReader(conn, cancel));
+            if (tmpbuffer.size()) {
+                r.ref().ref() = std::move(tmpbuffer);
+            }
             struct {
                 decltype(r)& r;
                 decltype(header)& h;
@@ -256,7 +263,9 @@ namespace socklib {
             if (!commonlib2::parse_httpresponse(r, header, igbody)) {
                 return false;
             }
-            r.readable();
+            if (r.readable() > 1) {
+                tmpbuffer = r.ref().ref().substr(r.readpos());
+            }
             recving = false;
             return header.size() != 0;
         }

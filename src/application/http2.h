@@ -266,6 +266,10 @@ namespace socklib {
     };
 
     struct Http2 {
+        friend struct HttpClient;
+        friend struct HttpServer;
+
+       private:
         static void init_streams(std::shared_ptr<Http2Context>& ret, std::string&& path, std::string&& query) {
             ret->streams[0] = H2Stream(0, ret.get());
             ret->server = false;
@@ -275,6 +279,50 @@ namespace socklib {
             ret->maxid = 1;
         }
 
+        static std::shared_ptr<Http2Context> open_h2c(std::shared_ptr<Conn>& conn, commonlib2::URLContext<std::string>& urlctx, std::string& path, std::string& query) {
+            auto conncopy = conn;
+            std::string pathcopy = path, querycopy = query;
+            auto make_ret = [&](auto conn, std::string&& path, std::string&& query) {
+                auto ret = std::make_shared<Http2Context>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""));
+                init_streams(ret, std::move(path), std::move(query));
+                return ret;
+            };
+            auto tmp = std::make_shared<HttpClientConn>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), std::move(path), std::move(query));
+            auto ret = make_ret(conn, std::move(pathcopy), std::move(querycopy));
+            ret->streams[0].set_default_settings();
+            H2SettingsFrame setting;
+            commonlib2::Serializer<std::string> se;
+            setting.serialize(16384, se, ret.get());
+            se.get().erase(0, 9);
+            commonlib2::Base64Context ctx;
+            ctx.nopadding = true;
+            ctx.c62 = '-';
+            ctx.c63 = '_';
+            std::string base64_encoded;
+            commonlib2::Reader(se.get()).readwhile(base64_encoded, commonlib2::base64_encode, ctx);
+            tmp->send("GET", {{"Connection", "Upgrade, HTTP2-Settings"}, {"Upgrade", "h2c"}, {"HTTP2-Settings", base64_encoded}});
+            TimeoutContext cancel(10);
+            if (!tmp->recv(true, &cancel)) {
+                return nullptr;
+            }
+            tmp->hijack();
+            auto& resp = tmp->response();
+            if (auto code = resp.find(":status"); code == resp.end() || code->second != "101") {
+                return nullptr;
+            }
+            if (auto code = resp.find("connection"); code == resp.end() || code->second != "Upgrade") {
+                return nullptr;
+            }
+            if (auto code = resp.find("upgrade"); code == resp.end() || code->second != "h2c") {
+                return nullptr;
+            }
+            if (tmp->remain_buffer().size()) {
+                ret->r.ref().ref() = std::move(tmp->remain_buffer());
+            }
+            return ret;
+        }
+
+       public:
         static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr) {
             unsigned short port = 0;
             commonlib2::URLContext<std::string> urlctx;
@@ -305,21 +353,7 @@ namespace socklib {
                 return make_ret(conn, std::move(path), std::move(query));
             }
             else {
-                auto conncopy = conn;
-                std::string pathcopy = path, querycopy = query;
-                auto tmp = std::make_shared<HttpClientConn>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), std::move(path), std::move(query));
-                auto ret = make_ret(conn, std::move(pathcopy), std::move(querycopy));
-                ret->streams[0].set_default_settings();
-                H2SettingsFrame setting;
-                commonlib2::Serializer<std::string> se;
-                setting.serialize(16384, se, ret.get());
-                commonlib2::Base64Context ctx;
-                std::string base64_encoded;
-                commonlib2::Reader(se.get()).readwhile(base64_encoded, commonlib2::base64_encode, ctx);
-                tmp->send("GET", );
-
-                tmp->hijack();
-                return nullptr;
+                return open_h2c(conn, urlctx, path, query);
             }
         }
     };
