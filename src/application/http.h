@@ -73,6 +73,14 @@ namespace socklib {
                 if (!h2->get_stream(st)) {
                     return nullptr;
                 }
+                if (st->state == H2StreamState::closed) {
+                    auto spl = commonlib2::split(path, "?", 1);
+                    if (spl.size() > 1) {
+                        if (!h2->make_stream(st, spl[0], "?" + spl[1])) {
+                            return nullptr;
+                        }
+                    }
+                }
                 HttpConn::Header tmph;
                 tmph.emplace(":method", method);
                 tmph.emplace(":authority", h2->host());

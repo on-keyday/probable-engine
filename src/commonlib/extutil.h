@@ -95,7 +95,7 @@ namespace PROJECT_NAME {
         return split<Str, Refer<const Str>, Token, Vec>(r, token, n);
     }
 
-    template <class C, class Token, class Buf = std::basic_string<C>, class Vec = std::vector<Buf>>
+    template <class C, class Token, class Buf = std::basic_string<std::remove_cv_t<C>>, class Vec = std::vector<Buf>>
     Vec split(C* str, const Token& token, size_t n = (size_t)-1, bool needafter = true) {
         return split<Buf, Token, Vec>(Buf(str), token, n);
     }
