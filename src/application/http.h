@@ -164,7 +164,7 @@ namespace socklib {
                 H2Stream *st0 = nullptr, *result = nullptr;
                 h2->get_stream(0, st0);
                 bool ok = false;
-                while (h2->recvable() || Selecter::waitone(h2->borrow(), 10, 0, cancel)) {
+                while (h2->recvable() || Selecter::waitone(h2->borrow(), 60, 0, cancel)) {
                     std::shared_ptr<H2Frame> frame;
                     if (auto e = h2->recv(frame); !e) {
                         st0->send_goaway(e);
