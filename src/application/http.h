@@ -86,6 +86,7 @@ namespace socklib {
                 if (h1) {
                     h1->path_ = std::move(ctx.path);
                     h1->query_ = std::move(ctx.query);
+                    h1->response().clear();
                 }
                 else {
                     auto hijack = conn->hijack();
