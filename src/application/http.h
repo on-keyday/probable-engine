@@ -80,6 +80,11 @@ namespace socklib {
                             return nullptr;
                         }
                     }
+                    else {
+                        if (!h2->make_stream(st, spl[0], std::string())) {
+                            return nullptr;
+                        }
+                    }
                 }
                 HttpConn::Header tmph;
                 tmph.emplace(":method", method);
