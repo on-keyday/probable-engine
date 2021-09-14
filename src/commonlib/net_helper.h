@@ -47,6 +47,7 @@ namespace PROJECT_NAME {
         char c63 = '/';
         bool strict = false;
         bool succeed = false;
+        bool nopadding=false;
     };
 
     template <class Buf>
@@ -263,7 +264,7 @@ namespace PROJECT_NAME {
                 ret.push_back(translate(buf[i]));
             }
         }
-        while (ret.size() % 4) {
+        while (!ctx.nopadding&&ret.size() % 4) {
             ret.push_back('=');
         }
         return true;

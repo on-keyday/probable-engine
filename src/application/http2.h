@@ -16,6 +16,8 @@ namespace socklib {
         closed
     };
 
+    constexpr auto h2_connection_preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+
     struct H2Stream {
         int streamid = 0;
         H2StreamState state = H2StreamState::idle;
@@ -132,6 +134,19 @@ namespace socklib {
             return conn->send(frame);
         }
 
+        void set_default_settings() {
+            auto& s = conn->local_settings;
+            constexpr auto k = [](H2PredefinedSetting c) {
+                return (unsigned short)c;
+            };
+            s[k(H2PredefinedSetting::header_table_size)] = 4096;
+            s[k(H2PredefinedSetting::enable_push)] = 1;
+            s[k(H2PredefinedSetting::max_concurrent_streams)] = ~0;
+            s[k(H2PredefinedSetting::initial_window_size)] = 65535;
+            s[k(H2PredefinedSetting::max_frame_size)] = 16384;
+            s[k(H2PredefinedSetting::max_header_list_size)] = ~0;
+        }
+
         template <class Setting = std::map<unsigned short, unsigned int>>
         H2Err send_settings(Setting&& settings, bool ack = false) {
             TRY(conn && streamid == 0);
@@ -142,16 +157,7 @@ namespace socklib {
                 return conn->send(frame);
             }
             if (!conn->local_settings.size()) {
-                auto& s = conn->local_settings;
-                constexpr auto k = [](H2PredefinedSetting c) {
-                    return (unsigned short)c;
-                };
-                s[k(H2PredefinedSetting::header_table_size)] = 4096;
-                s[k(H2PredefinedSetting::enable_push)] = 1;
-                s[k(H2PredefinedSetting::max_concurrent_streams)] = ~0;
-                s[k(H2PredefinedSetting::initial_window_size)] = 65535;
-                s[k(H2PredefinedSetting::max_frame_size)] = 16384;
-                s[k(H2PredefinedSetting::max_header_list_size)] = ~0;
+                set_default_settings();
             }
             for (auto& st : settings) {
                 conn->local_settings[st.first] = st.second;
@@ -260,34 +266,61 @@ namespace socklib {
     };
 
     struct Http2 {
-        static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr) {
-            unsigned short port = 0;
-            commonlib2::URLContext<std::string> urlctx;
-            std::string path, query;
-            if (!Http1::setuphttp(url, encoded, port, urlctx, path, query, "https", "https")) {
-                return nullptr;
-            }
-            auto conn = TCP::open_secure(urlctx.host.c_str(), port, "https", true, cacert, true, "\2h2", 3, true);
-            if (!conn) {
-                return nullptr;
-            }
-            const unsigned char* data = nullptr;
-            unsigned int len = 0;
-            SSL_get0_alpn_selected((SSL*)conn->get_ssl(), &data, &len);
-            if (len != 2 || !data || data[0] != 'h' || data[1] != '2') {
-                return nullptr;
-            }
-            if (!conn->write("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n", 24)) {
-                return nullptr;
-            }
-            auto ret = std::make_shared<Http2Context>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""));
+        static void init_streams(std::shared_ptr<Http2Context>& ret, std::string&& path, std::string&& query) {
             ret->streams[0] = H2Stream(0, ret.get());
             ret->server = false;
             auto& tmp = ret->streams[1] = H2Stream(1, ret.get());
             tmp.path_ = std::move(path);
             tmp.query_ = std::move(query);
             ret->maxid = 1;
-            return ret;
+        }
+
+        static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr) {
+            unsigned short port = 0;
+            commonlib2::URLContext<std::string> urlctx;
+            std::string path, query;
+            if (!Http1::setuphttp(url, encoded, port, urlctx, path, query, "http", "https", "https")) {
+                return nullptr;
+            }
+            bool secure = urlctx.scheme == "https";
+            auto conn = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), secure, cacert, secure, "\2h2", 3, true);
+            if (!conn) {
+                return nullptr;
+            }
+            auto make_ret = [&](auto conn, std::string&& path, std::string&& query) {
+                auto ret = std::make_shared<Http2Context>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""));
+                init_streams(ret, std::move(path), std::move(query));
+                return ret;
+            };
+            if (secure) {
+                const unsigned char* data = nullptr;
+                unsigned int len = 0;
+                SSL_get0_alpn_selected((SSL*)conn->get_ssl(), &data, &len);
+                if (len != 2 || !data || data[0] != 'h' || data[1] != '2') {
+                    return nullptr;
+                }
+                if (!conn->write(h2_connection_preface, 24)) {
+                    return nullptr;
+                }
+                return make_ret(conn, std::move(path), std::move(query));
+            }
+            else {
+                auto conncopy = conn;
+                std::string pathcopy = path, querycopy = query;
+                auto tmp = std::make_shared<HttpClientConn>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), std::move(path), std::move(query));
+                auto ret = make_ret(conn, std::move(pathcopy), std::move(querycopy));
+                ret->streams[0].set_default_settings();
+                H2SettingsFrame setting;
+                commonlib2::Serializer<std::string> se;
+                setting.serialize(16384, se, ret.get());
+                commonlib2::Base64Context ctx;
+                std::string base64_encoded;
+                commonlib2::Reader(se.get()).readwhile(base64_encoded, commonlib2::base64_encode, ctx);
+                tmp->send("GET", );
+
+                tmp->hijack();
+                return nullptr;
+            }
         }
     };
 #undef TRY

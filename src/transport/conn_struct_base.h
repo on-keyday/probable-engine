@@ -56,6 +56,10 @@ namespace socklib {
         std::string& ref() {
             return buffer;
         }
+
+        void set_canceler(CancelContext* ctx) {
+            cancel = ctx;
+        }
     };
 
     struct AppLayer {

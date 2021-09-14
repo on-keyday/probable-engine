@@ -41,21 +41,15 @@ namespace socklib {
                 version = 1;
             }
             else if (strncmp("h2", (const char*)data, 2) == 0) {
-                if (!tcon->write("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")) {
+                if (!tcon->write(h2_connection_preface)) {
                     return false;
                 }
                 auto tmp = std::make_shared<Http2Context>(std::move(tcon), std::move(hosts));
-                auto& st0 = tmp->streams[0] = H2Stream(0, tmp.get());
-                tmp->server = false;
-                auto& h = tmp->streams[1];
-                h = H2Stream(1, tmp.get());
-                h.path_ = std::move(path);
-                h.query_ = std::move(query);
-                tmp->maxid = 1;
+                Http2::init_streams(tmp, std::move(path), std::move(query));
                 h2 = tmp.get();
                 conn = tmp;
                 version = 2;
-                st0.send_settings({});
+                h2->streams[0].send_settings({});
             }
             else {
                 return false;

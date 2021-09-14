@@ -371,7 +371,7 @@ namespace socklib {
             URLContext<std::string> ctx;
             std::string path, query;
             unsigned short port = 0;
-            if (!Http1::setuphttp(url, encoded, port, ctx, path, query, "ws", "wss")) {
+            if (!Http1::setuphttp(url, encoded, port, ctx, path, query, "ws", "wss", "ws")) {
                 return nullptr;
             }
             auto httpurl = (ctx.scheme == "wss" ? "https://" : "http://") + ctx.host +

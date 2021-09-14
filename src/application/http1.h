@@ -155,6 +155,7 @@ namespace socklib {
         bool done = false;
         bool recving = false;
         std::uint32_t waiting = 0;
+        std::string tmpbuffer;
         HttpConn(std::shared_ptr<Conn>&& in, std::string&& hostname, std::string&& path, std::string&& query)
             : AppLayer(std::move(in)), host(hostname), path_(path), query_(query) {}
 
@@ -255,6 +256,7 @@ namespace socklib {
             if (!commonlib2::parse_httpresponse(r, header, igbody)) {
                 return false;
             }
+            r.readable();
             recving = false;
             return header.size() != 0;
         }
@@ -340,12 +342,12 @@ namespace socklib {
        private:
         static bool
         setuphttp(const char* url, bool encoded, unsigned short& port, commonlib2::URLContext<std::string>& urlctx, std::string& path, std::string& query,
-                  const char* normal = "http", const char* secure = "https") {
+                  const char* normal = "http", const char* secure = "https", const char* defaultval = "http") {
             using R = commonlib2::Reader<std::string>;
             R(url).readwhile(commonlib2::parse_url, urlctx);
             if (!urlctx.succeed) return false;
             if (!urlctx.scheme.size()) {
-                urlctx.scheme = normal;
+                urlctx.scheme = defaultval;
             }
             else {
                 if (urlctx.scheme != normal && urlctx.scheme != secure) {
