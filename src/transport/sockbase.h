@@ -419,6 +419,7 @@ namespace socklib {
 
        private:
         bool noshutdown = false;
+        int sslerr = 0;
         /*
         bool ssl_failed(time_t begintime, time_t timeout) {
             auto reason = SSL_get_error(ssl, 0);
@@ -450,6 +451,14 @@ namespace socklib {
                 if (ctx.on_cancel()) {
                     if (ctx.reason() == CancelReason::ssl_error || ctx.reason() == CancelReason::os_error) {
                         err = ctx.err;
+                        sslerr = ctx.sslerr;
+                        std::string errstr;
+                        ERR_print_errors_cb(
+                            [](const char* str, size_t len, void* u) -> int {
+                                std::string s = *(std::string*)u;
+                                s.append(str, len);
+                            },
+                            (void*)&errstr);
                         noshutdown = true;
                     }
                     return ~0;

@@ -268,22 +268,34 @@ namespace socklib {
        protected:
         int maxid = 0;
 
+        void set_default_settings(SettingTable& table) {
+            auto& s = table;
+            constexpr auto k = [](H2PredefinedSetting c) {
+                return (unsigned short)c;
+            };
+            s[k(H2PredefinedSetting::header_table_size)] = 4096;
+            s[k(H2PredefinedSetting::enable_push)] = 1;
+            s[k(H2PredefinedSetting::max_concurrent_streams)] = ~0;
+            s[k(H2PredefinedSetting::initial_window_size)] = 65535;
+            s[k(H2PredefinedSetting::max_frame_size)] = 16384;
+            s[k(H2PredefinedSetting::max_header_list_size)] = ~0;
+        }
+
        public:
         Http2Conn(std::shared_ptr<Conn>&& in)
             : AppLayer(std::move(in)), r(conn) {
-            auto setdefault = [](auto& s) {
-                constexpr auto k = [](H2PredefinedSetting c) {
-                    return (unsigned short)c;
-                };
-                s[k(H2PredefinedSetting::header_table_size)] = 4096;
-                s[k(H2PredefinedSetting::enable_push)] = 1;
-                s[k(H2PredefinedSetting::max_concurrent_streams)] = ~0;
-                s[k(H2PredefinedSetting::initial_window_size)] = 65535;
-                s[k(H2PredefinedSetting::max_frame_size)] = 16384;
-                s[k(H2PredefinedSetting::max_header_list_size)] = ~0;
-            };
-            setdefault(local_settings);
-            setdefault(remote_settings);
+            set_default_settings(local_settings);
+            set_default_settings(remote_settings);
+        }
+
+        virtual void clear() {
+            r.ref().ref().clear();
+            local_table.clear();
+            remote_table.clear();
+            local_settings.clear();
+            remote_settings.clear();
+            set_default_settings(local_settings);
+            set_default_settings(remote_settings);
         }
 
        protected:

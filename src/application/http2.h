@@ -134,19 +134,6 @@ namespace socklib {
             return conn->send(frame);
         }
 
-        void set_default_settings() {
-            auto& s = conn->local_settings;
-            constexpr auto k = [](H2PredefinedSetting c) {
-                return (unsigned short)c;
-            };
-            s[k(H2PredefinedSetting::header_table_size)] = 4096;
-            s[k(H2PredefinedSetting::enable_push)] = 1;
-            s[k(H2PredefinedSetting::max_concurrent_streams)] = ~0;
-            s[k(H2PredefinedSetting::initial_window_size)] = 65535;
-            s[k(H2PredefinedSetting::max_frame_size)] = 16384;
-            s[k(H2PredefinedSetting::max_header_list_size)] = ~0;
-        }
-
         template <class Setting = std::map<unsigned short, unsigned int>>
         H2Err send_settings(Setting&& settings, bool ack = false) {
             TRY(conn && streamid == 0);
@@ -157,7 +144,7 @@ namespace socklib {
                 return conn->send(frame);
             }
             if (!conn->local_settings.size()) {
-                set_default_settings();
+                conn->set_default_settings(conn->local_settings);
             }
             for (auto& st : settings) {
                 conn->local_settings[st.first] = st.second;
@@ -207,6 +194,11 @@ namespace socklib {
        public:
         Http2Context(std::shared_ptr<Conn>&& conn, std::string&& host)
             : Http2Conn(std::move(conn)), host_(std::move(host)) {}
+
+        void clear() override {
+            streams.clear();
+            Http2Conn::clear();
+        }
 
         H2Err apply(std::shared_ptr<H2Frame>& frame, H2Stream*& stream) {
             stream = nullptr;
@@ -339,7 +331,6 @@ namespace socklib {
             auto conncopy = conn;
             std::string pathcopy = ctx.path, querycopy = ctx.query;
             auto ret = init_object(conncopy, ctx, std::move(pathcopy), std::move(querycopy));
-            ret->streams[0].set_default_settings();
             if (!reopen_h2c(conn, ret, ctx)) {
                 return nullptr;
             }
@@ -366,7 +357,7 @@ namespace socklib {
             else if (!e) {
                 return e;
             }
-            conn->streams.clear();
+            conn->clear();
             init_streams(conn, std::move(ctx.path), std::move(ctx.query));
             auto& base = conn->borrow();
             if (base->get_ssl()) {

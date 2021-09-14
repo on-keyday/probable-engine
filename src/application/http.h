@@ -104,10 +104,13 @@ namespace socklib {
                     conn = tmp;
                 }
                 else {
-                    h2->streams.clear();
+                    h2->clear();
                     h2->host_ = ctx.host_with_port();
                     std::shared_ptr<Http2Context> tmp(h2, [](Http2Context*) {});
                     Http2::init_streams(tmp, std::move(ctx.path), std::move(ctx.query));
+                }
+                if (!conn->borrow()->write(h2_connection_preface)) {
+                    return false;
                 }
                 version = 2;
                 h2->streams[0].send_settings({});
