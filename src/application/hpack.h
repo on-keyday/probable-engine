@@ -696,7 +696,7 @@ namespace socklib {
                          return f(c.first, c.second);
                      });
                      found != dymap.end()) {
-                idx = std::distance(dymap.begin(), found) + 63;
+                idx = std::distance(dymap.begin(), found) + 62;
             }
             else {
                 return false;
