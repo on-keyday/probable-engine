@@ -263,6 +263,11 @@ namespace socklib {
         const std::string& host() {
             return host_;
         }
+
+        void close() override {
+            streams[0].send_goaway(H2Error::none);
+            conn->close();
+        }
     };
 
     struct Http2 {
@@ -279,17 +284,25 @@ namespace socklib {
             ret->maxid = 1;
         }
 
-        static std::shared_ptr<Http2Context> open_h2c(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx) {
-            auto conncopy = conn;
-            std::string pathcopy = ctx.path, querycopy = ctx.query;
-            auto make_ret = [&](auto conn, std::string&& path, std::string&& query) {
-                auto ret = std::make_shared<Http2Context>(std::move(conn), ctx.host_with_port());
-                init_streams(ret, std::move(path), std::move(query));
-                return ret;
-            };
+        static std::shared_ptr<Http2Context> init_object(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx,
+                                                         std::string&& path, std::string&& query) {
+            auto ret = std::make_shared<Http2Context>(std::move(conn), ctx.host_with_port());
+            init_streams(ret, std::move(path), std::move(query));
+            return ret;
+        }
+
+        static bool verify_h2(std::shared_ptr<Conn>& conn) {
+            const unsigned char* data = nullptr;
+            unsigned int len = 0;
+            SSL_get0_alpn_selected((SSL*)conn->get_ssl(), &data, &len);
+            if (len != 2 || !data || data[0] != 'h' || data[1] != '2') {
+                return false;
+            }
+            return true;
+        }
+
+        static OpenErr reopen_h2c(std::shared_ptr<Conn>& conn, std::shared_ptr<Http2Context>& ret, HttpRequestContext& ctx) {
             auto tmp = std::make_shared<HttpClientConn>(std::move(conn), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
-            auto ret = make_ret(conn, std::move(pathcopy), std::move(querycopy));
-            ret->streams[0].set_default_settings();
             H2SettingsFrame setting;
             commonlib2::Serializer<std::string> se;
             setting.serialize(16384, se, ret.get());
@@ -303,46 +316,70 @@ namespace socklib {
             tmp->send("GET", {{"Connection", "Upgrade, HTTP2-Settings"}, {"Upgrade", "h2c"}, {"HTTP2-Settings", base64_encoded}});
             TimeoutContext cancel(10);
             if (!tmp->recv(true, &cancel)) {
-                return nullptr;
+                return false;
             }
             tmp->hijack();
             auto& resp = tmp->response();
             if (auto code = resp.find(":status"); code == resp.end() || code->second != "101") {
-                return nullptr;
+                return OpenError::invalid_condition;
             }
             if (auto code = resp.find("connection"); code == resp.end() || code->second != "Upgrade") {
-                return nullptr;
+                return OpenError::invalid_condition;
             }
             if (auto code = resp.find("upgrade"); code == resp.end() || code->second != "h2c") {
-                return nullptr;
+                return OpenError::invalid_condition;
             }
             if (tmp->remain_buffer().size()) {
                 ret->r.ref().ref() = std::move(tmp->remain_buffer());
+            }
+            return true;
+        }
+
+        static std::shared_ptr<Http2Context> open_h2c(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx) {
+            auto conncopy = conn;
+            std::string pathcopy = ctx.path, querycopy = ctx.query;
+            auto ret = init_object(conncopy, ctx, std::move(pathcopy), std::move(querycopy));
+            ret->streams[0].set_default_settings();
+            if (!reopen_h2c(conn, ret, ctx)) {
+                return nullptr;
             }
             return ret;
         }
 
        public:
-        static bool reopen(std::shared_ptr<Http2Context>& conn, const char* url, bool encoded = false, const char* cacert = nullptr) {
-            if (!url) return false;
+        static OpenErr reopen(std::shared_ptr<Http2Context>& conn, const char* url, bool encoded = false, const char* cacert = nullptr) {
+            if (!conn || !url) return OpenError::invalid_condition;
             std::string urlstr;
-            if (conn) {
-                Http1::fill_urlprefix(conn->host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
-            }
+            Http1::fill_urlprefix(conn->host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
             urlstr += url;
             HttpRequestContext ctx;
             if (!Http1::setuphttp(urlstr.c_str(), encoded, ctx, "http", "https", "https")) {
-                return false;
+                return OpenError::parse;
             }
-            if (conn->host() == ctx.host_with_port()) {
-                return true;
-            }
-            if (conn) {
-                if (!Http1::reopen_tcp_conn(conn->borrow(), ctx, cacert, "\2h2", 3)) {
+            if (auto e = Http1::reopen_tcp_conn(conn->borrow(), ctx, cacert, "\2h2", 3); e == OpenError::needless_to_reopen) {
+                H2Stream* st;
+                if (!conn->make_stream(st, ctx.path, ctx.query)) {
                     return false;
                 }
+                return e;
+            }
+            else if (!e) {
+                return e;
+            }
+            conn->streams.clear();
+            init_streams(conn, std::move(ctx.path), std::move(ctx.query));
+            auto& base = conn->borrow();
+            if (base->get_ssl()) {
+                if (!verify_h2(conn->borrow())) {
+                    return OpenError::verify;
+                }
+                if (!base->write(h2_connection_preface, 24)) {
+                    return false;
+                }
+                return true;
             }
             else {
+                return reopen_h2c(conn->borrow(), conn, ctx);
             }
         }
 
@@ -356,22 +393,14 @@ namespace socklib {
             if (!conn) {
                 return nullptr;
             }
-            auto make_ret = [&](auto conn, std::string&& path, std::string&& query) {
-                auto ret = std::make_shared<Http2Context>(std::move(conn), ctx.host_with_port());
-                init_streams(ret, std::move(path), std::move(query));
-                return ret;
-            };
             if (secure) {
-                const unsigned char* data = nullptr;
-                unsigned int len = 0;
-                SSL_get0_alpn_selected((SSL*)conn->get_ssl(), &data, &len);
-                if (len != 2 || !data || data[0] != 'h' || data[1] != '2') {
-                    return nullptr;
+                if (!verify_h2(conn)) {
+                    return false;
                 }
                 if (!conn->write(h2_connection_preface, 24)) {
                     return nullptr;
                 }
-                return make_ret(conn, std::move(ctx.path), std::move(ctx.query));
+                return init_object(conn, ctx, std::move(ctx.path), std::move(ctx.query));
             }
             else {
                 return open_h2c(conn, ctx);

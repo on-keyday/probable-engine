@@ -40,8 +40,7 @@ namespace socklib {
                 if (!tcon->write(h2_connection_preface)) {
                     return false;
                 }
-                auto tmp = std::make_shared<Http2Context>(std::move(tcon), std::move(hosts));
-                Http2::init_streams(tmp, std::move(ctx.path), std::move(ctx.query));
+                auto tmp = Http2::init_object(tcon,ctx, std::move(ctx.path),std::move(ctx.query));
                 h2 = tmp.get();
                 conn = tmp;
                 version = 2;

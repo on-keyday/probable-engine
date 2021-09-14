@@ -113,19 +113,33 @@ namespace socklib {
         v4only,
     };
 
+    enum class OpenError {
+        none,
+        needless_to_reopen,
+        unresolved_address,
+        connect,
+        memory,
+        invalid_condition,
+        verify,
+        parse,
+        unknown,
+    };
+
+    using OpenErr = commonlib2::EnumWrap<OpenError, OpenError::none, OpenError::unknown>;
+
     struct TCP {
        private:
-        static int open_detail(const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr) {
+        static OpenErr open_detail(int& sock, const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr) {
             if (!Network::Init()) return invalid_socket;
             ::addrinfo hint = {0};
             hint.ai_socktype = SOCK_STREAM;
             hint.ai_family = AF_INET;
 
             if (getaddrinfo(host, service, &hint, &got) != 0) {
-                return invalid_socket;
+                return OpenError::unresolved_address;
             }
             auto port_net = commonlib2::translate_byte_net_and_host<unsigned short>(&port);
-            int sock = invalid_socket;
+            sock = invalid_socket;
             for (auto p = got; p; p = p->ai_next) {
                 sockaddr_in* addr = (sockaddr_in*)p->ai_addr;
                 if (port_net) {
@@ -133,7 +147,7 @@ namespace socklib {
                 }
                 if (conn) {
                     if (conn->addr_same(p) && conn->is_secure() == secure && conn->is_opened()) {
-                        return 0;
+                        return OpenError::needless_to_reopen;
                     }
                 }
                 auto tmp = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
@@ -145,7 +159,7 @@ namespace socklib {
                 }
                 ::closesocket(tmp);
             }
-            return sock;
+            return sock == invalid_socket ? OpenError::connect : OpenError::none;
         }
 
        public:
@@ -158,13 +172,13 @@ namespace socklib {
         }
 
        private:
-        static bool setupssl(int sock, const char* host, SSL_CTX*& ctx, SSL*& ssl, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
+        static OpenErr setupssl(int sock, const char* host, SSL_CTX*& ctx, SSL*& ssl, const char* cacert = nullptr, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
             bool has_ctx = false, has_ssl = false;
             if (!ctx) {
-                if (ssl) return false;
+                if (ssl) return OpenError::invalid_condition;
                 ctx = SSL_CTX_new(TLS_method());
                 if (!ctx) {
-                    return false;
+                    return OpenError::memory;
                 }
             }
             else {
@@ -181,7 +195,7 @@ namespace socklib {
                 ssl = SSL_new(ctx);
                 if (!ssl) {
                     if (!has_ctx) SSL_CTX_free(ctx);
-                    return false;
+                    return OpenError::memory;
                 }
             }
             else {
@@ -193,25 +207,24 @@ namespace socklib {
             if (!X509_VERIFY_PARAM_add1_host(param, host, 0)) {
                 if (!has_ssl) SSL_free(ssl);
                 if (!has_ctx) SSL_CTX_free(ctx);
-                return false;
+                return OpenError::verify;
             }
             if (SSL_connect(ssl) != 1) {
                 if (!has_ssl) SSL_free(ssl);
                 if (!has_ctx) SSL_CTX_free(ctx);
-                return false;
+                return OpenError::connect;
             }
             if (strictverify) {
                 auto verify = SSL_get_peer_certificate(ssl);
                 if (!verify) {
                     if (!has_ssl) SSL_free(ssl);
                     if (!has_ctx) SSL_CTX_free(ctx);
-                    return false;
+                    return OpenError::verify;
                 }
                 if (SSL_get_verify_result(ssl) != X509_V_OK) {
-                    return false;
+                    return OpenError::verify;
                 }
                 X509_free(verify);
-                return true;
             }
             return true;
         }
@@ -225,14 +238,12 @@ namespace socklib {
             return ret;
         }
 
-        static bool reopen(std::shared_ptr<Conn>& conn, const char* host, unsigned short port, const char* service = nullptr, bool noblock = false) {
+        static OpenErr reopen(std::shared_ptr<Conn>& conn, const char* host, unsigned short port, const char* service = nullptr, bool noblock = false) {
             ::addrinfo *selected = nullptr, *got = nullptr;
-            int sock = open_detail(conn, false, got, selected, host, port, service);
-            if (sock == invalid_socket) {
-                return false;
-            }
-            else if (sock == 0) {
-                return true;
+            int sock = invalid_socket;
+            auto err = open_detail(sock, conn, false, got, selected, host, port, service);
+            if (!err) {
+                return err;
             }
             if (noblock) {
                 u_long l = 1;
@@ -250,22 +261,20 @@ namespace socklib {
             return true;
         }
 
-        static bool reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
+        static OpenErr reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
             ::addrinfo *selected = nullptr, *got = nullptr;
-            int sock = open_detail(conn, true, got, selected, host, port, service);
-            if (sock == invalid_socket) {
-                return false;
-            }
-            else if (sock == 0) {
-                return true;
+            int sock = invalid_socket;
+            auto err = open_detail(sock, conn, true, got, selected, host, port, service);
+            if (!err) {
+                return err;
             }
             SSL_CTX* ctx = conn ? (SSL_CTX*)conn->get_sslctx() : nullptr;
             SSL* ssl = nullptr;
             if (secure) {
-                if (!setupssl(sock, host, ctx, ssl, cacert, alpnstr, len, strictverify)) {
+                if (auto e = setupssl(sock, host, ctx, ssl, cacert, alpnstr, len, strictverify); !e) {
                     ::closesocket(sock);
                     ::freeaddrinfo(got);
-                    return false;
+                    return e;
                 }
             }
             if (noblock) {
