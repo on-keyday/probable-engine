@@ -422,6 +422,7 @@ namespace PROJECT_NAME {
                 Reader<std::string>(num) >>
                     size;
                 if (size == 0) {
+                    r.expect("\r\n");
                     break;
                 }
                 auto prev = result.size();
