@@ -395,7 +395,7 @@ namespace socklib {
             }
             if (secure) {
                 if (!verify_h2(conn)) {
-                    return false;
+                    return nullptr;
                 }
                 if (!conn->write(h2_connection_preface, 24)) {
                     return nullptr;
