@@ -264,7 +264,7 @@ namespace PROJECT_NAME {
                 ret.push_back(translate(buf[i]));
             }
         }
-        while (!ctx.nopadding&&ret.size() % 4) {
+        while (!ctx->nopadding&&ret.size() % 4) {
             ret.push_back('=');
         }
         return true;

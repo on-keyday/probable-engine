@@ -61,7 +61,6 @@ namespace socklib {
                                  const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
             if (version == 0 || !method) return nullptr;
             auto spl = commonlib2::split(path, "?", 1);
-            std::string tmp;
             if (version == 2) {
                 if (!h2) return nullptr;
                 H2Stream* st = nullptr;
