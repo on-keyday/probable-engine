@@ -218,7 +218,7 @@ namespace socklib {
         }
 
         bool is_valid_id(int id) {
-            return maxid < id && ((server && id % 2) || (!server && 1 != id % 2));
+            return maxid < id && (server ? id % 2 == 0 : id % 2 == 1);
         }
 
         bool make_stream(H2Stream*& stream, const std::string& path, const std::string& query) {
