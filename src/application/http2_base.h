@@ -254,7 +254,8 @@ namespace socklib {
         friend struct H2SettingsFrame;
         friend struct H2PushPromiseFrame;
         friend struct H2Stream;
-        size_t streamid_max = 0;
+        friend struct HttpClient;
+        //size_t streamid_max = 0;
         Hpack::DynamicTable local_table;
         //std::int32_t local_table_size = 0;
         Hpack::DynamicTable remote_table;
@@ -262,6 +263,9 @@ namespace socklib {
         commonlib2::Reader<SockReader> r;
         SettingTable remote_settings;
         SettingTable local_settings;
+
+       protected:
+        int maxid = 0;
 
        public:
         Http2Conn(std::shared_ptr<Conn>&& in)

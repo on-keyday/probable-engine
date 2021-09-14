@@ -81,7 +81,7 @@ namespace socklib {
     };
 
     struct Selecter {
-        static bool waitone(const std::shared_ptr<Conn>& conn, unsigned long sec, unsigned long usec = 0) {
+        static bool waitone(const std::shared_ptr<Conn>& conn, unsigned long sec, unsigned long usec = 0, CancelContext* cancel = nullptr) {
             if (!conn) return false;
             ::timeval timer = {0};
             timer.tv_sec = sec;
@@ -99,6 +99,9 @@ namespace socklib {
             }
             if (FD_ISSET(conn->sock, &rset)) {
                 return true;
+            }
+            if (cancel && cancel->on_cancel()) {
+                return false;
             }
             return false;
         }

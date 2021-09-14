@@ -428,4 +428,51 @@ namespace PROJECT_NAME {
         return StdErr;
     }
 
+    template<class Out>
+    struct ThreadSafeOutPut{
+        std::mutex mut;
+        Out& out;
+        ThreadSafeOutPut(Out& o):out(o){}
+        operator Out&(){
+            return out;
+        }
+
+        template<class T>
+        ThreadSafeOutPut& operator<<(T&& in){
+            mut.lock();
+            out<<in;
+            mut.unlock();
+            return *this;
+        }
+
+        Out& get(){
+            return out;
+        }
+    };
+
+    inline ThreadSafeOutPut<CoutWrapper>& cout_wrapper_s(){
+        static ThreadSafeOutPut<CoutWrapper> safe(cout_wrapper());
+        return safe;
+    }
+
+    inline ThreadSafeOutPut<CoutWrapper>& cerr_wrapper_s(){
+        static ThreadSafeOutPut<CoutWrapper> safe(cerr_wrapper());
+        return safe;
+    }
+
+    inline ThreadSafeOutPut<CoutWrapper>& clog_wrapper_s(){
+        static ThreadSafeOutPut<CoutWrapper> safe(clog_wrapper());
+        return safe;
+    }
+
+    inline ThreadSafeOutPut<StdOutWrapper>& stdout_wrapper_s(){
+        static ThreadSafeOutPut<StdOutWrapper> safe(stdout_wrapper());
+        return safe;
+    }
+
+    inline ThreadSafeOutPut<StdOutWrapper>& stderr_wrapper_s(){
+        static ThreadSafeOutPut<StdOutWrapper> safe(stderr_wrapper());
+        return safe;
+    }
+
 }  // namespace PROJECT_NAME

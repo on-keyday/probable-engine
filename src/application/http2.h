@@ -19,8 +19,8 @@ namespace socklib {
     struct H2Stream {
         int streamid = 0;
         H2StreamState state = H2StreamState::idle;
-        std::string path;
-        std::string query;
+        std::string path_;
+        std::string query_;
         HttpConn::Header header;
         std::string payload;
         Http2Conn* conn = nullptr;
@@ -35,6 +35,14 @@ namespace socklib {
 
         H2Stream(int id, Http2Conn* c)
             : streamid(id), conn(c) {}
+
+        const std::string& path() const {
+            return path_;
+        }
+
+        const std::string& query() const {
+            return query_;
+        }
 
         H2Err recv_apply(std::shared_ptr<H2Frame>& frame) {
             TRY(conn && frame && (frame->streamid == streamid));
@@ -141,15 +149,28 @@ namespace socklib {
             frame.value = up;
             return conn->send(frame);
         }
+
+        H2Err send_goaway(H2Error error) {
+            TRY(conn);
+            H2GoAwayFrame frame;
+            frame.errcode = (std::uint32_t)error;
+            frame.lastid = conn->maxid;
+            return conn->send(frame);
+        }
     };
 
     struct Http2Context : Http2Conn {
+       private:
         bool server = false;
         std::map<int, H2Stream> streams;
-        int maxid = 0;
-        std::string host;
+
+        std::string host_;
+        friend struct Http2;
+        friend struct HttpClient;
+
+       public:
         Http2Context(std::shared_ptr<Conn>&& conn, std::string&& host)
-            : Http2Conn(std::move(conn)), host(std::move(host)) {}
+            : Http2Conn(std::move(conn)), host_(std::move(host)) {}
 
         H2Err apply(std::shared_ptr<H2Frame>& frame, H2Stream*& stream) {
             stream = nullptr;
@@ -188,8 +209,8 @@ namespace socklib {
             }
             maxid = id;
             auto& tmp = streams[id] = H2Stream(id, this);
-            tmp.path = path;
-            tmp.query = query;
+            tmp.path_ = path;
+            tmp.query_ = query;
             stream = &tmp;
             return true;
         }
@@ -201,6 +222,10 @@ namespace socklib {
                 return true;
             }
             return false;
+        }
+
+        const std::string& host() {
+            return host_;
         }
     };
 
@@ -229,8 +254,8 @@ namespace socklib {
             ret->streams[0] = H2Stream(0, ret.get());
             ret->server = false;
             auto& tmp = ret->streams[1] = H2Stream(1, ret.get());
-            tmp.path = std::move(path);
-            tmp.query = std::move(query);
+            tmp.path_ = std::move(path);
+            tmp.query_ = std::move(query);
             ret->maxid = 1;
             return ret;
         }

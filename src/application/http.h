@@ -5,10 +5,9 @@
 namespace socklib {
     struct HttpClient {
        private:
-        union {
-            std::shared_ptr<HttpConn> h1;
-            std::shared_ptr<Http2Context> h2;
-        } conn;
+        std::shared_ptr<AppLayer> conn;
+        Http2Context* h2;
+        HttpClientConn* h1;
         int version = 0;
 
        public:
@@ -36,22 +35,27 @@ namespace socklib {
             }
             auto hosts = urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : "");
             if (!secure || strncmp("http/1.1", (const char*)data, 8) == 0) {
-                conn.h1 = std::make_shared<HttpClientConn>(std::move(tcon), std::move(hosts), std::move(path), std::move(query));
+                auto tmp = std::make_shared<HttpClientConn>(std::move(tcon), std::move(hosts), std::move(path), std::move(query));
+                h1 = tmp.get();
+                conn = tmp;
                 version = 1;
             }
             else if (strncmp("h2", (const char*)data, 2) == 0) {
                 if (!tcon->write("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")) {
                     return false;
                 }
-                conn.h2 = std::make_shared<Http2Context>(std::move(tcon), std::move(hosts));
-                conn.h2->streams[0] = H2Stream(0, conn.h2.get());
-                conn.h2->server = false;
+                auto tmp = std::make_shared<Http2Context>(std::move(tcon), std::move(hosts));
+                auto& st0 = tmp->streams[0] = H2Stream(0, tmp.get());
+                tmp->server = false;
+                auto& h = tmp->streams[1];
+                h = H2Stream(1, tmp.get());
+                h.path_ = std::move(path);
+                h.query_ = std::move(query);
+                tmp->maxid = 1;
+                h2 = tmp.get();
+                conn = tmp;
                 version = 2;
-                auto& h = conn.h2->streams[1];
-                h = H2Stream(1, conn.h2.get());
-                h.path = std::move(path);
-                h.query = std::move(query);
-                conn.h2->maxid = 1;
+                st0.send_settings({});
             }
             else {
                 return false;
@@ -59,22 +63,50 @@ namespace socklib {
             return true;
         }
 
-        HttpConn::Header* GET(const char* path) {
+        HttpConn::Header* Method(const char* method, const char* path, HttpConn::Header&& header = HttpConn::Header(),
+                                 const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
             if (version == 0) return nullptr;
             std::string tmp;
-            if (!path) {
-                if (version == 2) {
-                    H2Stream* st;
-                    if (!conn.h2->get_stream(st)) {
-                        return nullptr;
+            if (version == 2) {
+                if (!h2) return nullptr;
+                H2Stream* st = nullptr;
+                if (!h2->get_stream(st)) {
+                    return nullptr;
+                }
+                HttpConn::Header tmph;
+                tmph.emplace(":authority", h2->host());
+                tmph.emplace(":path", st->path());
+                tmph.emplace(":scheme", h2->borrow()->get_ssl() ? "https" : "http");
+                tmph.erase("host");
+                tmph.merge(header);
+                st->send_header(tmph);
+                while (h2->recvable() || Selecter::waitone(h2->borrow(), 0, 1, cancel)) {
+                    std::shared_ptr<H2Frame> frame;
+                    if (!h2->recv(frame)) {
+                        H2Stream* st0;
+                        h2->get_stream(0, st0);
                     }
-                    tmp = st->path + st->query;
                 }
-                else {
-                    tmp = conn.h1->path() + conn.h1->query();
+                if (cancel && cancel->reason() != CancelReason::nocanceled) {
+                    return nullptr;
                 }
-                path = tmp.c_str();
             }
+            else if (version == 1) {
+                if (!h1) return nullptr;
+                if (!h1->send(method, header)) {
+                    return nullptr;
+                }
+                if (!h1->recv(false, cancel)) {
+                    return nullptr;
+                }
+                return &h1->response();
+            }
+        }
+
+        ~HttpClient() noexcept {
+            h1 = nullptr;
+            h2 = nullptr;
+            version = 0;
         }
     };
 }  // namespace socklib
