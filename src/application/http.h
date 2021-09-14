@@ -40,9 +40,75 @@ namespace socklib {
                 if (!tcon->write(h2_connection_preface)) {
                     return false;
                 }
-                auto tmp = Http2::init_object(tcon,ctx, std::move(ctx.path),std::move(ctx.query));
+                auto tmp = Http2::init_object(tcon, ctx, std::move(ctx.path), std::move(ctx.query));
                 h2 = tmp.get();
                 conn = tmp;
+                version = 2;
+                h2->streams[0].send_settings({});
+            }
+            else {
+                return false;
+            }
+            return true;
+        }
+
+        std::string host() {
+            if (version == 1) {
+                return h1->host;
+            }
+            else if (version == 2) {
+                return h2->host();
+            }
+            return std::string();
+        }
+
+        OpenErr reopen(const char* url, bool encoded = false, const char* cacert = nullptr) {
+            if (!conn || !url) return OpenError::invalid_condition;
+            std::string urlstr;
+            Http1::fill_urlprefix(host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
+            urlstr += url;
+            HttpRequestContext ctx;
+            if (!Http1::setuphttp(url, encoded, ctx)) {
+                return OpenError::parse;
+            }
+            auto& borrow = conn->borrow();
+            auto e = Http1::reopen_tcp_conn(borrow, ctx, cacert, "\x02h2\x08http/1.1", 12);
+            if (!e) return e;
+            const unsigned char* data = nullptr;
+            unsigned int len = 0;
+            if (borrow->get_ssl()) {
+                SSL_get0_alpn_selected((SSL*)borrow->get_ssl(), &data, &len);
+                if (!data) {
+                    return false;
+                }
+            }
+            if (!borrow->get_ssl() || strncmp("http/1.1", (const char*)data, 8) == 0) {
+                if (h1) {
+                    h1->path_ = std::move(ctx.path);
+                    h1->query_ = std::move(ctx.query);
+                }
+                else {
+                    auto hijack = conn->hijack();
+                    close();
+                    auto tmp = std::make_shared<HttpClientConn>(std::move(hijack), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
+                    h1 = tmp.get();
+                    conn = tmp;
+                }
+            }
+            else if (strncmp("h2", (const char*)data, 2) == 0) {
+                if (!h2) {
+                    auto hijack = conn->hijack();
+                    close();
+                    auto tmp = Http2::init_object(hijack, ctx, std::move(ctx.path), std::move(ctx.query));
+                    h2 = tmp.get();
+                    conn = tmp;
+                }
+                else {
+                    h2->streams.clear();
+                    h2->host_ = ctx.host_with_port();
+                    std::shared_ptr<Http2Context> tmp(h2, [](Http2Context*) {});
+                    Http2::init_streams(tmp, std::move(ctx.path), std::move(ctx.query));
+                }
                 version = 2;
                 h2->streams[0].send_settings({});
             }

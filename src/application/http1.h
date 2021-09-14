@@ -417,6 +417,15 @@ namespace socklib {
             }
         }
 
+        static OpenErr reopen_detail(std::shared_ptr<HttpClientConn>& conn, HttpRequestContext& ctx, const char* cacert) {
+            auto res = reopen_tcp_conn(conn->borrow(), ctx, cacert);
+            if (!res && res != OpenError::needless_to_reopen) return res;
+            conn->host = ctx.host_with_port();
+            conn->path_ = ctx.path;
+            conn->query_ = ctx.query;
+            return true;
+        }
+
        public:
         static std::shared_ptr<HttpClientConn>
         open(const char* url, bool encoded = false, const char* cacert = nullptr) {
@@ -431,7 +440,7 @@ namespace socklib {
         }
 
         static OpenErr reopen(std::shared_ptr<HttpClientConn>& conn, const char* url, bool encoded = false, const char* cacert = nullptr) {
-            if (!url) return false;
+            if (!conn || !url) return false;
             std::string urlstr;
             if (conn) {
                 fill_urlprefix(conn->host, url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
@@ -441,19 +450,7 @@ namespace socklib {
             if (!setuphttp(urlstr.c_str(), encoded, ctx)) {
                 return OpenError::parse;
             }
-            if (conn) {
-                auto res = reopen_tcp_conn(conn->borrow(), ctx, cacert);
-                if (!res && res != OpenError::needless_to_reopen) return res;
-                conn->host = ctx.host_with_port();
-                conn->path_ = ctx.path;
-                conn->query_ = ctx.query;
-            }
-            else {
-                auto tmp = open_tcp_conn(ctx, cacert);
-                if (!tmp) return false;
-                conn = std::make_shared<HttpClientConn>(std::move(tmp), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
-            }
-            return true;
+            return reopen_detail(conn, ctx, cacert);
         }
 
         static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, size_t timeout = 10, IPMode mode = IPMode::both) {
