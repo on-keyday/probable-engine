@@ -765,6 +765,7 @@ namespace socklib {
             auto update_dymap = [&] {
                 size_t tablesize = calc_table_size(dymap);
                 while (tablesize > maxtablesize) {
+                    if (tablesize == 32) break;  //TODO: check what written in RFC means
                     if (!dymap.size()) {
                         return false;
                     }

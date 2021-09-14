@@ -455,8 +455,8 @@ namespace socklib {
                         std::string errstr;
                         ERR_print_errors_cb(
                             [](const char* str, size_t len, void* u) -> int {
-                                std::string s = *(std::string*)u;
-                                s.append(str, len);
+                                (*(std::string*)u) += str;
+                                return 1;
                             },
                             (void*)&errstr);
                         noshutdown = true;
