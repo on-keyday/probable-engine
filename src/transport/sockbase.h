@@ -103,7 +103,7 @@ namespace socklib {
             if (memcmp(addr->ai_addr, info->ai_addr, addr->ai_addrlen) != 0) {
                 return false;
             }
-            if (strcmp(addr->ai_canonname, info->ai_canonname) != 0) {
+            if (addr->ai_canonname != info->ai_canonname && strcmp(addr->ai_canonname, info->ai_canonname) != 0) {
                 return false;
             }
             return true;
