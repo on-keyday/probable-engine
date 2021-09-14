@@ -58,9 +58,15 @@ namespace socklib {
                     weight = h->weight;
                     exclusive = h->exclusive;
                 }
+                if (h->is_set(H2Flag::end_stream)) {
+                    state = H2StreamState::closed;
+                }
             }
             else if (auto d = frame->data()) {
                 payload.append(d->data_);
+                if (d->is_set(H2Flag::end_stream)) {
+                    state = H2StreamState::closed;
+                }
             }
             else if (auto p = frame->priority()) {
                 if (streamid == p->depends) {
@@ -73,6 +79,17 @@ namespace socklib {
             else if (auto r = frame->rst_stream()) {
                 errorcode = r->errcode;
                 state = H2StreamState::closed;
+                return (H2Error)errorcode;
+            }
+            else if (auto e = frame->goaway()) {
+                errorcode = e->errcode;
+                conn->close();
+                return (H2Error)errorcode;
+            }
+            else if (auto p = frame->ping()) {
+                if (!p->is_set(H2Flag::ack)) {
+                    send_ping(p->data_, true);
+                }
             }
             return true;
         }
@@ -155,6 +172,19 @@ namespace socklib {
             H2GoAwayFrame frame;
             frame.errcode = (std::uint32_t)error;
             frame.lastid = conn->maxid;
+            return conn->send(frame);
+        }
+
+        H2Err send_ping(const std::uint8_t* data, bool ack) {
+            H2PingFrame frame;
+            if (data) {
+                for (auto i = 0; i < 8; i++) {
+                    frame.data_[i] = data[i];
+                }
+            }
+            if (ack) {
+                frame.flag |= H2Flag::ack;
+            }
             return conn->send(frame);
         }
     };

@@ -6,8 +6,8 @@ namespace socklib {
     struct HttpClient {
        private:
         std::shared_ptr<AppLayer> conn;
-        Http2Context* h2;
-        HttpClientConn* h1;
+        Http2Context* h2 = nullptr;
+        HttpClientConn* h1 = nullptr;
         int version = 0;
 
        public:
@@ -30,7 +30,7 @@ namespace socklib {
             if (secure) {
                 SSL_get0_alpn_selected((SSL*)tcon->get_ssl(), &data, &len);
                 if (!data) {
-                    return nullptr;
+                    return false;
                 }
             }
             auto hosts = urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : "");
@@ -65,7 +65,7 @@ namespace socklib {
 
         HttpConn::Header* Method(const char* method, const char* path, HttpConn::Header&& header = HttpConn::Header(),
                                  const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
-            if (version == 0) return nullptr;
+            if (version == 0 || !method) return nullptr;
             std::string tmp;
             if (version == 2) {
                 if (!h2) return nullptr;
@@ -74,26 +74,49 @@ namespace socklib {
                     return nullptr;
                 }
                 HttpConn::Header tmph;
+                tmph.emplace(":method", method);
                 tmph.emplace(":authority", h2->host());
                 tmph.emplace(":path", st->path());
                 tmph.emplace(":scheme", h2->borrow()->get_ssl() ? "https" : "http");
                 tmph.erase("host");
+                tmph.erase(":body");
                 tmph.merge(header);
-                st->send_header(tmph);
-                while (h2->recvable() || Selecter::waitone(h2->borrow(), 0, 1, cancel)) {
+                bool has_body = data && size;
+                st->send_header(tmph, false, 0, !has_body);
+                if (has_body) {
+                    st->send_data(data, size, false, 0, true);
+                }
+                H2Stream *st0 = nullptr, *result = nullptr;
+                h2->get_stream(0, st0);
+                bool ok = false;
+                while (h2->recvable() || Selecter::waitone(h2->borrow(), 10, 0, cancel)) {
                     std::shared_ptr<H2Frame> frame;
-                    if (!h2->recv(frame)) {
-                        H2Stream* st0;
-                        h2->get_stream(0, st0);
+                    if (auto e = h2->recv(frame); !e) {
+                        st0->send_goaway(e);
+                        h2->close();
+                        return nullptr;
+                    }
+                    H2Stream* st = nullptr;
+                    if (auto e = h2->apply(frame, st); !e) {
+                        st0->send_goaway(e);
+                        h2->close();
+                        return nullptr;
+                    }
+                    if (st->state == H2StreamState::closed) {
+                        result = st;
+                        ok = true;
+                        break;
                     }
                 }
-                if (cancel && cancel->reason() != CancelReason::nocanceled) {
+                if (!ok) {
                     return nullptr;
                 }
+                st->header.emplace(":body", st->payload);
+                return &st->header;
             }
             else if (version == 1) {
                 if (!h1) return nullptr;
-                if (!h1->send(method, header)) {
+                if (!h1->send(method, header, data, size)) {
                     return nullptr;
                 }
                 if (!h1->recv(false, cancel)) {
@@ -101,6 +124,7 @@ namespace socklib {
                 }
                 return &h1->response();
             }
+            return nullptr;
         }
 
         ~HttpClient() noexcept {
