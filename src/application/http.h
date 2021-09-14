@@ -60,6 +60,7 @@ namespace socklib {
         HttpConn::Header* Method(const char* method, const char* path, HttpConn::Header&& header = HttpConn::Header(),
                                  const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
             if (version == 0 || !method) return nullptr;
+            auto spl = commonlib2::split(path, "?", 1);
             std::string tmp;
             if (version == 2) {
                 if (!h2) return nullptr;
@@ -68,7 +69,6 @@ namespace socklib {
                     return nullptr;
                 }
                 if (st->state == H2StreamState::closed) {
-                    auto spl = commonlib2::split(path, "?", 1);
                     if (spl.size() > 1) {
                         if (!h2->make_stream(st, spl[0], "?" + spl[1])) {
                             return nullptr;
@@ -123,6 +123,15 @@ namespace socklib {
             }
             else if (version == 1) {
                 if (!h1) return nullptr;
+                if (h1->response().size()) {
+                    h1->path_ = std::move(spl[0]);
+                    if (spl.size() > 1) {
+                        h1->query_ = "?" + std::move(spl[1]);
+                    }
+                    else {
+                        h1->query_.clear();
+                    }
+                }
                 if (!h1->send(method, header, data, size)) {
                     return nullptr;
                 }

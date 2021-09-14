@@ -145,6 +145,7 @@ namespace socklib {
 
     struct HttpConn : public AppLayer {
         friend struct Http1;
+        friend struct HttpClient;
         using Header = std::multimap<std::string, std::string>;
 
        protected:

@@ -421,7 +421,9 @@ namespace PROJECT_NAME {
                 } while (notext);
                 Reader<std::string>(num) >>
                     size;
-                if (size == 0) break;
+                if (size == 0) {
+                    break;
+                }
                 auto prev = result.size();
                 result.resize(result.size() + size);
                 while (r.read_byte(result.data() + prev, size, translate_byte_as_is, true) < size) {

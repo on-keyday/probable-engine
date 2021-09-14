@@ -299,7 +299,7 @@ namespace socklib {
             ctx.c62 = '-';
             ctx.c63 = '_';
             std::string base64_encoded;
-            commonlib2::Reader(se.get()).readwhile(base64_encoded, commonlib2::base64_encode, ctx);
+            commonlib2::Reader(se.get()).readwhile(base64_encoded, commonlib2::base64_encode, &ctx);
             tmp->send("GET", {{"Connection", "Upgrade, HTTP2-Settings"}, {"Upgrade", "h2c"}, {"HTTP2-Settings", base64_encoded}});
             TimeoutContext cancel(10);
             if (!tmp->recv(true, &cancel)) {
