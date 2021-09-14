@@ -234,7 +234,7 @@ namespace socklib {
             if (auto found = streams.find(id); found != streams.end()) {
                 return false;
             }
-            if (is_valid_id(id)) {
+            if (!is_valid_id(id)) {
                 return false;
             }
             maxid = id;
