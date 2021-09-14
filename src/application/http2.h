@@ -49,6 +49,7 @@ namespace socklib {
         H2Err recv_apply(std::shared_ptr<H2Frame>& frame) {
             TRY(conn && frame && (frame->streamid == streamid));
             if (auto h = frame->header()) {
+                state = H2StreamState::open;
                 for (auto& v : h->header_) {
                     header.insert(v);
                 }
@@ -69,6 +70,7 @@ namespace socklib {
                 if (d->is_set(H2Flag::end_stream)) {
                     state = H2StreamState::closed;
                 }
+                send_windowupdate((int)d->data_.size());
             }
             else if (auto p = frame->priority()) {
                 if (streamid == p->depends) {
@@ -92,6 +94,9 @@ namespace socklib {
                 if (!p->is_set(H2Flag::ack)) {
                     send_ping(p->data_, true);
                 }
+            }
+            else if (auto w = frame->window_update()) {
+                window += w->value;
             }
             return true;
         }

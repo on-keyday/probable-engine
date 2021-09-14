@@ -153,9 +153,13 @@ namespace socklib {
                 tmph.erase(":body");
                 tmph.merge(header);
                 bool has_body = data && size;
-                st->send_header(tmph, false, 0, !has_body);
+                if (auto e = st->send_header(tmph, false, 0, !has_body); !e) {
+                    return nullptr;
+                }
                 if (has_body) {
-                    st->send_data(data, size, false, 0, true);
+                    if (auto e = st->send_data(data, size, false, 0, true); !e) {
+                        return nullptr;
+                    }
                 }
                 H2Stream *st0 = nullptr, *result = nullptr;
                 h2->get_stream(0, st0);
@@ -167,11 +171,14 @@ namespace socklib {
                         h2->close();
                         return nullptr;
                     }
-                    H2Stream* st = nullptr;
+                    st = nullptr;
                     if (auto e = h2->apply(frame, st); !e) {
                         st0->send_goaway(e);
                         h2->close();
                         return nullptr;
+                    }
+                    if (auto d = frame->data()) {  //to update connection window
+                        st0->send_windowupdate((int)d->payload().size());
                     }
                     if (st->state == H2StreamState::closed) {
                         result = st;
