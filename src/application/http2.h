@@ -327,12 +327,22 @@ namespace socklib {
             if (!url) return false;
             std::string urlstr;
             if (conn) {
-                Http1::fill_hostname(conn->host(), url, urlstr);
+                Http1::fill_urlprefix(conn->host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
             }
             urlstr += url;
             HttpRequestContext ctx;
             if (!Http1::setuphttp(urlstr.c_str(), encoded, ctx, "http", "https", "https")) {
                 return false;
+            }
+            if (conn->host() == ctx.host_with_port()) {
+                return true;
+            }
+            if (conn) {
+                if (!Http1::reopen_tcp_conn(conn->borrow(), ctx, cacert, "\2h2", 3)) {
+                    return false;
+                }
+            }
+            else {
             }
         }
 

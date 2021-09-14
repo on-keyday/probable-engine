@@ -404,10 +404,16 @@ namespace socklib {
             }
             return true;
         }
-        static void fill_hostname(const std::string& host, const char* url, std::string& result) {
+        static void fill_urlprefix(const std::string& host, const char* url, std::string& result, const char* scheme) {
             auto r = commonlib2::Reader(url);
-            if (!r.ahead("//") && r.achar() == '/') {
-                result = host;
+            if (r.ahead("//")) {
+                result = scheme;
+                result += ":";
+            }
+            else if (r.achar() == '/') {
+                result = scheme;
+                result += "://";
+                result += host;
             }
         }
 
@@ -428,7 +434,7 @@ namespace socklib {
             if (!url) return false;
             std::string urlstr;
             if (conn) {
-                fill_hostname(conn->host, url, urlstr);
+                fill_urlprefix(conn->host, url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
             }
             urlstr += url;
             HttpRequestContext ctx;
