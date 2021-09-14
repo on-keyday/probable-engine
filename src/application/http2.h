@@ -283,11 +283,11 @@ namespace socklib {
             auto conncopy = conn;
             std::string pathcopy = ctx.path, querycopy = ctx.query;
             auto make_ret = [&](auto conn, std::string&& path, std::string&& query) {
-                auto ret = std::make_shared<Http2Context>(std::move(conn), ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : ""));
+                auto ret = std::make_shared<Http2Context>(std::move(conn), ctx.host_with_port());
                 init_streams(ret, std::move(path), std::move(query));
                 return ret;
             };
-            auto tmp = std::make_shared<HttpClientConn>(std::move(conn), ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : ""), std::move(ctx.path), std::move(ctx.query));
+            auto tmp = std::make_shared<HttpClientConn>(std::move(conn), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
             auto ret = make_ret(conn, std::move(pathcopy), std::move(querycopy));
             ret->streams[0].set_default_settings();
             H2SettingsFrame setting;
@@ -330,9 +330,6 @@ namespace socklib {
                 Http1::fill_hostname(conn->host(), url, urlstr);
             }
             urlstr += url;
-            /*unsigned short port = 0;
-            commonlib2::URLContext<std::string> ctx.url;
-            std::string path, query;*/
             HttpRequestContext ctx;
             if (!Http1::setuphttp(urlstr.c_str(), encoded, ctx, "http", "https", "https")) {
                 return false;
@@ -340,20 +337,17 @@ namespace socklib {
         }
 
         static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr) {
-            /*unsigned short port = 0;
-            commonlib2::URLContext<std::string> ctx.url;
-            std::string path, query;*/
             HttpRequestContext ctx;
             if (!Http1::setuphttp(url, encoded, ctx, "http", "https", "https")) {
                 return nullptr;
             }
             bool secure = ctx.url.scheme == "https";
-            auto conn = TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), secure, cacert, secure, "\2h2", 3, true);
+            auto conn = Http1::open_tcp_conn(ctx, cacert, "\2h2", 3);
             if (!conn) {
                 return nullptr;
             }
             auto make_ret = [&](auto conn, std::string&& path, std::string&& query) {
-                auto ret = std::make_shared<Http2Context>(std::move(conn), ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : ""));
+                auto ret = std::make_shared<Http2Context>(std::move(conn), ctx.host_with_port());
                 init_streams(ret, std::move(path), std::move(query));
                 return ret;
             };

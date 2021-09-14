@@ -12,20 +12,15 @@ namespace socklib {
 
        public:
         bool open(const char* url, bool encoded = false, const char* cacert = nullptr) {
-            /*unsigned short port = 0;
-            commonlib2::URLContext<std::string> ctx.url;
-            std::string path, query;*/
             HttpRequestContext ctx;
             if (!Http1::setuphttp(url, encoded, ctx)) {
                 return false;
             }
             bool secure = ctx.url.scheme == "https";
-            auto tcon = TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                         cacert, secure, "\x02h2\x08http/1.1", 3, true);
+            auto tcon = Http1::open_tcp_conn(ctx, cacert, "\x02h2\x08http/1.1", 12);
             if (!tcon) {
                 return false;
             }
-
             const unsigned char* data = nullptr;
             unsigned int len = 0;
             if (secure) {
@@ -34,7 +29,7 @@ namespace socklib {
                     return false;
                 }
             }
-            auto hosts = ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : "");
+            auto hosts = ctx.host_with_port();
             if (!secure || strncmp("http/1.1", (const char*)data, 8) == 0) {
                 auto tmp = std::make_shared<HttpClientConn>(std::move(tcon), std::move(hosts), std::move(ctx.path), std::move(ctx.query));
                 h1 = tmp.get();

@@ -347,6 +347,9 @@ namespace socklib {
         commonlib2::URLContext<std::string> url;
         unsigned short port = 0;
         std::string path, query;
+        std::string host_with_port() const {
+            return url.host + (url.port.size() ? ":" + url.port : "");
+        }
     };
 
     struct Http1 {
@@ -356,6 +359,16 @@ namespace socklib {
         friend struct HttpServer;
 
        private:
+        static std::shared_ptr<Conn> open_tcp_conn(HttpRequestContext& ctx, const char* cacert, const char* alpnstr = nullptr, int len = 0) {
+            return TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
+                                    cacert, ctx.url.scheme == "https", alpnstr, len, true);
+        }
+
+        static bool reopen_tcp_conn(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx, const char* cacert, const char* alpnstr = nullptr, int len = 0) {
+            return TCP::reopen_secure(conn, ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
+                                      cacert, ctx.url.scheme == "https", alpnstr, len, true);
+        }
+
         static bool
         setuphttp(const char* url, bool encoded, HttpRequestContext& ctx,
                   const char* normal = "http", const char* secure = "https", const char* defaultval = "http") {
@@ -401,50 +414,38 @@ namespace socklib {
        public:
         static std::shared_ptr<HttpClientConn>
         open(const char* url, bool encoded = false, const char* cacert = nullptr) {
-            /*commonlib2::URLContext<std::string> ctx.url;
-            unsigned short port = 0;
-            std::string path, query;*/
             HttpRequestContext ctx;
             if (!setuphttp(url, encoded, ctx)) {
                 return nullptr;
             }
             std::shared_ptr<Conn> conn;
-            /*if (ctx.url.scheme == "http") {
-                conn = TCP::open(ctx.url.host.c_str(), port, "http", true);
-            }
-            else {*/
-            conn = TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                    cacert, ctx.url.scheme == "https", nullptr, 0, true);
-            //}
+            conn = open_tcp_conn(ctx, cacert, nullptr, 0);
             if (!conn) return nullptr;
-            return std::make_shared<HttpClientConn>(std::move(conn), ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : ""), std::move(ctx.path), std::move(ctx.query));
+            return std::make_shared<HttpClientConn>(std::move(conn), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
         }
 
         static bool reopen(std::shared_ptr<HttpClientConn>& conn, const char* url, bool encoded = false, const char* cacert = nullptr) {
+            if (!url) return false;
             std::string urlstr;
             if (conn) {
                 fill_hostname(conn->host, url, urlstr);
             }
-            /*commonlib2::URLContext<std::string> ctx.url;
-            unsigned short port = 0;
-            std::string path, query;*/
+            urlstr += url;
             HttpRequestContext ctx;
-            if (!setuphttp(url, encoded, ctx)) {
+            if (!setuphttp(urlstr.c_str(), encoded, ctx)) {
                 return false;
             }
             if (conn) {
-                auto res = TCP::reopen_secure(conn->conn, ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                              cacert, ctx.url.scheme == "https", nullptr, 0, true);
+                auto res = reopen_tcp_conn(conn->borrow(), ctx, cacert);
                 if (!res) return false;
-                conn->host = ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : "");
+                conn->host = ctx.host_with_port();
                 conn->path_ = ctx.path;
                 conn->query_ = ctx.query;
             }
             else {
-                auto tmp = TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                            cacert, ctx.url.scheme == "https", nullptr, 0, true);
+                auto tmp = open_tcp_conn(ctx, cacert);
                 if (!tmp) return false;
-                conn = std::make_shared<HttpClientConn>(std::move(tmp), ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : ""), std::move(ctx.path), std::move(ctx.query));
+                conn = std::make_shared<HttpClientConn>(std::move(tmp), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
             }
             return true;
         }

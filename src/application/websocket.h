@@ -368,14 +368,11 @@ namespace socklib {
         template <class F = bool (*)(HttpConn::Header&, bool success, const char* reason)>
         static std::shared_ptr<WebSocketClientConn>
         open(const char* url, bool encoded = false, const char* cacert = nullptr, F&& cb = F()) {
-            URLContext<std::string> ctx;
-            std::string path, query;
-            unsigned short port = 0;
-            if (!Http1::setuphttp(url, encoded, port, ctx, path, query, "ws", "wss", "ws")) {
+            HttpRequestContext ctx;
+            if (!Http1::setuphttp(url, encoded, ctx, "ws", "wss", "ws")) {
                 return nullptr;
             }
-            auto httpurl = (ctx.scheme == "wss" ? "https://" : "http://") + ctx.host +
-                           (ctx.port.size() ? ":" + ctx.port : "") + path + query;
+            auto httpurl = (ctx.url.scheme == "wss" ? "https://" : "http://") + ctx.host_with_port() + ctx.path + ctx.query;
             auto client = Http1::open(httpurl.c_str(), true, cacert);
             if (!client) return nullptr;
             HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version", "13"}};
