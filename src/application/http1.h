@@ -343,6 +343,12 @@ namespace socklib {
         }
     };
 
+    struct HttpRequestContext {
+        commonlib2::URLContext<std::string> url;
+        unsigned short port = 0;
+        std::string path, query;
+    };
+
     struct Http1 {
         friend struct WebSocket;
         friend struct Http2;
@@ -351,82 +357,94 @@ namespace socklib {
 
        private:
         static bool
-        setuphttp(const char* url, bool encoded, unsigned short& port, commonlib2::URLContext<std::string>& urlctx, std::string& path, std::string& query,
+        setuphttp(const char* url, bool encoded, HttpRequestContext& ctx,
                   const char* normal = "http", const char* secure = "https", const char* defaultval = "http") {
             using R = commonlib2::Reader<std::string>;
-            R(url).readwhile(commonlib2::parse_url, urlctx);
-            if (!urlctx.succeed) return false;
-            if (!urlctx.scheme.size()) {
-                urlctx.scheme = defaultval;
+            R(url).readwhile(commonlib2::parse_url, ctx.url);
+            if (!ctx.url.succeed) return false;
+            if (!ctx.url.scheme.size()) {
+                ctx.url.scheme = defaultval;
             }
             else {
-                if (urlctx.scheme != normal && urlctx.scheme != secure) {
+                if (ctx.url.scheme != normal && ctx.url.scheme != secure) {
                     return false;
                 }
             }
-            if (!urlctx.path.size()) {
-                urlctx.path = "/";
+            if (!ctx.url.path.size()) {
+                ctx.url.path = "/";
             }
             if (!encoded) {
                 commonlib2::URLEncodingContext<std::string> encctx;
                 encctx.path = true;
-                R(urlctx.path).readwhile(path, commonlib2::url_encode, &encctx);
+                R(ctx.url.path).readwhile(ctx.path, commonlib2::url_encode, &encctx);
                 if (encctx.failed) return false;
                 encctx.query = true;
                 encctx.path = false;
-                R(urlctx.query).readwhile(query, commonlib2::url_encode, &encctx);
+                R(ctx.url.query).readwhile(ctx.query, commonlib2::url_encode, &encctx);
             }
             else {
-                path = urlctx.path;
-                query = urlctx.query;
+                ctx.path = ctx.url.path;
+                ctx.query = ctx.url.query;
             }
-            if (urlctx.port.size()) {
-                R(urlctx.port) >> port;
+            if (ctx.url.port.size()) {
+                R(ctx.url.port) >> ctx.port;
             }
             return true;
+        }
+        static void fill_hostname(const std::string& host, const char* url, std::string& result) {
+            auto r = commonlib2::Reader(url);
+            if (!r.ahead("//") && r.achar() == '/') {
+                result = host;
+            }
         }
 
        public:
         static std::shared_ptr<HttpClientConn>
         open(const char* url, bool encoded = false, const char* cacert = nullptr) {
-            commonlib2::URLContext<std::string> urlctx;
+            /*commonlib2::URLContext<std::string> ctx.url;
             unsigned short port = 0;
-            std::string path, query;
-            if (!setuphttp(url, encoded, port, urlctx, path, query)) {
+            std::string path, query;*/
+            HttpRequestContext ctx;
+            if (!setuphttp(url, encoded, ctx)) {
                 return nullptr;
             }
             std::shared_ptr<Conn> conn;
-            /*if (urlctx.scheme == "http") {
-                conn = TCP::open(urlctx.host.c_str(), port, "http", true);
+            /*if (ctx.url.scheme == "http") {
+                conn = TCP::open(ctx.url.host.c_str(), port, "http", true);
             }
             else {*/
-            conn = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
-                                    cacert, urlctx.scheme == "https", nullptr, 0, true);
+            conn = TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
+                                    cacert, ctx.url.scheme == "https", nullptr, 0, true);
             //}
             if (!conn) return nullptr;
-            return std::make_shared<HttpClientConn>(std::move(conn), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), std::move(path), std::move(query));
+            return std::make_shared<HttpClientConn>(std::move(conn), ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : ""), std::move(ctx.path), std::move(ctx.query));
         }
 
         static bool reopen(std::shared_ptr<HttpClientConn>& conn, const char* url, bool encoded = false, const char* cacert = nullptr) {
-            commonlib2::URLContext<std::string> urlctx;
+            std::string urlstr;
+            if (conn) {
+                fill_hostname(conn->host, url, urlstr);
+            }
+            /*commonlib2::URLContext<std::string> ctx.url;
             unsigned short port = 0;
-            std::string path, query;
-            if (!setuphttp(url, encoded, port, urlctx, path, query)) {
+            std::string path, query;*/
+            HttpRequestContext ctx;
+            if (!setuphttp(url, encoded, ctx)) {
                 return false;
             }
             if (conn) {
-                auto res = TCP::reopen_secure(conn->conn, urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
-                                              cacert, urlctx.scheme == "https", nullptr, 0, true);
+                auto res = TCP::reopen_secure(conn->conn, ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
+                                              cacert, ctx.url.scheme == "https", nullptr, 0, true);
                 if (!res) return false;
-                conn->host = urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : "");
-                conn->path_ = path;
-                conn->query_ = query;
+                conn->host = ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : "");
+                conn->path_ = ctx.path;
+                conn->query_ = ctx.query;
             }
             else {
-                auto tmp = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
-                                            cacert, urlctx.scheme == "https", nullptr, 0, true);
+                auto tmp = TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
+                                            cacert, ctx.url.scheme == "https", nullptr, 0, true);
                 if (!tmp) return false;
-                conn = std::make_shared<HttpClientConn>(std::move(tmp), urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : ""), std::move(path), std::move(query));
+                conn = std::make_shared<HttpClientConn>(std::move(tmp), ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : ""), std::move(ctx.path), std::move(ctx.query));
             }
             return true;
         }

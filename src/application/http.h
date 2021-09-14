@@ -12,14 +12,15 @@ namespace socklib {
 
        public:
         bool open(const char* url, bool encoded = false, const char* cacert = nullptr) {
-            unsigned short port = 0;
-            commonlib2::URLContext<std::string> urlctx;
-            std::string path, query;
-            if (!Http1::setuphttp(url, encoded, port, urlctx, path, query)) {
+            /*unsigned short port = 0;
+            commonlib2::URLContext<std::string> ctx.url;
+            std::string path, query;*/
+            HttpRequestContext ctx;
+            if (!Http1::setuphttp(url, encoded, ctx)) {
                 return false;
             }
-            bool secure = urlctx.scheme == "https";
-            auto tcon = TCP::open_secure(urlctx.host.c_str(), port, urlctx.scheme.c_str(), true,
+            bool secure = ctx.url.scheme == "https";
+            auto tcon = TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
                                          cacert, secure, "\x02h2\x08http/1.1", 3, true);
             if (!tcon) {
                 return false;
@@ -33,9 +34,9 @@ namespace socklib {
                     return false;
                 }
             }
-            auto hosts = urlctx.host + (urlctx.port.size() ? ":" + urlctx.port : "");
+            auto hosts = ctx.url.host + (ctx.url.port.size() ? ":" + ctx.url.port : "");
             if (!secure || strncmp("http/1.1", (const char*)data, 8) == 0) {
-                auto tmp = std::make_shared<HttpClientConn>(std::move(tcon), std::move(hosts), std::move(path), std::move(query));
+                auto tmp = std::make_shared<HttpClientConn>(std::move(tcon), std::move(hosts), std::move(ctx.path), std::move(ctx.query));
                 h1 = tmp.get();
                 conn = tmp;
                 version = 1;
@@ -45,7 +46,7 @@ namespace socklib {
                     return false;
                 }
                 auto tmp = std::make_shared<Http2Context>(std::move(tcon), std::move(hosts));
-                Http2::init_streams(tmp, std::move(path), std::move(query));
+                Http2::init_streams(tmp, std::move(ctx.path), std::move(ctx.query));
                 h2 = tmp.get();
                 conn = tmp;
                 version = 2;
@@ -142,10 +143,16 @@ namespace socklib {
             return nullptr;
         }
 
-        ~HttpClient() noexcept {
+        void close() {
+            conn->close();
+            conn.reset();
             h1 = nullptr;
             h2 = nullptr;
             version = 0;
+        }
+
+        ~HttpClient() noexcept {
+            close();
         }
     };
 }  // namespace socklib
