@@ -111,6 +111,7 @@ namespace socklib {
                     h1 = tmp.get();
                     conn = tmp;
                 }
+                version = 1;
             }
             else if (strncmp("h2", (const char*)data, 2) == 0) {
                 if (!h2) {
