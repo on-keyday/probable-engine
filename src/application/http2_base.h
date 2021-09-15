@@ -366,6 +366,7 @@ namespace socklib {
         }
 
         H2Err send(H2Frame& input) {
+            TRY((bool)conn);
             commonlib2::Serializer<std::string> se;
             std::uint32_t& fsize = remote_settings[(unsigned short)H2PredefinedSetting::max_frame_size];
             if (fsize < 0xffff) {

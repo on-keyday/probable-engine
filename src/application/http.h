@@ -3,6 +3,18 @@
 #include "http2.h"
 
 namespace socklib {
+    struct HttpCookie {
+        std::string key;
+        std::string value;
+
+        std::time_t max_age;
+        std::time_t expires;
+        std::string domain;
+        std::string path;
+        bool secure = false;
+        bool httponly = false;
+    };
+
     struct HttpClient {
        private:
         std::shared_ptr<AppLayer> conn;
@@ -60,6 +72,10 @@ namespace socklib {
                 return h2->host();
             }
             return std::string();
+        }
+
+        int http_version() {
+            return version;
         }
 
         OpenErr reopen(const char* url, bool encoded = false, const char* cacert = nullptr) {
@@ -226,4 +242,5 @@ namespace socklib {
             close();
         }
     };
+
 }  // namespace socklib
