@@ -216,7 +216,7 @@ namespace socklib {
                         h2->close();
                         return nullptr;
                     }
-                    if (auto d = frame->data()) {  //to update connection window
+                    if (auto d = frame->data()) {  //to update flow control window
                         st->send_windowupdate((int)d->payload().size());
                         st0->send_windowupdate((int)d->payload().size());
                     }

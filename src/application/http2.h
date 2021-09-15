@@ -126,15 +126,18 @@ namespace socklib {
                 offset = *suspended;
             }
             H2DataFrame frame;
-            frame.streamid = streamid;
-            std::int32_t sent = remote_window < conn->remote_window ? remote_window : conn->remote_window;
-            sent = remainsize < sent ? remainsize : sent;
-            frame.data_ = std::string(data + offset, sent);
             if (padding) {
                 frame.flag |= H2Flag::padded;
                 frame.padding = padlen;
             }
-            if (endstream) {
+            else {
+                padlen = 0;
+            }
+            frame.streamid = streamid;
+            std::int32_t sent = remote_window < conn->remote_window ? remote_window : conn->remote_window;
+            sent = remainsize + padlen < sent ? remainsize + padlen : sent;
+            frame.data_ = std::string(data + offset, sent);
+            if (sent == remainsize && endstream) {
                 frame.flag |= H2Flag::end_stream;
             }
             if (auto e = conn->send(frame); !e) {
