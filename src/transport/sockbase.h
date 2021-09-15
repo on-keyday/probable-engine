@@ -201,9 +201,9 @@ namespace socklib {
             return true;
         }
         /*
-        bool on_error(CancelContext* cancel /*time_t begintime, time_t timeout*) {
+        bool on_error(CancelContext* cancel time_t begintime, time_t timeout*) {
             set_os_error(err);
-            /*
+            
             auto nowtime = std::time(nullptr);
             if (timeout >= 0 && nowtime - begintime > timeout) {
                 return true;

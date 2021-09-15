@@ -232,7 +232,7 @@ namespace socklib {
                         st->send_windowupdate((int)d->payload().size());
                     }
                     else if (auto w = frame->window_update(); w && st->streamid != 0) {
-                        if (size && suspend != 0 && size != suspend) {
+                        if (size && size != suspend) {
                             if (auto e = sending_body(); !e) {
                                 st0->send_goaway(e);
                                 h2->close();
