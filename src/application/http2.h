@@ -262,8 +262,10 @@ namespace socklib {
         }
 
         void close() override {
-            streams[0].send_goaway(H2Error::none);
-            conn->close();
+            if (conn) {
+                streams[0].send_goaway(H2Error::none);
+                conn->close();
+            }
         }
     };
 
