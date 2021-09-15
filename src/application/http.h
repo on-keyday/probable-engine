@@ -76,6 +76,16 @@ namespace socklib {
             return std::string();
         }
 
+        std::string url() {
+            if (version == 1 && h1) {
+                return h1->url();
+            }
+            else if (version == 2 && h2) {
+                return h2->url();
+            }
+            return std::string();
+        }
+
         int http_version() {
             return version;
         }

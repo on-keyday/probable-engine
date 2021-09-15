@@ -324,8 +324,16 @@ namespace socklib {
             return false;
         }
 
-        const std::string& host() {
+        const std::string& host() const {
             return host_;
+        }
+
+        std::string url() {
+            H2Stream* st = nullptr;
+            if (!conn || !host_.size() || !get_stream(st)) {
+                return std::string();
+            }
+            return (conn->get_ssl() ? "https://" : "http://") + host_ + st->path_ + st->query_;
         }
 
         void close() override {
