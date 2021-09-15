@@ -39,6 +39,7 @@ namespace socklib {
         frame_size = 6,
         compression = 9,
         unimplemented = ~0,
+        need_window_update = unimplemented - 1,
     };
 
     enum class H2PredefinedSetting : unsigned short {
@@ -248,7 +249,7 @@ namespace socklib {
     struct Http2Conn : AppLayer {
         using SettingTable = std::map<unsigned short, std::uint32_t>;
 
-       private:
+       protected:
         friend struct H2DataFrame;
         friend struct H2HeaderFrame;
         friend struct H2SettingsFrame;
@@ -264,9 +265,9 @@ namespace socklib {
         commonlib2::Reader<SockReader> r;
         SettingTable remote_settings;
         SettingTable local_settings;
-
-       protected:
         int maxid = 0;
+        std::int32_t initial_window = 0;
+        std::int32_t remote_window = 0;
 
         void set_default_settings(SettingTable& table) {
             auto& s = table;
@@ -286,6 +287,8 @@ namespace socklib {
             : AppLayer(std::move(in)), r(conn) {
             set_default_settings(local_settings);
             set_default_settings(remote_settings);
+            initial_window = 65535;
+            remote_window = initial_window;
         }
 
         virtual void clear() {

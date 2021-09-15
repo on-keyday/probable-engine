@@ -30,13 +30,14 @@ namespace socklib {
         std::uint8_t weight = 0;
         bool exclusive = false;
 
-        std::int32_t window = 0;
+        std::int32_t initial_window = 0;
+        std::int32_t remote_window = 0;
 
         std::uint32_t errorcode = 0;
         H2Stream() {}
 
-        H2Stream(int id, Http2Conn* c)
-            : streamid(id), conn(c) {}
+        H2Stream(int id, Http2Conn* c, std::int32_t initial)
+            : streamid(id), conn(c), initial_window(initial) {}
 
         const std::string& path() const {
             return path_;
@@ -95,14 +96,30 @@ namespace socklib {
                     send_ping(p->data_, true);
                 }
             }
+            else if (auto s = frame->settings()) {
+                if (!s->is_set(H2Flag::ack)) {
+                    send_settings({}, true);
+                }
+            }
             else if (auto w = frame->window_update()) {
-                window += w->value;
+                if (streamid == 0) {
+                    conn->remote_window += w->value;
+                }
+                else {
+                    remote_window += w->value;
+                }
             }
             return true;
         }
 
-        H2Err send_data(const char* data, size_t size, bool padding = false, std::uint8_t padlen = 0, bool endstream = false) {
+        [[nodiscard]] H2Err send_data(const char* data, size_t size, bool padding = false, std::uint8_t padlen = 0, bool endstream = false) {
             TRY(conn && streamid != 0);
+            if (conn->remote_window <= 0) {
+                return H2Error::need_window_update;
+            }
+            if (remote_window <= 0) {
+                return H2Error::need_window_update;
+            }
             H2DataFrame frame;
             frame.streamid = streamid;
             frame.data_ = std::string(data, size);
@@ -191,7 +208,6 @@ namespace socklib {
        private:
         bool server = false;
         std::map<int, H2Stream> streams;
-
         std::string host_;
         friend struct Http2;
         friend struct HttpClient;
@@ -211,10 +227,12 @@ namespace socklib {
             TRY(frame->streamid >= 0);
             if (auto found = streams.find(frame->streamid); found != streams.end()) {
                 stream = &found->second;
-                return found->second.recv_apply(frame);
+                auto e = found->second.recv_apply(frame);
+                if (auto s = frame->settings(); e && s) {
+                }
             }
             else {
-                auto& tmp = streams[frame->streamid] = H2Stream(frame->streamid, this);
+                auto& tmp = streams[frame->streamid] = H2Stream(frame->streamid, this, remote_settings[(std::uint32_t)H2PredefinedSetting::initial_window_size]);
                 stream = &tmp;
                 return tmp.recv_apply(frame);
             }
@@ -241,7 +259,7 @@ namespace socklib {
                 return false;
             }
             maxid = id;
-            auto& tmp = streams[id] = H2Stream(id, this);
+            auto& tmp = streams[id] = H2Stream(id, this, remote_settings[(std::uint32_t)H2PredefinedSetting::initial_window_size]);
             tmp.path_ = path;
             tmp.query_ = query;
             stream = &tmp;
@@ -275,9 +293,9 @@ namespace socklib {
 
        private:
         static void init_streams(std::shared_ptr<Http2Context>& ret, std::string&& path, std::string&& query) {
-            ret->streams[0] = H2Stream(0, ret.get());
+            ret->streams[0] = H2Stream(0, ret.get(), ret->remote_settings[(std::uint32_t)H2PredefinedSetting::initial_window_size]);
             ret->server = false;
-            auto& tmp = ret->streams[1] = H2Stream(1, ret.get());
+            auto& tmp = ret->streams[1] = H2Stream(1, ret.get(), ret->remote_settings[(std::uint32_t)H2PredefinedSetting::initial_window_size]);
             tmp.path_ = std::move(path);
             tmp.query_ = std::move(query);
             ret->maxid = 1;
