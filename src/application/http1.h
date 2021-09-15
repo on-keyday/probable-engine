@@ -448,7 +448,7 @@ namespace socklib {
             urlstr += url;
             HttpRequestContext ctx;
             if (!setuphttp(urlstr.c_str(), encoded, ctx)) {
-                return OpenError::parse;
+                return OpenError::parse_url;
             }
             return reopen_detail(conn, ctx, cacert);
         }

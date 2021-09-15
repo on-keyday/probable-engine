@@ -121,10 +121,36 @@ namespace socklib {
         memory,
         invalid_condition,
         verify,
-        parse,
+        parse_url,
         value_not_found,
         unknown,
     };
+
+    constexpr const char* error_message(socklib::OpenError e) {
+        using E = socklib::OpenError;
+        switch (e) {
+            case E::none:
+                return "no error";
+            case E::needless_to_reopen:
+                return "needless to reopen";
+            case E::unresolved_address:
+                return "host name not resolved";
+            case E::memory:
+                return "memory is full";
+            case E::invalid_condition:
+                return "condition is wrong";
+            case E::verify:
+                return "verify failed";
+            case E::parse_url:
+                return "parse url failed";
+            case E::connect:
+                return "connect error";
+            case E::value_not_found:
+                return "value not found";
+            default:
+                return "unknown error";
+        }
+    }
 
     using OpenErr = commonlib2::EnumWrap<OpenError, OpenError::none, OpenError::unknown>;
 

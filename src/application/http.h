@@ -97,7 +97,7 @@ namespace socklib {
             urlstr += url;
             HttpRequestContext ctx;
             if (!Http1::setuphttp(url, encoded, ctx)) {
-                return OpenError::parse;
+                return OpenError::parse_url;
             }
             auto& borrow = conn->borrow();
             auto e = Http1::reopen_tcp_conn(borrow, ctx, cacert, "\x02h2\x08http/1.1", 12);
@@ -168,7 +168,7 @@ namespace socklib {
         }
 
        private:
-        HttpConn::Header* Http2Method(const char* method, std::vector<std::string>& spl, HttpConn::Header&& header = HttpConn::Header(),
+        HttpConn::Header* Http2method(const char* method, std::vector<std::string>& spl, HttpConn::Header&& header = HttpConn::Header(),
                                       const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
             if (!h2) return nullptr;
             H2Stream* st = nullptr;
@@ -261,13 +261,13 @@ namespace socklib {
         }
 
        public:
-        HttpConn::Header* Method(const char* method, const char* path = nullptr, HttpConn::Header&& header = HttpConn::Header(),
+        HttpConn::Header* method(const char* method, const char* path = nullptr, HttpConn::Header&& header = HttpConn::Header(),
                                  const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
             if (version == 0 || !method) return nullptr;
             auto spl = commonlib2::split(path ? path : "/", "?", 1);
             if (spl.size() < 1) return nullptr;
             if (version == 2) {
-                return Http2Method(method, spl, std::forward<HttpConn::Header>(header), data, size, cancel);
+                return Http2method(method, spl, std::forward<HttpConn::Header>(header), data, size, cancel);
             }
             else if (version == 1) {
                 if (!h1) return nullptr;

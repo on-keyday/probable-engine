@@ -427,7 +427,7 @@ namespace socklib {
             urlstr += url;
             HttpRequestContext ctx;
             if (!Http1::setuphttp(urlstr.c_str(), encoded, ctx, "http", "https", "https")) {
-                return OpenError::parse;
+                return OpenError::parse_url;
             }
             if (auto e = Http1::reopen_tcp_conn(conn->borrow(), ctx, cacert, "\2h2", 3); e == OpenError::needless_to_reopen) {
                 H2Stream* st;
