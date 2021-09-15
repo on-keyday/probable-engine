@@ -156,10 +156,11 @@ namespace socklib {
             return true;
         }
 
-        HttpConn::Header* Method(const char* method, const char* path, HttpConn::Header&& header = HttpConn::Header(),
+        HttpConn::Header* Method(const char* method, const char* path = nullptr, HttpConn::Header&& header = HttpConn::Header(),
                                  const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
             if (version == 0 || !method) return nullptr;
-            auto spl = commonlib2::split(path, "?", 1);
+            auto spl = commonlib2::split(path ? path : "/", "?", 1);
+            if (spl.size() < 1) return nullptr;
             if (version == 2) {
                 if (!h2) return nullptr;
                 H2Stream* st = nullptr;
