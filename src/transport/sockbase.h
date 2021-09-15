@@ -459,6 +459,9 @@ namespace socklib {
                                 return 1;
                             },
                             (void*)&errstr);
+                        if (errstr.find("application data after close notify") != ~0) {
+                            continue;
+                        }
                         noshutdown = true;
                     }
                     return ~0;
