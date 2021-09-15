@@ -23,10 +23,10 @@ namespace socklib {
         int version = 0;
 
        public:
-        OpenErr open(const char* url, bool encoded = false, const char* cacert = nullptr) {
+        OpenErr open(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false) {
             close();
             HttpRequestContext ctx;
-            if (!Http1::setuphttp(url, encoded, ctx)) {
+            if (!Http1::setuphttp(url, encoded, ctx, "http", "https", secure_default ? "https" : "http")) {
                 return false;
             }
             bool secure = ctx.url.scheme == "https";
