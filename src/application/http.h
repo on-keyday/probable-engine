@@ -188,13 +188,16 @@ namespace socklib {
                 tmph.erase("host");
                 tmph.erase(":body");
                 tmph.merge(header);
+                size_t suspended = 0;
                 bool has_body = data && size;
                 if (auto e = st->send_header(tmph, false, 0, !has_body); !e) {
                     return nullptr;
                 }
                 if (has_body) {
-                    if (auto e = st->send_data(data, size, false, 0, true); !e) {
-                        return nullptr;
+                    if (auto e = st->send_data(data, size, &suspended, false, 0, true); !e) {
+                        if (e != H2Error::need_window_update) {
+                            return nullptr;
+                        }
                     }
                 }
                 H2Stream *st0 = nullptr, *result = nullptr;
@@ -214,6 +217,7 @@ namespace socklib {
                         return nullptr;
                     }
                     if (auto d = frame->data()) {  //to update connection window
+                        st->send_windowupdate((int)d->payload().size());
                         st0->send_windowupdate((int)d->payload().size());
                     }
                     if (st->state == H2StreamState::closed) {
