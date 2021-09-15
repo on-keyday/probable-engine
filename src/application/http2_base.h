@@ -36,6 +36,7 @@ namespace socklib {
         none = 0,
         protocol = 1,
         internal = 2,
+        stream_closed = 5,
         frame_size = 6,
         compression = 9,
         unimplemented = ~0,

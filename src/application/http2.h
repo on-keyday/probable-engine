@@ -121,7 +121,9 @@ namespace socklib {
             size_t remainsize = size;
             size_t offset = 0;
             if (suspended) {
-                if (size < *suspended) return false;
+                if (size < *suspended) {
+                    return false;
+                }
                 remainsize -= *suspended;
                 offset = *suspended;
             }
@@ -134,11 +136,12 @@ namespace socklib {
                 padlen = 0;
             }
             frame.streamid = streamid;
-            std::int32_t sent = remote_window < conn->remote_window ? remote_window : conn->remote_window;
-            sent = remainsize + padlen < sent - padlen ? remainsize : sent - padlen;
+            std::int32_t window = remote_window < conn->remote_window ? remote_window : conn->remote_window;
+            std::int32_t sent = remainsize + padlen < window - padlen ? remainsize : window - padlen;
             frame.data_ = std::string(data + offset, sent);
             if (sent == remainsize && endstream) {
                 frame.flag |= H2Flag::end_stream;
+                state = state == H2StreamState::open ? H2StreamState::half_closed_local : H2StreamState::closed;
             }
             if (auto e = conn->send(frame); !e) {
                 return e;
@@ -151,6 +154,11 @@ namespace socklib {
                 }
                 return H2Error::need_window_update;
             }
+            else {
+                if (suspended) {
+                    *suspended = size;
+                }
+            }
             return true;
         }
 
@@ -158,6 +166,8 @@ namespace socklib {
                           bool padding = false, std::uint8_t padlen = 0, bool endstream = false,
                           bool has_priority = false, bool exclusive = false, int depends = 0, std::uint8_t weight = 0) {
             TRY(conn && streamid != 0);
+            if (state != H2StreamState::idle) return false;
+            state = H2StreamState::open;
             H2HeaderFrame frame;
             frame.streamid = streamid;
             frame.header_ = header;
@@ -203,11 +213,20 @@ namespace socklib {
             return conn->send(frame);
         }
 
-        H2Err send_goaway(H2Error error) {
+        H2Err send_goaway(H2Error error, const char* data = nullptr, size_t size = 0) {
             TRY(conn);
             H2GoAwayFrame frame;
             frame.errcode = (std::uint32_t)error;
             frame.lastid = conn->maxid;
+            if (data && size) frame.additionaldata = std::string(data, size);
+            return conn->send(frame);
+        }
+
+        H2Err send_rst_stream(H2Error error) {
+            TRY(conn);
+            H2RstStreamFrame frame;
+            frame.errcode = (std::uint32_t)error;
+            state = H2StreamState::closed;
             return conn->send(frame);
         }
 

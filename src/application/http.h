@@ -181,7 +181,7 @@ namespace socklib {
                     }
                 }
                 HttpConn::Header tmph;
-                size_t suspended = 0;
+                size_t suspend = 0;
                 bool has_body = data && size;
                 tmph.emplace(":method", method);
                 tmph.emplace(":authority", h2->host());
@@ -197,18 +197,22 @@ namespace socklib {
                     return nullptr;
                 }
                 auto sending_body = [&]() -> H2Err {
-                    if (auto e = st->send_data(data, size, &suspended, false, 0, true); !e) {
+                    if (auto e = st->send_data(data, size, &suspend, false, 0, true); !e) {
                         if (e != H2Error::need_window_update) {
                             return e;
                         }
                     }
                     return true;
                 };
-                if (has_body) {
-                    sending_body();
-                }
                 H2Stream *st0 = nullptr, *result = nullptr;
                 h2->get_stream(0, st0);
+                if (has_body) {
+                    if (auto e = sending_body(); !e) {
+                        st0->send_goaway(e);
+                        h2->close();
+                        return nullptr;
+                    }
+                }
                 bool ok = false;
                 while (h2->recvable() || Selecter::waitone(h2->borrow(), 60, 0, cancel)) {
                     std::shared_ptr<H2Frame> frame;
@@ -224,11 +228,11 @@ namespace socklib {
                         return nullptr;
                     }
                     if (auto d = frame->data()) {  //to update flow control window
-                        st->send_windowupdate((int)d->payload().size());
                         st0->send_windowupdate((int)d->payload().size());
+                        st->send_windowupdate((int)d->payload().size());
                     }
-                    else if (auto w = frame->window_update()) {
-                        if (size && size != suspended) {
+                    else if (auto w = frame->window_update(); w && st->streamid != 0) {
+                        if (size && suspend != 0 && size != suspend) {
                             if (auto e = sending_body(); !e) {
                                 st0->send_goaway(e);
                                 h2->close();
