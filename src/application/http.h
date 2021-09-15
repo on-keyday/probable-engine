@@ -102,6 +102,7 @@ namespace socklib {
             }
             if (!borrow->get_ssl() || strncmp("http/1.1", (const char*)data, 8) == 0) {
                 if (h1) {
+                    h1->host = ctx.host_with_port();
                     h1->path_ = std::move(ctx.path);
                     h1->query_ = std::move(ctx.query);
                     h1->response().clear();
