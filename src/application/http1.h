@@ -431,8 +431,7 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<HttpClientConn>
-        open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr) {
+        static std::shared_ptr<HttpClientConn> open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr) {
             HttpRequestContext ctx;
             if (!setuphttp(url, encoded, ctx)) {
                 return nullptr;
