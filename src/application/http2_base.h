@@ -36,9 +36,18 @@ namespace socklib {
         none = 0,
         protocol = 1,
         internal = 2,
+        flow_control = 3,
+        settings_timeout = 4,
         stream_closed = 5,
         frame_size = 6,
+        refused_stream = 7,
+        cancel = 8,
         compression = 9,
+        connect = 10,
+        enhance_your_clam = 11,
+        inadequate_security = 12,
+        http_1_1_required = 13,
+
         unimplemented = ~0,
         need_window_update = unimplemented - 1,
     };
