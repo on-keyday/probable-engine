@@ -91,7 +91,21 @@ namespace socklib {
             }
             auto& borrow = conn->borrow();
             auto e = Http1::reopen_tcp_conn(borrow, ctx, cacert, "\x02h2\x08http/1.1", 12);
-            if (!e) return e;
+            if (!e) {
+                if (e == OpenError::needless_to_reopen) {
+                    if (h1) {
+                        h1->path_ = std::move(ctx.path);
+                        h1->query_ = std::move(ctx.query);
+                    }
+                    else if (h2) {
+                        H2Stream* str = nullptr;
+                        if (!h2->make_stream(str, ctx.path, ctx.query)) {
+                            return false;
+                        }
+                    }
+                }
+                return e;
+            }
             const unsigned char* data = nullptr;
             unsigned int len = 0;
             if (borrow->get_ssl()) {
