@@ -376,7 +376,7 @@ namespace socklib {
         }
 
         static OpenErr reopen_h2c(std::shared_ptr<Conn>& conn, std::shared_ptr<Http2Context>& ret, HttpRequestContext& ctx) {
-            auto tmp = std::make_shared<HttpClientConn>(std::move(conn), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
+            auto tmp = Http1::init_object(conn, ctx);
             H2SettingsFrame setting;
             commonlib2::Serializer<std::string> se;
             setting.serialize(16384, se, ret.get());

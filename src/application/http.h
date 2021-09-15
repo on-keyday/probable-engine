@@ -43,9 +43,8 @@ namespace socklib {
                     return false;
                 }
             }
-            auto hosts = ctx.host_with_port();
             if (!secure || strncmp("http/1.1", (const char*)data, 8) == 0) {
-                auto tmp = std::make_shared<HttpClientConn>(std::move(tcon), std::move(hosts), std::move(ctx.path), std::move(ctx.query));
+                auto tmp = Http1::init_object(tcon, ctx);
                 h1 = tmp.get();
                 conn = tmp;
                 version = 1;
@@ -135,7 +134,7 @@ namespace socklib {
                 else {
                     auto hijack = conn->hijack();
                     close();
-                    auto tmp = std::make_shared<HttpClientConn>(std::move(hijack), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
+                    auto tmp = Http1::init_object(hijack, ctx);
                     h1 = tmp.get();
                     conn = tmp;
                 }

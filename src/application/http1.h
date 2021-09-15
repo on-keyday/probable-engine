@@ -369,6 +369,10 @@ namespace socklib {
                                       cacert, ctx.url.scheme == "https", alpnstr, len, true);
         }
 
+        static std::shared_ptr<HttpClientConn> init_object(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx) {
+            return std::make_shared<HttpClientConn>(std::move(conn), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
+        }
+
         static bool
         setuphttp(const char* url, bool encoded, HttpRequestContext& ctx,
                   const char* normal = "http", const char* secure = "https", const char* defaultval = "http") {
@@ -436,7 +440,7 @@ namespace socklib {
             std::shared_ptr<Conn> conn;
             conn = open_tcp_conn(ctx, cacert, err, nullptr, 0);
             if (!conn) return nullptr;
-            return std::make_shared<HttpClientConn>(std::move(conn), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
+            return init_object(conn, ctx);
         }
 
         static OpenErr reopen(std::shared_ptr<HttpClientConn>& conn, const char* url, bool encoded = false, const char* cacert = nullptr) {
