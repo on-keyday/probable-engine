@@ -167,100 +167,107 @@ namespace socklib {
             return true;
         }
 
+       private:
+        HttpConn::Header* Http2Method(const char* method, std::vector<std::string>& spl, HttpConn::Header&& header = HttpConn::Header(),
+                                      const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
+            if (!h2) return nullptr;
+            H2Stream* st = nullptr;
+            if (!h2->get_stream(st)) {
+                return nullptr;
+            }
+            if (st->state == H2StreamState::closed) {
+                if (spl.size() > 1) {
+                    if (!h2->make_stream(st, spl[0], "?" + spl[1])) {
+                        return nullptr;
+                    }
+                }
+                else {
+                    if (!h2->make_stream(st, spl[0], std::string())) {
+                        return nullptr;
+                    }
+                }
+            }
+            HttpConn::Header tmph;
+            size_t suspend = 0;
+            bool has_body = data && size;
+            tmph.emplace(":method", method);
+            tmph.emplace(":authority", h2->host());
+            tmph.emplace(":path", st->path());
+            tmph.emplace(":scheme", h2->borrow()->get_ssl() ? "https" : "http");
+            if (has_body) {
+                tmph.emplace("content-length", std::to_string(size));
+            }
+            header.erase("host");
+            header.erase(":body");
+            tmph.merge(header);
+            if (auto e = st->send_header(tmph, false, 0, !has_body); !e) {
+                return nullptr;
+            }
+            auto sending_body = [&]() -> H2Err {
+                if (auto e = st->send_data(data, size, &suspend, false, 0, true); !e) {
+                    if (e != H2Error::need_window_update) {
+                        return e;
+                    }
+                }
+                return true;
+            };
+            H2Stream *st0 = nullptr, *result = nullptr;
+            h2->get_stream(0, st0);
+            if (has_body) {
+                if (auto e = sending_body(); !e) {
+                    st0->send_goaway(e);
+                    h2->close();
+                    return nullptr;
+                }
+            }
+            bool ok = false;
+            while (h2->recvable() || Selecter::waitone(h2->borrow(), 60, 0, cancel)) {
+                std::shared_ptr<H2Frame> frame;
+                if (auto e = h2->recv(frame); !e) {
+                    st0->send_goaway(e);
+                    h2->close();
+                    return nullptr;
+                }
+                st = nullptr;
+                if (auto e = h2->apply(frame, st); !e) {
+                    st0->send_goaway(e);
+                    h2->close();
+                    return nullptr;
+                }
+                if (auto d = frame->data()) {  //to update flow control window
+                    st0->send_windowupdate((int)d->payload().size());
+                    st->send_windowupdate((int)d->payload().size());
+                }
+                else if (auto w = frame->window_update(); w && st->streamid != 0) {
+                    if (size && size != suspend) {
+                        if (auto e = sending_body(); !e) {
+                            st0->send_goaway(e);
+                            h2->close();
+                            return nullptr;
+                        }
+                    }
+                }
+                if (st->state == H2StreamState::closed) {
+                    result = st;
+                    ok = true;
+                    break;
+                }
+            }
+            if (!ok) {
+                return nullptr;
+            }
+            st->header.emplace(":body", st->payload);
+            return &st->header;
+        }
+
+       public:
         HttpConn::Header* Method(const char* method, const char* path = nullptr, HttpConn::Header&& header = HttpConn::Header(),
                                  const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
             if (version == 0 || !method) return nullptr;
             auto spl = commonlib2::split(path ? path : "/", "?", 1);
             if (spl.size() < 1) return nullptr;
             if (version == 2) {
-                if (!h2) return nullptr;
-                H2Stream* st = nullptr;
-                if (!h2->get_stream(st)) {
-                    return nullptr;
-                }
-                if (st->state == H2StreamState::closed) {
-                    if (spl.size() > 1) {
-                        if (!h2->make_stream(st, spl[0], "?" + spl[1])) {
-                            return nullptr;
-                        }
-                    }
-                    else {
-                        if (!h2->make_stream(st, spl[0], std::string())) {
-                            return nullptr;
-                        }
-                    }
-                }
-                HttpConn::Header tmph;
-                size_t suspend = 0;
-                bool has_body = data && size;
-                tmph.emplace(":method", method);
-                tmph.emplace(":authority", h2->host());
-                tmph.emplace(":path", st->path());
-                tmph.emplace(":scheme", h2->borrow()->get_ssl() ? "https" : "http");
-                if (has_body) {
-                    tmph.emplace("content-length", std::to_string(size));
-                }
-                header.erase("host");
-                header.erase(":body");
-                tmph.merge(header);
-                if (auto e = st->send_header(tmph, false, 0, !has_body); !e) {
-                    return nullptr;
-                }
-                auto sending_body = [&]() -> H2Err {
-                    if (auto e = st->send_data(data, size, &suspend, false, 0, true); !e) {
-                        if (e != H2Error::need_window_update) {
-                            return e;
-                        }
-                    }
-                    return true;
-                };
-                H2Stream *st0 = nullptr, *result = nullptr;
-                h2->get_stream(0, st0);
-                if (has_body) {
-                    if (auto e = sending_body(); !e) {
-                        st0->send_goaway(e);
-                        h2->close();
-                        return nullptr;
-                    }
-                }
-                bool ok = false;
-                while (h2->recvable() || Selecter::waitone(h2->borrow(), 60, 0, cancel)) {
-                    std::shared_ptr<H2Frame> frame;
-                    if (auto e = h2->recv(frame); !e) {
-                        st0->send_goaway(e);
-                        h2->close();
-                        return nullptr;
-                    }
-                    st = nullptr;
-                    if (auto e = h2->apply(frame, st); !e) {
-                        st0->send_goaway(e);
-                        h2->close();
-                        return nullptr;
-                    }
-                    if (auto d = frame->data()) {  //to update flow control window
-                        st0->send_windowupdate((int)d->payload().size());
-                        st->send_windowupdate((int)d->payload().size());
-                    }
-                    else if (auto w = frame->window_update(); w && st->streamid != 0) {
-                        if (size && size != suspend) {
-                            if (auto e = sending_body(); !e) {
-                                st0->send_goaway(e);
-                                h2->close();
-                                return nullptr;
-                            }
-                        }
-                    }
-                    if (st->state == H2StreamState::closed) {
-                        result = st;
-                        ok = true;
-                        break;
-                    }
-                }
-                if (!ok) {
-                    return nullptr;
-                }
-                st->header.emplace(":body", st->payload);
-                return &st->header;
+                return Http2Method(method, spl, std::forward<HttpConn::Header>(header), data, size, cancel);
             }
             else if (version == 1) {
                 if (!h1) return nullptr;
