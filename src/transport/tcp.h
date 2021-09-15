@@ -122,6 +122,7 @@ namespace socklib {
         invalid_condition,
         verify,
         parse,
+        value_not_found,
         unknown,
     };
 

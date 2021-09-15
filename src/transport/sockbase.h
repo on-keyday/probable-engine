@@ -200,20 +200,20 @@ namespace socklib {
             }
             return true;
         }
-
-        bool on_error(CancelContext* cancel /*time_t begintime, time_t timeout*/) {
+        /*
+        bool on_error(CancelContext* cancel /*time_t begintime, time_t timeout*) {
             set_os_error(err);
             /*
             auto nowtime = std::time(nullptr);
             if (timeout >= 0 && nowtime - begintime > timeout) {
                 return true;
-            }*/
+            }*
             if (cancel && cancel->on_cancel()) return true;
             if (!suspend && is_waiting(err)) {
                 return false;
             }
             return true;
-        }
+        }*/
 
        public:
         virtual bool reset(int sok, addrinfo* addrin) {
