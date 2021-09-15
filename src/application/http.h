@@ -181,24 +181,31 @@ namespace socklib {
                     }
                 }
                 HttpConn::Header tmph;
+                size_t suspended = 0;
+                bool has_body = data && size;
                 tmph.emplace(":method", method);
                 tmph.emplace(":authority", h2->host());
                 tmph.emplace(":path", st->path());
                 tmph.emplace(":scheme", h2->borrow()->get_ssl() ? "https" : "http");
-                tmph.erase("host");
-                tmph.erase(":body");
+                if (has_body) {
+                    tmph.emplace("content-length", std::to_string(size));
+                }
+                header.erase("host");
+                header.erase(":body");
                 tmph.merge(header);
-                size_t suspended = 0;
-                bool has_body = data && size;
                 if (auto e = st->send_header(tmph, false, 0, !has_body); !e) {
                     return nullptr;
                 }
-                if (has_body) {
+                auto sending_body = [&]() -> H2Err {
                     if (auto e = st->send_data(data, size, &suspended, false, 0, true); !e) {
                         if (e != H2Error::need_window_update) {
-                            return nullptr;
+                            return e;
                         }
                     }
+                    return true;
+                };
+                if (has_body) {
+                    sending_body();
                 }
                 H2Stream *st0 = nullptr, *result = nullptr;
                 h2->get_stream(0, st0);
@@ -219,6 +226,15 @@ namespace socklib {
                     if (auto d = frame->data()) {  //to update flow control window
                         st->send_windowupdate((int)d->payload().size());
                         st0->send_windowupdate((int)d->payload().size());
+                    }
+                    else if (auto w = frame->window_update()) {
+                        if (size && size != suspended) {
+                            if (auto e = sending_body(); !e) {
+                                st0->send_goaway(e);
+                                h2->close();
+                                return nullptr;
+                            }
+                        }
                     }
                     if (st->state == H2StreamState::closed) {
                         result = st;

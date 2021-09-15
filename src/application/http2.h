@@ -135,7 +135,7 @@ namespace socklib {
             }
             frame.streamid = streamid;
             std::int32_t sent = remote_window < conn->remote_window ? remote_window : conn->remote_window;
-            sent = remainsize + padlen < sent ? remainsize + padlen : sent;
+            sent = remainsize + padlen < sent - padlen ? remainsize : sent - padlen;
             frame.data_ = std::string(data + offset, sent);
             if (sent == remainsize && endstream) {
                 frame.flag |= H2Flag::end_stream;
@@ -259,6 +259,7 @@ namespace socklib {
                         initial_window = current;
                     }
                 }
+                return e;
             }
             else {
                 auto& tmp = streams[frame->streamid] = H2Stream(frame->streamid, this);
