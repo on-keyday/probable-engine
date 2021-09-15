@@ -163,9 +163,10 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<Conn> open(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false) {
+        static std::shared_ptr<Conn> open(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, OpenErr* err = nullptr) {
             std::shared_ptr<Conn> ret;
-            if (!reopen(ret, host, port, service, noblock)) {
+            if (auto e = reopen(ret, host, port, service, noblock); !e) {
+                if (err) *err = e;
                 return nullptr;
             }
             return ret;
@@ -186,7 +187,9 @@ namespace socklib {
             }
             SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2);
             if (cacert) {
-                SSL_CTX_load_verify_locations(ctx, cacert, nullptr);
+                if (!SSL_CTX_load_verify_locations(ctx, cacert, nullptr)) {
+                    return OpenError::verify;
+                }
             }
             if (alpnstr && len) {
                 SSL_CTX_set_alpn_protos(ctx, (const unsigned char*)alpnstr, len);
@@ -230,9 +233,10 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
+        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false, OpenErr* err = nullptr) {
             std::shared_ptr<Conn> ret;
-            if (!reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len, strictverify)) {
+            if (auto e = reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len, strictverify); !e) {
+                if (err) *err = e;
                 return nullptr;
             }
             return ret;

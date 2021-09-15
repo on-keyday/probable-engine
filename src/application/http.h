@@ -23,15 +23,17 @@ namespace socklib {
         int version = 0;
 
        public:
-        bool open(const char* url, bool encoded = false, const char* cacert = nullptr) {
+        OpenErr open(const char* url, bool encoded = false, const char* cacert = nullptr) {
+            close();
             HttpRequestContext ctx;
             if (!Http1::setuphttp(url, encoded, ctx)) {
                 return false;
             }
             bool secure = ctx.url.scheme == "https";
-            auto tcon = Http1::open_tcp_conn(ctx, cacert, "\x02h2\x08http/1.1", 12);
+            OpenErr e;
+            auto tcon = Http1::open_tcp_conn(ctx, cacert, &e, "\x02h2\x08http/1.1", 12);
             if (!tcon) {
-                return false;
+                return e;
             }
             const unsigned char* data = nullptr;
             unsigned int len = 0;
@@ -232,11 +234,17 @@ namespace socklib {
         }
 
         void close() {
-            conn->close();
-            conn.reset();
-            h1 = nullptr;
-            h2 = nullptr;
-            version = 0;
+            if (conn) {
+                conn->close();
+                conn.reset();
+                h1 = nullptr;
+                h2 = nullptr;
+                version = 0;
+            }
+        }
+
+        bool is_open() const {
+            return (bool)conn;
         }
 
         ~HttpClient() noexcept {

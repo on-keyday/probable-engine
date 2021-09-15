@@ -381,13 +381,13 @@ namespace socklib {
             }
         }
 
-        static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr) {
+        static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr) {
             HttpRequestContext ctx;
             if (!Http1::setuphttp(url, encoded, ctx, "http", "https", "https")) {
                 return nullptr;
             }
             bool secure = ctx.url.scheme == "https";
-            auto conn = Http1::open_tcp_conn(ctx, cacert, "\2h2", 3);
+            auto conn = Http1::open_tcp_conn(ctx, cacert, err, "\2h2", 3);
             if (!conn) {
                 return nullptr;
             }

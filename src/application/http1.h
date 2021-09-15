@@ -359,9 +359,9 @@ namespace socklib {
         friend struct HttpServer;
 
        private:
-        static std::shared_ptr<Conn> open_tcp_conn(HttpRequestContext& ctx, const char* cacert, const char* alpnstr = nullptr, int len = 0) {
+        static std::shared_ptr<Conn> open_tcp_conn(HttpRequestContext& ctx, const char* cacert, OpenErr* err, const char* alpnstr = nullptr, int len = 0) {
             return TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                    cacert, ctx.url.scheme == "https", alpnstr, len, true);
+                                    cacert, ctx.url.scheme == "https", alpnstr, len, true, err);
         }
 
         static OpenErr reopen_tcp_conn(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx, const char* cacert, const char* alpnstr = nullptr, int len = 0) {
@@ -428,13 +428,13 @@ namespace socklib {
 
        public:
         static std::shared_ptr<HttpClientConn>
-        open(const char* url, bool encoded = false, const char* cacert = nullptr) {
+        open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr) {
             HttpRequestContext ctx;
             if (!setuphttp(url, encoded, ctx)) {
                 return nullptr;
             }
             std::shared_ptr<Conn> conn;
-            conn = open_tcp_conn(ctx, cacert, nullptr, 0);
+            conn = open_tcp_conn(ctx, cacert, err, nullptr, 0);
             if (!conn) return nullptr;
             return std::make_shared<HttpClientConn>(std::move(conn), ctx.host_with_port(), std::move(ctx.path), std::move(ctx.query));
         }
