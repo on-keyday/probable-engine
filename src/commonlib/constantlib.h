@@ -130,7 +130,7 @@ namespace PROJECT_NAME {
             return ConstString<C, size_ + 1>(copy);
         }
 
-        constexpr ConstString<C,size_-1> pop_back() const {
+        constexpr auto pop_back() const {
             static_assert(size_!=0,"pop_back from 0 size string is invalid");
             return substr<0,size()-1>();
         }
