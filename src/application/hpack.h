@@ -19,7 +19,9 @@ namespace socklib {
     );*/
     using sheader_t = std::pair<const char*, const char*>;
 
-    constexpr std::array<sheader_t, 62> predefined = {
+    constexpr size_t predefined_header_size = 62;
+
+    constexpr std::array<sheader_t, predefined_header_size> predefined_header = {
         sheader_t("INVALIDINDEX", "INVALIDINDEX"),
         sheader_t(":authority", ""),
         sheader_t(":method", "GET"),
@@ -696,7 +698,7 @@ namespace socklib {
                          return f(c.first, c.second);
                      });
                      found != dymap.end()) {
-                idx = std::distance(dymap.begin(), found) + 62;
+                idx = std::distance(dymap.begin(), found) + predefined_header_size;
             }
             else {
                 return false;
@@ -786,14 +788,14 @@ namespace socklib {
                     return true;
                 };
                 auto read_idx_and_literal = [&](size_t idx) -> HpkErr {
-                    if (idx < 62) {
-                        key = predefined[idx].first;
+                    if (idx < predefined_header_size) {
+                        key = predefined_header[idx].first;
                     }
                     else {
-                        if (dymap.size() <= idx - 62) {
+                        if (dymap.size() <= idx - predefined_header_size) {
                             return HpackError::not_exists;
                         }
-                        key = dymap[idx - 62].second;
+                        key = dymap[idx - predefined_header_size].second;
                     }
                     TRY(decode_str(value, se));
                     res.emplace(key, value);
@@ -805,17 +807,17 @@ namespace socklib {
                     if (idx == 0) {
                         return HpackError::invalid_value;
                     }
-                    if (idx < 62) {
-                        if (!predefined[idx].second[0]) {
+                    if (idx < predefined_header_size) {
+                        if (!predefined_header[idx].second[0]) {
                             return HpackError::not_exists;
                         }
-                        res.emplace(predefined[idx].first, predefined[idx].second);
+                        res.emplace(predefined_header[idx].first, predefined_header[idx].second);
                     }
                     else {
-                        if (dymap.size() <= idx - 62) {
+                        if (dymap.size() <= idx - predefined_header_size) {
                             return HpackError::not_exists;
                         }
-                        res.emplace(dymap[idx - 62].first, dymap[idx - 62].second);
+                        res.emplace(dymap[idx - predefined_header_size].first, dymap[idx - predefined_header_size].second);
                     }
                 }
                 else if (tmp & 0x40) {
