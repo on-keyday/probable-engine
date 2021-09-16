@@ -108,7 +108,7 @@ namespace PROJECT_NAME {
         }
 
         constexpr size_t size() const {
-            return strsize;
+            return size_;
         }
 
         template<size_t ofs=0,size_t count=(size_t)~0>
