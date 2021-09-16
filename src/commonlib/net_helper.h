@@ -91,10 +91,10 @@ namespace PROJECT_NAME {
         bool noescape(char c) {
             if (is_alpha_or_num(c)) return true;
             if (path) {
-                if (c == '/' || c == '.' || c == '-') return true;
+                if (c == '/' || c == '.' || c == '-'|| c == '_') return true;
             }
             if (query) {
-                if (c == '?' || c == '&' || c == '=') return true;
+                if (c == '?' || c == '&' || c == '='|| c == '_') return true;
             }
             for (auto i : no_escape) {
                 if (i == c) return true;
