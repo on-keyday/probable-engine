@@ -132,7 +132,7 @@ namespace PROJECT_NAME {
 
         constexpr auto pop_back() const {
             static_assert(size_!=0,"pop_back from 0 size string is invalid");
-            return substr<0,size()-1>();
+            return substr<0,size_-1>();
         }
 
     private:
