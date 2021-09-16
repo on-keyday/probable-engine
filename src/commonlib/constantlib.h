@@ -113,6 +113,7 @@ namespace PROJECT_NAME {
 
         template<size_t ofs=0,size_t count=(size_t)~0>
         constexpr auto substr()const{
+            static_assert(ofs < strsize,"invalid offset");
             constexpr size_t sz= count < size_ - ofs ? count : size_ - ofs;
             C copy[sz];
             for(auto i=0;i<sz;i++){
