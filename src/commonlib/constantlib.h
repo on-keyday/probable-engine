@@ -130,9 +130,23 @@ namespace PROJECT_NAME {
             return ConstString<C, size_ + 1>(copy);
         }
 
+        constexpr ConstString<C, size_ + 1> push_front(C c) const {
+            C copy[size_ + 1];
+            copy[0]=c;
+            for (size_t i = 0; i < strsize+1; i++) {
+                copy[i] = buf[i];
+            }
+            return ConstString<C, size_ + 1>(copy);
+        }
+
         constexpr auto pop_back() const {
             static_assert(size_!=0,"pop_back from 0 size string is invalid");
             return substr<0,size_-1>();
+        }
+
+        constexpr auto pop_front() const {
+            static_assert(size_!=0,"pop_front from 0 size string is invalid");
+            return substr<1>();
         }
 
     private:
