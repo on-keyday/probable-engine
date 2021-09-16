@@ -790,7 +790,7 @@ namespace socklib {
                         key = predefined[idx].first;
                     }
                     else {
-                        if (dymap.size() <= idx - 63) {
+                        if (dymap.size() <= idx - 62) {
                             return HpackError::not_exists;
                         }
                         key = dymap[idx - 62].second;
