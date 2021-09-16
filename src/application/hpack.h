@@ -84,6 +84,7 @@ namespace socklib {
         sheader_t("vary", ""),
         sheader_t("via", ""),
         sheader_t("www-authenticate", "")};
+
     struct bitvec_t {
        private:
         std::uint32_t bits = 0;
@@ -94,6 +95,7 @@ namespace socklib {
         }
 
        public:
+        constexpr bitvec_t() {}
         constexpr bitvec_t(std::initializer_list<int> init) noexcept {
             size_ = init.size();
             for (auto i = 0; i < size_; i++) {
@@ -103,7 +105,9 @@ namespace socklib {
         }
 
         constexpr bool operator[](size_t idx) const {
-            if (idx >= size_) throw "out of range";
+            if (idx >= size_) {
+                throw "out of range";
+            }
             return (bool)(bits & (1 << shift(idx)));
         }
 
@@ -111,7 +115,8 @@ namespace socklib {
             return size_;
         }
 
-        constexpr bool operator==(const std::vector<bool>& in) const {
+        template <class T>
+        constexpr bool operator==(T& in) const {
             if (size() != in.size()) return false;
             for (auto i = 0; i < in.size(); i++) {
                 if ((*this)[i] != in[i]) {
@@ -120,9 +125,19 @@ namespace socklib {
             }
             return true;
         }
+
+        constexpr bool push_back(bool in) {
+            if (size_ >= sizeof(bits) * 8) {
+                throw "too large vector";
+            }
+            std::uint32_t bit = in ? 1 : 0;
+            bits |= (bit << shift(size_));
+            size_++;
+            return true;
+        }
     };
 
-    constexpr std::array<bitvec_t, 257> h2huffman{
+    constexpr std::array<const bitvec_t, 257> h2huffman{
         {{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 0},
          {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0},
@@ -464,20 +479,20 @@ namespace socklib {
     struct h2huffman_tree {
        private:
         friend struct Hpack;
-        std::vector<bool> value;
+        //std::vector<bool> value;
         h2huffman_tree* zero = nullptr;
         h2huffman_tree* one = nullptr;
         unsigned char c = 0;
         bool has_c = false;
         bool eos = false;
-        h2huffman_tree(const std::vector<bool>& v)
-            : value(v) {}
+        constexpr h2huffman_tree(/*const std::vector<bool>& v*/)
+        /*: value(v)*/ {}
         ~h2huffman_tree() noexcept {
             delete zero;
             delete one;
         }
 
-        static bool append(h2huffman_tree* tree, bool eos, unsigned char c, const bitvec_t& v, std::vector<bool>& res, size_t idx = 0) {
+        static bool append(h2huffman_tree* tree, bool eos, unsigned char c, const bitvec_t& v, bitvec_t& res, size_t idx = 0) {
             if (!tree) {
                 return false;
             }
@@ -493,13 +508,13 @@ namespace socklib {
             res.push_back(v[idx]);
             if (v[idx]) {
                 if (!tree->one) {
-                    tree->one = new h2huffman_tree(res);
+                    tree->one = new h2huffman_tree();
                 }
                 return append(tree->one, eos, c, v, res, idx + 1);
             }
             else {
                 if (!tree->zero) {
-                    tree->zero = new h2huffman_tree(res);
+                    tree->zero = new h2huffman_tree();
                 }
                 return append(tree->zero, eos, c, v, res, idx + 1);
             }
@@ -508,10 +523,10 @@ namespace socklib {
         static h2huffman_tree* init_tree() {
             static h2huffman_tree _tree({});
             for (auto i = 0; i < 256; i++) {
-                std::vector<bool> res;
+                bitvec_t res;
                 append(&_tree, false, i, h2huffman[i], res);
             }
-            std::vector<bool> res;
+            bitvec_t res;
             append(&_tree, true, 0, h2huffman[256], res);
             return &_tree;
         }
@@ -688,11 +703,11 @@ namespace socklib {
        private:
         template <class F>
         static bool get_idx(F&& f, size_t& idx, DynamicTable& dymap) {
-            if (auto found = std::find_if(predefined.begin() + 1, predefined.end(), [&](auto& c) {
+            if (auto found = std::find_if(predefined_header.begin() + 1, predefined_header.end(), [&](auto& c) {
                     return f(c.first, c.second);
                 });
-                found != predefined.end()) {
-                idx = std::distance(predefined.begin(), found);
+                found != predefined_header.end()) {
+                idx = std::distance(predefined_header.begin(), found);
             }
             else if (auto found = std::find_if(dymap.begin(), dymap.end(), [&](auto& c) {
                          return f(c.first, c.second);
