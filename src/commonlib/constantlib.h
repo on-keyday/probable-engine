@@ -88,11 +88,11 @@ namespace PROJECT_NAME {
     };
 
     
-    template <class C, size_t size_ = 0>
+    template <class C=char, size_t size_ = 0>
     struct ConstString {
-        C buf[size_] = {0};
+        C buf[size_?size_:1] = {0};
 
-        constexpr static size_t strsize = size_ - 1;
+        constexpr static size_t strsize = size_?size_ - 1:0;
         constexpr ConstString() {}
 
         constexpr ConstString(const ConstString& in) {
@@ -113,18 +113,20 @@ namespace PROJECT_NAME {
 
         template<size_t ofs=0,size_t count=(size_t)~0>
         constexpr auto substr()const{
-            constexpr size_t sz= count < size_ ? count : size_;
-            C copy[sz-ofs];
-            for(auto i=0;i<sz-ofs;i++){
+            constexpr size_t sz= count < size_ - ofs ? count : size_ - ofs;
+            C copy[sz];
+            for(auto i=0;i<sz;i++){
                 copy[i]=buf[ofs+i];
             }
-            return ConstString<C,sz-ofs>(copy);
+            return ConstString<C,sz>(copy);
         }
 
         constexpr ConstString<C, size_ + 1> push_back(C c) const {
             C copy[size_ + 1];
-            for (size_t i = 0; i < strsize; i++) {
-                copy[i] = buf[i];
+            if(size_!=0){
+                for (size_t i = 0; i < strsize; i++) {
+                    copy[i] = buf[i];
+                }
             }
             copy[strsize] = c;
             return ConstString<C, size_ + 1>(copy);
@@ -133,8 +135,10 @@ namespace PROJECT_NAME {
         constexpr ConstString<C, size_ + 1> push_front(C c) const {
             C copy[size_ + 1];
             copy[0]=c;
-            for (size_t i = 0; i < strsize+1; i++) {
-                copy[i] = buf[i];
+            if(size_!=0){
+                for (size_t i = 0; i < strsize+1; i++) {
+                    copy[i] = buf[i];
+                }
             }
             return ConstString<C, size_ + 1>(copy);
         }
