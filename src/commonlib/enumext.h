@@ -50,42 +50,42 @@ namespace PROJECT_NAME{
         constexpr EnumWrap():e(falseval){}
         constexpr EnumWrap(bool i):e(i?trueval:falseval){}
         constexpr EnumWrap(E i):e(i){}
-        operator bool()const{
+        constexpr operator bool()const{
             return e==trueval;
         }
 
-        operator E()const{
+        constexpr operator E()const{
             return e;
         }
 
-        EnumWrap operator|(const EnumWrap& i)const{
+        constexpr EnumWrap operator|(const EnumWrap& i)const{
             return e|i.e;  
         }
 
-        EnumWrap operator&(const EnumWrap& i)const{
+        constexpr EnumWrap operator&(const EnumWrap& i)const{
             return e&i.e;  
         }
 
-        EnumWrap operator^(const EnumWrap& i)const{
+        constexpr EnumWrap operator^(const EnumWrap& i)const{
             return e^i.e;  
         }
 
-        EnumWrap& operator|=(const EnumWrap& i){
+        constexpr EnumWrap& operator|=(const EnumWrap& i){
             e|=i.e;
             return *this;  
         }
 
-        EnumWrap& operator&=(const EnumWrap& i){
+        constexpr EnumWrap& operator&=(const EnumWrap& i){
             e&=i.e;
             return *this;  
         }
 
-        EnumWrap& operator^=(const EnumWrap& i){
+        constexpr EnumWrap& operator^=(const EnumWrap& i){
             e^=i.e;
             return *this;
         }
 
-        EnumWrap operator~()const{
+        constexpr EnumWrap operator~()const{
             return ~e;
         }
     };
