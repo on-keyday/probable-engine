@@ -111,6 +111,16 @@ namespace PROJECT_NAME {
             return strsize;
         }
 
+        template<size_t ofs=0,size_t count=(size_t)~0>
+        constexpr auto substr()const{
+            constexpr size_t sz= count < size_ ? count : size_;
+            C copy[sz-ofs];
+            for(auto i=0;i<sz-ofs;i++){
+                copy[i]=buf[ofs+i];
+            }
+            return ConstString<C,sz-ofs>(copy);
+        }
+
         constexpr ConstString<C, size_ + 1> push_back(C c) const {
             C copy[size_ + 1];
             for (size_t i = 0; i < strsize; i++) {
@@ -118,6 +128,11 @@ namespace PROJECT_NAME {
             }
             copy[strsize] = c;
             return ConstString<C, size_ + 1>(copy);
+        }
+
+        constexpr ConstString<C,size_-1> pop_back() const {
+            static_assert(size_!=0,"pop_back from 0 size string is invalid");
+            return substr<0,size()-1>();
         }
 
     private:
@@ -182,15 +197,7 @@ namespace PROJECT_NAME {
             return buf + strsize;
         }
 
-        template<size_t ofs=0,size_t count=(size_t)~0>
-        constexpr auto substr()const{
-            constexpr size_t sz= count < size_ ? count : size_;
-            C copy[sz-ofs];
-            for(auto i=0;i<sz-ofs;i++){
-                copy[i]=buf[ofs+i];
-            }
-            return ConstString<C,sz-ofs>(copy);
-        }
+        
     };
 
     template <class C, size_t sz1, size_t sz2>
