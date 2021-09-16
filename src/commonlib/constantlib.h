@@ -215,5 +215,20 @@ namespace PROJECT_NAME {
         return true;
     }
 
+    template<class C,size_t sz1,size_t sz2>
+    constexpr auto operator+(const ConstString<C, sz1>& s1, const ConstString<C, sz2>& s2){
+        return s1.append(s2);
+    }
+
+    template<class C,size_t sz1,size_t sz2>
+    constexpr auto operator+(const C (&s1)[sz1],const ConstString<C, sz2>& s2){
+        return ConstString<C,sz1>(s1).append(s2);
+    }
+
+
+    template<class C,size_t sz1,size_t sz2>
+    constexpr auto operator+(const ConstString<C, sz1>& s1,const C (&s2)[sz2]){
+        return s1.append(s2);
+    }
 
 }  // namespace PROJECT_NAME
