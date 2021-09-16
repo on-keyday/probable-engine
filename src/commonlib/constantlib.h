@@ -181,6 +181,10 @@ namespace PROJECT_NAME {
             return buf;
         }
 
+        constexpr C* data(){
+            return buf;
+        }
+
         constexpr C* begin() {
             return buf;
         }
