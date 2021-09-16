@@ -262,23 +262,26 @@ namespace PROJECT_NAME {
                 return out.size();
             }*/
 
-            while (in.rdbuf()->in_avail() > 0) {
+            while (in.peek() != EOF) {
 #ifdef _WIN32
-                wchar_t str[100] = {0};
+                wchar_t c;
 #else
-                char str[100] = {0};
+                char c;
 #endif
-                auto red = in.readsome(str, 100);
-                if (red > 0) {
-#ifdef _WIN32
-                    std::string tmp;
-                    Reader(Sized(str, red)) >> tmp;
-                    out += tmp;
-#else
-                    out += std::string(str, red);
-#endif
-                    ret += red;
+                if(!in.get(c)){
+                    in.clear();
+                    break;
                 }
+                
+#ifdef _WIN32
+                std::string tmp;
+                Reader(Sized(&c, 1)) >> tmp;
+                out += tmp;
+#else
+                out += c;
+#endif
+                ret++;
+                
             }
             return ret;
         }
