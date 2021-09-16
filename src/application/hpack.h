@@ -786,14 +786,14 @@ namespace socklib {
                     return true;
                 };
                 auto read_idx_and_literal = [&](size_t idx) -> HpkErr {
-                    if (idx < 63) {
+                    if (idx < 62) {
                         key = predefined[idx].first;
                     }
                     else {
                         if (dymap.size() <= idx - 63) {
                             return HpackError::not_exists;
                         }
-                        key = dymap[idx - 63].second;
+                        key = dymap[idx - 62].second;
                     }
                     TRY(decode_str(value, se));
                     res.emplace(key, value);
