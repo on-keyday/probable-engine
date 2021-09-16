@@ -183,7 +183,7 @@ namespace PROJECT_NAME {
         }
 
         template<size_t ofs=0,size_t count=(size_t)~0>
-        constexpr auto substr(){
+        constexpr auto substr()const{
             constexpr size_t sz= count < size_ ? count : size_;
             C copy[sz-ofs];
             for(auto i=0;i<sz-ofs;i++){
