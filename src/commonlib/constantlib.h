@@ -181,6 +181,16 @@ namespace PROJECT_NAME {
         constexpr const C* end() const {
             return buf + strsize;
         }
+
+        template<size_t ofs=0,size_t count=(size_t)~0>
+        constexpr auto substr(){
+            constexpr size_t sz= count < size_ ? count : size_;
+            C copy[sz-ofs];
+            for(auto i=0;i<sz-ofs;i++){
+                copy[i]=buf[ofs+i];
+            }
+            return ConstString<C,sz-ofs>(copy);
+        }
     };
 
     template <class C, size_t sz1, size_t sz2>
