@@ -805,17 +805,17 @@ namespace socklib {
                     if (idx == 0) {
                         return HpackError::invalid_value;
                     }
-                    if (idx < 63) {
+                    if (idx < 62) {
                         if (!predefined[idx].second[0]) {
                             return HpackError::not_exists;
                         }
                         res.emplace(predefined[idx].first, predefined[idx].second);
                     }
                     else {
-                        if (dymap.size() <= idx - 63) {
+                        if (dymap.size() <= idx - 62) {
                             return HpackError::not_exists;
                         }
-                        res.emplace(dymap[idx - 63].first, dymap[idx - 63].second);
+                        res.emplace(dymap[idx - 62].first, dymap[idx - 62].second);
                     }
                 }
                 else if (tmp & 0x40) {

@@ -256,13 +256,14 @@ namespace PROJECT_NAME {
         }
 
         size_t readsome(std::string& out) {
+            throw std::runtime_error("async io not implemented");
             if (!Able_continue()) throw std::runtime_error("not called IOWrapper::Init() before io function");
             size_t ret = 0;
             /*if (get_initial(out)) {
                 return out.size();
             }*/
-
-            while (in.peek() != EOF) {
+            
+            while (in.peek()) {
 #ifdef _WIN32
                 wchar_t c;
 #else
