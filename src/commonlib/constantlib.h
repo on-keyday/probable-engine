@@ -88,46 +88,46 @@ namespace PROJECT_NAME {
     };
 
     
-    template <class C=char, size_t size_ = 0>
+    template <class C=char, size_t size_ = 1>
     struct ConstString {
-        C buf[size_?size_:1] = {0};
+        static_assert(size_!=0,"size must not be 0");
+        C buf[size_] = {0};
 
-        constexpr static size_t strsize = size_?size_ - 1:0;
+        constexpr static size_t strsize = (size_t)(size_-1);
         constexpr ConstString() {}
 
         constexpr ConstString(const ConstString& in) {
-            for (size_t i = 0; i < strsize; i++) {
+            for (size_t i = 0; i < size_; i++) {
                 buf[i] = in.buf[i];
             }
         }
 
         constexpr ConstString(const C (&ptr)[size_]) {
-            for (size_t i = 0; i < strsize; i++) {
+            for (size_t i = 0; i <size_-1; i++) {
                 buf[i] = ptr[i];
             }
+            buf[size_-1]=0;
         }
 
         constexpr size_t size() const {
-            return size_;
+            return strsize;
         }
 
         template<size_t ofs=0,size_t count=(size_t)~0>
         constexpr auto substr()const{
-            static_assert(size_!=0&&ofs < strsize,"invalid offset");
-            constexpr size_t sz= count < size_ - ofs ? count : size_ - ofs;
-            C copy[sz];
-            for(auto i=0;i<sz;i++){
+            static_assert(ofs < strsize,"invalid offset");
+            constexpr size_t sz= count < strsize - ofs ? count : strsize - ofs;
+            C copy[sz+1];
+            for(auto i=0;i<sz+1;i++){
                 copy[i]=buf[ofs+i];
             }
-            return ConstString<C,sz>(copy);
+            return ConstString<C,sz+1>(copy);
         }
 
         constexpr ConstString<C, size_ + 1> push_back(C c) const {
             C copy[size_ + 1];
-            if(size_!=0){
-                for (size_t i = 0; i < strsize; i++) {
-                    copy[i] = buf[i];
-                }
+            for (size_t i = 0; i < strsize; i++) {
+                copy[i] = buf[i];
             }
             copy[strsize] = c;
             return ConstString<C, size_ + 1>(copy);
@@ -136,26 +136,24 @@ namespace PROJECT_NAME {
         constexpr ConstString<C, size_ + 1> push_front(C c) const {
             C copy[size_ + 1];
             copy[0]=c;
-            if(size_!=0){
-                for (size_t i = 0; i < strsize+1; i++) {
-                    copy[i] = buf[i];
-                }
+            for (size_t i = 0; i < strsize+1; i++) {
+                copy[i] = buf[i];
             }
             return ConstString<C, size_ + 1>(copy);
         }
 
         constexpr auto pop_back() const {
-            static_assert(size_!=0,"pop_back from 0 size string is invalid");
+            static_assert(size_!=1,"pop_back from 0 size string is invalid");
             return substr<0,size_-1>();
         }
 
         constexpr auto pop_front() const {
-            static_assert(size_!=0,"pop_front from 0 size string is invalid");
+            static_assert(size_!=1,"pop_front from 0 size string is invalid");
             return substr<1>();
         }
 
     private:
-        template <size_t sz, size_t add, size_t srcsize, bool flag = (add == srcsize - 1)>
+        template <size_t sz, size_t add, size_t srcsize, bool flag = (add == srcsize-1)>
         struct Appender {
             constexpr static auto appending(const ConstString<C, sz + add>& dst, const ConstString<C, srcsize>& src, size_t idx) {
                 auto s = dst.push_back(src[idx]);
