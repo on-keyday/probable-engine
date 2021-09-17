@@ -118,9 +118,10 @@ namespace PROJECT_NAME {
             static_assert(ofs < strsize,"invalid offset");
             constexpr size_t sz= count < strsize - ofs ? count : strsize - ofs;
             C copy[sz+1];
-            for(auto i=0;i<sz+1;i++){
+            for(auto i=0;i<sz;i++){
                 copy[i]=buf[ofs+i];
             }
+            copy[sz]=0;
             return ConstString<C,sz+1>(copy);
         }
 
@@ -144,7 +145,7 @@ namespace PROJECT_NAME {
 
         constexpr auto pop_back() const {
             static_assert(size_!=1,"pop_back from 0 size string is invalid");
-            return substr<0,size_-1>();
+            return substr<0,strsize-1>();
         }
 
         constexpr auto pop_front() const {
