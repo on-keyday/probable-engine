@@ -157,7 +157,7 @@ namespace PROJECT_NAME {
 
         template<size_t add,class T>
         constexpr auto appending(const T& src)const{
-            C copy[strsize+add]={0};
+            ConstString<C,strsize+add> copy;
             for(size_t i=0;i<strsize;i++){
                 copy[i]=buf[i];
             }
@@ -165,7 +165,7 @@ namespace PROJECT_NAME {
                 copy[i+strsize]=src[i];
             }
             copy[strsize+add-1]=0;
-            return ConstString<C,strsize+add>(copy);
+            return copy;
         }
 
     public:
@@ -175,8 +175,8 @@ namespace PROJECT_NAME {
         }
 
         template <size_t add>
-        constexpr auto append(const C (&str)[add]) const {
-            return appending<add>(str);
+        constexpr auto append(const C (&src)[add]) const {
+            return appending<add>(src);
         }
 
         constexpr const C& operator[](size_t idx) const {
