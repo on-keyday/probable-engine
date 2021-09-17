@@ -154,31 +154,29 @@ namespace PROJECT_NAME {
         }
 
     private:
-        template <size_t sz, size_t add, size_t srcsize, bool flag = (add == srcsize-1)>
-        struct Appender {
-            constexpr static auto appending(const ConstString<C, sz + add>& dst, const ConstString<C, srcsize>& src, size_t idx) {
-                auto s = dst.push_back(src[idx]);
-                return Appender<sz, add + 1, srcsize>::appending(s, src, idx + 1);
-            }
-        };
 
-        template <size_t sz, size_t add, size_t srcsize>
-        struct Appender<sz, add, srcsize, true> {
-            constexpr static auto appending(const ConstString<C, sz + add>& dst, const ConstString<C, srcsize>& src, size_t idx) {
-                return ConstString<C, sz + add>(dst);
+        template<size_t add,class T>
+        constexpr auto appending(const T& src)const{
+            C copy[strsize+add]={0};
+            for(size_t i=0;i<strsize;i++){
+                copy[i]=buf[i];
             }
-        };
+            for(size_t i=0;i<add-1;i++){
+                copy[i+strsize]=src[i];
+            }
+            copy[strsize+add-1]=0;
+            return ConstString<C,strsize+add>(copy);
+        }
 
     public:
         template <size_t add>
         constexpr auto append(const ConstString<C, add>& src) const {
-            return Appender<size_, 0, add>::appending(*this, src, 0);
+            return appending<add>(src);
         }
 
         template <size_t add>
         constexpr auto append(const C (&str)[add]) const {
-            ConstString<C, add> src(str);
-            return Appender<size_, 0, add>::appending(*this, src, 0);
+            return appending<add>(str);
         }
 
         constexpr const C& operator[](size_t idx) const {
