@@ -32,7 +32,7 @@ namespace PROJECT_NAME {
     struct invoke_cb<F, Ret, true> {
         template <class... Args>
         static Ret invoke(F&& in, Args&&... args) {
-            if (!(bool)in) return true;
+            if (!(bool)in) return (Ret) true;
             return in(std::forward<Args>(args)...);
         }
     };
