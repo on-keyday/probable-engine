@@ -3,6 +3,7 @@
 #include "http1.h"
 #include <serializer.h>
 #include <random>
+#include <callback_invoker.h>
 
 namespace socklib {
     enum class WsFType : unsigned char {
@@ -287,6 +288,7 @@ namespace socklib {
         }
 
        private:
+        /*
         struct has_bool_impl {
             template <class F>
             static std::true_type has(decltype((bool)std::declval<F>(), (void)0)*);
@@ -313,7 +315,7 @@ namespace socklib {
                 if (!(bool)in) return true;
                 return in(std::forward<Args>(args)...);
             }
-        };
+        };*/
 
        public:
         template <class F = bool (*)(const HttpConn::Header&, HttpConn::Header&, std::shared_ptr<HttpServerConn>&)>
@@ -355,7 +357,7 @@ namespace socklib {
                 sendmsg(400, "Bad Request", "Request has no Sec-WebSocket-Key header.");
                 return nullptr;
             }
-            if (!invoke_cb<F, bool>::invoke(std::forward<F>(cb), req, h, conn)) {
+            if (!commonlib2::invoke_cb<F, bool>::invoke(std::forward<F>(cb), req, h, conn)) {
                 return nullptr;
             }
             if (!conn->send(101, "Switching Protocols", h)) {
@@ -391,7 +393,7 @@ namespace socklib {
             Reader(token + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
             Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
             auto invoke = [&](auto& h, bool success, const char* reason) {
-                return invoke_cb<F, bool>::invoke(std::forward<F>(cb), h, success, reason);
+                return commonlib2::invoke_cb<F, bool>::invoke(std::forward<F>(cb), h, success, reason);
             };
             if (!invoke(h, true, "prepare")) {
                 return nullptr;

@@ -5,10 +5,11 @@
 */
 
 #pragma once
-#include <project_name.h>
+#include "project_name.h"
 
-#include <reader.h>
-#include <extutil.h>
+#include "reader.h"
+#include "extutil.h"
+#include "callback_invoker.h"
 #include <map>
 
 namespace PROJECT_NAME {
@@ -239,8 +240,8 @@ namespace PROJECT_NAME {
             return ret;
         }
 
-        template <class C>
-        OptErr parse_opt(int& index, int& col, int argc, C** argv, OptResMap& optres, OptOption op = OptOption::default_mode) {
+        template <class C, class Ignore = bool (*)(const String&)>
+        OptErr parse_opt(int& index, int& col, int argc, C** argv, OptResMap& optres, OptOption op = OptOption::default_mode, Ignore&& cb = Ignore()) {
             if (!argv || argc < 0 || index < 0 || col < 0) {
                 return OptError::invalid_argument;
             }
@@ -347,6 +348,9 @@ namespace PROJECT_NAME {
                                 }
                                 if (auto found = str_opt.find((const C*)(arg + 2)); found == str_opt.end()) {
                                     if (any(op & OptOption::ignore_when_not_found)) {
+                                        if (!invoke_cb<Ignore, bool>::invoke(std::forward<Ignore>(cb), arg + 2)) {
+                                            return OptError::not_found;
+                                        }
                                         break;
                                     }
                                     if (any(op & OptOption::parse_all_arg)) {
@@ -369,6 +373,9 @@ namespace PROJECT_NAME {
                     else {
                         if (auto found = char_opt.find(arg[col]); found == char_opt.end()) {
                             if (any(op & OptOption::ignore_when_not_found)) {
+                                if (!invoke_cb<Ignore, bool>::invoke(std::forward<Ignore>(cb), String(arg + col, 1))) {
+                                    return OptError::not_found;
+                                }
                                 continue;
                             }
                             return OptError::not_found;
