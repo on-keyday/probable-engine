@@ -346,13 +346,13 @@ namespace PROJECT_NAME {
                                     return OptError::invalid_format;
                                 }
                                 if (auto found = str_opt.find((const C*)(arg + 2)); found == str_opt.end()) {
+                                    if (any(op & OptOption::ignore_when_not_found)) {
+                                        break;
+                                    }
                                     if (any(op & OptOption::parse_all_arg)) {
                                         if (auto e = all_arg_set(); !e) {
                                             return e;
                                         }
-                                        break;
-                                    }
-                                    if (any(op & OptOption::ignore_when_not_found)) {
                                         break;
                                     }
                                     return OptError::not_found;
