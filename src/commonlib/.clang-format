@@ -1,7 +1,7 @@
 UseTab: Never
 BasedOnStyle: Google
 BreakBeforeBraces: Custom
-SortInclude: false
+SortIncludes: false
 ColumnLimit: 0
 IndentWidth: 4
 NamespaceIndentation: All

@@ -5,8 +5,6 @@
 */
 
 #pragma once
-#include <p2p.h>
-
 #include <utility>
 
 #include "project_name.h"
@@ -216,12 +214,11 @@ namespace PROJECT_NAME {
         constexpr const C* end() const {
             return buf + strsize;
         }
-
-        
+  
     };
 
-    template <class C, size_t sz1, size_t sz2>
-    constexpr bool operator==(const ConstString<C, sz1>& s1, const ConstString<C, sz2>& s2) {
+    template<class T1,class T2>
+    constexpr bool equal(const T1& s1,size_t sz1,const T2& s2,size_t sz2){
         if (sz1 != sz2) return false;
         for (size_t i = 0; i < sz1; i++) {
             if (s1[i] != s2[i]) {
@@ -229,6 +226,45 @@ namespace PROJECT_NAME {
             }
         }
         return true;
+    }
+
+    template<class C>
+    constexpr size_t const_strlen(const C* str){
+        size_t idx=0;
+        while(str&&str[idx]){
+            idx++;
+        }
+        return idx;
+    }
+
+    template<size_t sz1,size_t sz2,class T1,class T2>
+    constexpr bool equal(const T1& s1,const T2& s2){
+        return equal<T1,T2>(s1,sz1,s2,sz2);
+    }
+
+    template <class C, size_t sz1, size_t sz2>
+    constexpr bool operator==(const ConstString<C, sz1>& s1, const ConstString<C, sz2>& s2) {
+        return equal<sz1,sz2>(s1,s2);
+    }
+
+    template <class C, size_t sz1, size_t sz2>
+    constexpr bool operator==(const C (&s1)[sz1], const ConstString<C, sz2>& s2) {
+        return equal<sz1,sz2>(s1,s2);
+    }
+
+    template <class C, size_t sz1, size_t sz2>
+    constexpr bool operator==(const ConstString<C, sz1>& s1, const C(&s2)[sz2]) {
+        return equal<sz1,sz2>(s1,s2);
+    }
+
+    template <class C, size_t sz1>
+    constexpr bool operator==(const ConstString<C, sz1>& s1, const C* s2) {
+        return equal(s1,sz1-1,s2,const_strlen(s2));
+    }
+
+    template <class C, size_t sz2>
+    constexpr bool operator==(const C* s1,const ConstString<C, sz2>& s2) {
+        return equal(s1,const_strlen(s1),s2,sz2-1);
     }
 
     template<class C,size_t sz1,size_t sz2>
