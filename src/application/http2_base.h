@@ -221,7 +221,7 @@ namespace socklib {
             }
             else {
                 flag = flagcpy;
-                std::string_view view(hpacked.data(), hpacked.data() + fsize - (padding + plus));
+                std::string_view view(hpacked.data(), fsize - (padding + plus));
                 TRY(write_header(fsize, view));
                 size_t idx = fsize - (padding + plus);
                 while (hpacked.size() - idx) {
