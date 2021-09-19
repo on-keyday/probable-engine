@@ -349,8 +349,8 @@ namespace socklib {
                 Base64Context b64;
                 SHA1Context hash;
                 std::string result;
-                Reader(found->second + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
-                Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
+                commonlib2::Reader(found->second + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(commonlib2::sha1, hash);
+                commonlib2::Reader(commonlib2::Sized(hash.result)).readwhile(result, commonlib2::base64_encode, &b64);
                 h.emplace("Sec-WebSocket-Accept", result);
             }
             else {
