@@ -89,6 +89,11 @@ namespace socklib {
             return std::string();
         }
 
+        std::string ipaddress() const {
+            if (!conn) return std::string();
+            return conn->ipaddress();
+        }
+
         int http_version() {
             return version;
         }
