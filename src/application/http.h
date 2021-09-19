@@ -177,7 +177,7 @@ namespace socklib {
 
         OpenErr mustopen(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false) {
             if (!conn) {
-                return open(url, encoded, nullptr, secure_default);
+                return open(url, encoded, cacert, secure_default);
             }
             else {
                 return reopen(url, encoded, cacert);
