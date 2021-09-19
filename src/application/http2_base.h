@@ -52,6 +52,41 @@ namespace socklib {
         need_window_update = unimplemented - 1,
     };
 
+    constexpr const char* error_message(H2Error e) {
+        switch (e) {
+            case H2Error::none:
+                return "no error";
+            case H2Error::protocol:
+                return "protocol error";
+            case H2Error::internal:
+                return "internal error";
+            case H2Error::flow_control:
+                return "flow control error";
+            case H2Error::settings_timeout:
+                return "settings timeout";
+            case H2Error::stream_closed:
+                return "stream closed";
+            case H2Error::frame_size:
+                return "frame size error";
+            case H2Error::refused_stream:
+                return "refused stream";
+            case H2Error::cancel:
+                return "canceled";
+            case H2Error::compression:
+                return "compression error";
+            case H2Error::connect:
+                return "connect error";
+            case H2Error::enhance_your_clam:
+                return "enhance your clam";
+            case H2Error::inadequate_security:
+                return "inadequate security";
+            case H2Error::http_1_1_required:
+                return "http/1.1 required";
+            default:
+                return "unknown error";
+        }
+    }
+
     enum class H2PredefinedSetting : unsigned short {
         header_table_size = 1,
         enable_push = 2,

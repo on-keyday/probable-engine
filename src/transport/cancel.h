@@ -172,6 +172,13 @@ namespace socklib {
             timeout = 0;
             return true;
         }
+
+        bool reset(time_t t) {
+            if (t < 0) return false;
+            timeout = t;
+            begintime = std::time(nullptr);
+            return true;
+        }
     };
 
     //SleeperContext is used for cpu load reduction

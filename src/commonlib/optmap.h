@@ -118,7 +118,7 @@ namespace PROJECT_NAME {
             }
 
             const Vec<String>* arg() {
-                if (!base || !base->needless_cut || !arg_.size()) {
+                if (!arg_.size()) {
                     return nullptr;
                 }
                 return &arg_[0];
@@ -330,6 +330,9 @@ namespace PROJECT_NAME {
                 }
                 return true;
             };
+            auto invoke = [&](String&& str, bool on_error) {
+                return invoke_cb<Ignore, bool>::invoke(std::forward<Ignore>(cb), str, on_error);
+            };
             bool first = false;
             for (; index < argc; index++) {
                 auto arg = argv[index];
@@ -385,7 +388,7 @@ namespace PROJECT_NAME {
                                 }
                                 if (auto found = str_opt.find((const C*)(arg + 2)); found == str_opt.end()) {
                                     if (any(op & OptOption::ignore_when_not_found)) {
-                                        if (!invoke_cb<Ignore, bool>::invoke(std::forward<Ignore>(cb), arg + 1)) {
+                                        if (!invoke(arg + 1, false)) {
                                             return OptError::not_found;
                                         }
                                         break;
@@ -396,6 +399,7 @@ namespace PROJECT_NAME {
                                         }
                                         break;
                                     }
+                                    invoke(arg + 1, true);
                                     return OptError::not_found;
                                 }
                                 else {
@@ -410,15 +414,17 @@ namespace PROJECT_NAME {
                     else {
                         if (auto found = char_opt.find(arg[col]); found == char_opt.end()) {
                             if (any(op & OptOption::ignore_when_not_found)) {
-                                if (!invoke_cb<Ignore, bool>::invoke(std::forward<Ignore>(cb), String(arg + col, 1))) {
+                                if (invoke(String(arg + col, 1), false)) {
                                     return OptError::not_found;
                                 }
                                 continue;
                             }
+                            invoke(String(arg + col, 1), true);
                             return OptError::not_found;
                         }
                         else {
                             if (auto e = set_optarg(found->second); !e) {
+                                invoke(String(arg + col, 1), true);
                                 return e;
                             }
                         }

@@ -3,6 +3,7 @@
 #include "http2.h"
 
 #include <constantlib.h>
+#include <callback_invoker.h>
 
 namespace socklib {
     struct HttpCookie {
@@ -23,6 +24,7 @@ namespace socklib {
         Http2Context* h2 = nullptr;
         HttpClientConn* h1 = nullptr;
         int version = 0;
+        H2Err h2err;
 
        public:
         OpenErr open(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false) {
@@ -97,7 +99,7 @@ namespace socklib {
             Http1::fill_urlprefix(host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
             urlstr += url;
             HttpRequestContext ctx;
-            if (!Http1::setuphttp(url, encoded, ctx)) {
+            if (!Http1::setuphttp(urlstr.c_str(), encoded, ctx)) {
                 return OpenError::parse_url;
             }
             auto& borrow = conn->borrow();
@@ -168,9 +170,19 @@ namespace socklib {
             return true;
         }
 
+        OpenErr mustopen(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false) {
+            if (!conn) {
+                return open(url, encoded, nullptr, secure_default);
+            }
+            else {
+                return reopen(url, encoded, cacert);
+            }
+        }
+
        private:
+        template <class F = void (*)(const char* version, const char* method, std::string&& path, const HttpConn::Header&)>
         HttpConn::Header* Http2method(const char* method, std::vector<std::string>& spl, HttpConn::Header&& header = HttpConn::Header(),
-                                      const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
+                                      const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr, F&& hcb = F()) {
             if (!h2) return nullptr;
             H2Stream* st = nullptr;
             if (!h2->get_stream(st)) {
@@ -193,20 +205,24 @@ namespace socklib {
             bool has_body = data && size;
             tmph.emplace(":method", method);
             tmph.emplace(":authority", h2->host());
-            tmph.emplace(":path", st->path());
+            tmph.emplace(":path", st->path() + st->query());
             tmph.emplace(":scheme", h2->borrow()->get_ssl() ? "https" : "http");
             if (has_body) {
                 tmph.emplace("content-length", std::to_string(size));
             }
             header.erase("host");
+            header.erase("content-length");
             header.erase(":body");
+            commonlib2::invoke_cb<F, void>::invoke(std::forward<F>(hcb), "HTTP/2.0", method, st->path() + st->query(), header);
             tmph.merge(header);
             if (auto e = st->send_header(tmph, false, 0, !has_body); !e) {
+                h2err = e;
                 return nullptr;
             }
             auto sending_body = [&]() -> H2Err {
                 if (auto e = st->send_data(data, size, &suspend, false, 0, true); !e) {
                     if (e != H2Error::need_window_update) {
+                        h2err = e;
                         return e;
                     }
                 }
@@ -225,12 +241,14 @@ namespace socklib {
             while (h2->recvable() || Selecter::waitone(h2->borrow(), 60, 0, cancel)) {
                 std::shared_ptr<H2Frame> frame;
                 if (auto e = h2->recv(frame); !e) {
+                    h2err = e;
                     st0->send_goaway(e);
                     h2->close();
                     return nullptr;
                 }
                 st = nullptr;
                 if (auto e = h2->apply(frame, st); !e) {
+                    h2err = e;
                     st0->send_goaway(e);
                     h2->close();
                     return nullptr;
@@ -262,13 +280,14 @@ namespace socklib {
         }
 
        public:
+        template <class F = void (*)(const char* version, const char* method, std::string&& path, const HttpConn::Header&)>
         HttpConn::Header* method(const char* method, const char* path = nullptr, HttpConn::Header&& header = HttpConn::Header(),
-                                 const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr) {
+                                 const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr, F&& hcb = F()) {
             if (version == 0 || !method) return nullptr;
             auto spl = commonlib2::split(path ? path : "/", "?", 1);
             if (spl.size() < 1) return nullptr;
             if (version == 2) {
-                return Http2method(method, spl, std::forward<HttpConn::Header>(header), data, size, cancel);
+                return Http2method(method, spl, std::forward<HttpConn::Header>(header), data, size, cancel, std::forward<F>(hcb));
             }
             else if (version == 1) {
                 if (!h1) return nullptr;
@@ -281,6 +300,7 @@ namespace socklib {
                         h1->query_.clear();
                     }
                 }
+                commonlib2::invoke_cb<F, void>::invoke(std::forward<F>(hcb), "HTTP/1.1", method, h1->path() + h1->query(), header);
                 if (!h1->send(method, header, data, size)) {
                     return nullptr;
                 }
@@ -305,6 +325,13 @@ namespace socklib {
 
         bool is_open() const {
             return (bool)conn;
+        }
+
+        H2Err h2error() const {
+            if (h2) {
+                return h2err;
+            }
+            return H2Error::http_1_1_required;
         }
 
         ~HttpClient() noexcept {
