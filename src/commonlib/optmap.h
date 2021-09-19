@@ -28,6 +28,33 @@ namespace PROJECT_NAME {
         option_already_set,
     };
 
+    constexpr const char* error_message(OptError e) {
+        switch (e) {
+            case OptError::none:
+                return "no error";
+            case OptError::invalid_argument:
+                return "invalid argument";
+            case OptError::already_exists:
+                return "option already exists";
+            case OptError::no_option:
+                return "no option exists";
+            case OptError::option_suspended:
+                return "suspend analyze option";
+            case OptError::ignore_after:
+                return "ignore after option";
+            case OptError::invalid_format:
+                return "expect long name but not";
+            case OptError::not_found:
+                return "unknown option";
+            case OptError::need_more_argument:
+                return "need more argument";
+            case OptError::option_already_set:
+                return "option already set";
+            default:
+                return "unknown error";
+        }
+    }
+
     using OptErr = EnumWrap<OptError, OptError::none, OptError::unknown>;
 
     enum class OptOption {
@@ -79,15 +106,22 @@ namespace PROJECT_NAME {
            private:
             friend struct OptMap;
             Opt* base = nullptr;
-            Vec<Vec<String>> arg;
+            Vec<Vec<String>> arg_;
 
            public:
-            const Opt* info() {
+            const Opt* info() const {
                 return base;
             }
 
-            const Vec<Vec<String>> args() {
-                return arg;
+            const Vec<Vec<String>>& args() const {
+                return arg_;
+            }
+
+            const Vec<String>* arg() {
+                if (!base || !base->needless_cut || !arg_.size()) {
+                    return nullptr;
+                }
+                return &arg_[0];
             }
         };
 
@@ -164,9 +198,10 @@ namespace PROJECT_NAME {
             usage = use;
         }
 
-        String help(size_t preoffset = 0) const {
+        String help(size_t preoffset = 0, size_t currentoffset = 2, bool noUsage = false) const {
             String ret;
             String fullarg;
+            size_t two = currentoffset << 1;
             fullargkey(":arg", fullarg);
             auto add_space = [&](size_t count) {
                 for (size_t i = 0; i < count; i++) {
@@ -174,9 +209,11 @@ namespace PROJECT_NAME {
                 }
             };
             if (usage.size()) {
-                add_space(preoffset);
-                fullargkey("Usage:\n", ret);
-                add_space(preoffset + 2);
+                if (!noUsage) {
+                    add_space(preoffset);
+                    fullargkey("Usage:\n", ret);
+                }
+                add_space(preoffset + currentoffset);
                 ret += "";
                 ret += usage;
                 ret += (Char)'\n';
@@ -184,12 +221,12 @@ namespace PROJECT_NAME {
             size_t maxlen = 0;
             auto make_str = [&](auto& op, size_t* onlysize) {
                 if (onlysize) {
-                    *onlysize += preoffset + 4;
+                    *onlysize += preoffset + two;
                 }
                 else {
-                    add_space(preoffset + 4);
+                    add_space(preoffset + two);
                 }
-                size_t sz = preoffset + 4;
+                size_t sz = preoffset + two;
                 for (auto c : op.alias) {
                     if (c == 0) break;
                     if (onlysize) {
@@ -273,15 +310,15 @@ namespace PROJECT_NAME {
                         arg.push_back(std::move(str));
                     }
                     if (opt->needless_cut) {
-                        if (!res->arg.size()) {
-                            res->arg.push_back(Vec<String>());
+                        if (!res->arg_.size()) {
+                            res->arg_.push_back(Vec<String>());
                         }
                         for (auto&& a : arg) {
-                            res->arg[0].push_back(std::move(a));
+                            res->arg_[0].push_back(std::move(a));
                         }
                     }
                     else {
-                        res->arg.push_back(std::move(arg));
+                        res->arg_.push_back(std::move(arg));
                     }
                 }
                 return true;
@@ -348,7 +385,7 @@ namespace PROJECT_NAME {
                                 }
                                 if (auto found = str_opt.find((const C*)(arg + 2)); found == str_opt.end()) {
                                     if (any(op & OptOption::ignore_when_not_found)) {
-                                        if (!invoke_cb<Ignore, bool>::invoke(std::forward<Ignore>(cb), arg + 2)) {
+                                        if (!invoke_cb<Ignore, bool>::invoke(std::forward<Ignore>(cb), arg + 1)) {
                                             return OptError::not_found;
                                         }
                                         break;

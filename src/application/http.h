@@ -2,6 +2,8 @@
 #include "http1.h"
 #include "http2.h"
 
+#include <constantlib.h>
+
 namespace socklib {
     struct HttpCookie {
         std::string key;
@@ -282,7 +284,8 @@ namespace socklib {
                 if (!h1->send(method, header, data, size)) {
                     return nullptr;
                 }
-                if (!h1->recv(false, cancel)) {
+                bool igbody = commonlib2::ConstString("HEAD") == method;
+                if (!h1->recv(igbody, cancel)) {
                     return nullptr;
                 }
                 return &h1->response();
