@@ -104,7 +104,7 @@ namespace PROJECT_NAME {
     Vec split_cmd(Reader<Buf>& r, size_t n = (size_t)-1, bool line = false) {
         Vec ret;
         size_t count = 0;
-        while (!r.ceof() && count < n) {
+        while (!r.eof() && count < n) {
             Str str;
             int ctx = (int)line;
             r.readwhile(str, cmdline_read, &ctx);
