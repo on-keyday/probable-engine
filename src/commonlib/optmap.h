@@ -179,6 +179,18 @@ namespace PROJECT_NAME {
             return true;
         }
 
+        OptErr unset_option(const String& optname) {
+            if (auto found = str_opt.find(optname); found != str_opt.end()) {
+                for (auto a : found->second.alias) {
+                    if (a == 0) break;
+                    char_opt.erase(a);
+                }
+                str_opt.erase(optname);
+                return true;
+            }
+            return OptError::not_found;
+        }
+
        private:
         static void fullargkey(const char* key, String& tmp) {
             Reader<const char*>(key) >> tmp;
