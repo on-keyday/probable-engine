@@ -348,8 +348,8 @@ namespace socklib {
                 return nullptr;
             }
             if (auto found = req.find("sec-websocket-key"); found != req.end()) {
-                Base64Context b64;
-                SHA1Context hash;
+                commonlib2::Base64Context b64;
+                commonlib2::SHA1Context hash;
                 std::string result;
                 commonlib2::Reader(found->second + ws_magic_guid).readwhile(commonlib2::sha1, hash);
                 commonlib2::Reader(commonlib2::Sized(hash.result)).readwhile(result, commonlib2::base64_encode, &b64);
