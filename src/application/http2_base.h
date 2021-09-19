@@ -483,12 +483,12 @@ namespace socklib {
                 size_t appsize = data_.size() - idx;
                 if (appsize + padoct <= fsize) {
                     flag = flagcpy;
-                    std::string_view to_write(data_.data() + idx, data_.data() + data_.size());
+                    std::string_view to_write(data_.data() + idx, appsize);
                     idx = data_.size();
                     write_payload(to_write, (std::uint32_t)(appsize + padoct));
                 }
                 else {
-                    std::string_view to_write(data_.data() + idx, data_.data() + idx + willsize);
+                    std::string_view to_write(data_.data() + idx, willsize);
                     idx += willsize;
                     write_payload(to_write, fsize);
                     TRY(t->conn->write(se.get()));
