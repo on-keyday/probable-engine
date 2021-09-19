@@ -520,6 +520,9 @@ void testhttp2() {
     }
 }
 
+#include "application/http.h"
+
 int main(int, char**) {
+    socklib::HttpClient client;
     server_proc();
 }
