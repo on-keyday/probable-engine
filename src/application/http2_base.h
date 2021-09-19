@@ -226,13 +226,13 @@ namespace socklib {
                 size_t idx = fsize - (padding + plus);
                 while (hpacked.size() - idx) {
                     if (hpacked.size() - idx <= fsize) {
-                        view = std::string_view(hpacked.data() + idx, hpacked.data() + hpacked.size());
+                        view = std::string_view(hpacked.data() + idx, hpacked.size());
                         idx = hpacked.size();
                         H2Frame::serialize_impl(view.size(), streamid, H2FType::continuation, H2Flag::end_headers, se);
                         se.write(view);
                     }
                     else {
-                        view = std::string_view(hpacked.data() + idx, hpacked.data() + idx + fsize);
+                        view = std::string_view(hpacked.data() + idx, fsize);
                         idx += fsize;
                         H2Frame::serialize_impl(view.size(), streamid, H2FType::continuation, H2Flag::none, se);
                         se.write(view);
