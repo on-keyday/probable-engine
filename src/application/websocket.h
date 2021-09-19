@@ -278,6 +278,8 @@ namespace socklib {
         }
     };
 
+    constexpr const char* ws_magic_guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
     struct WebSocket {
         static std::shared_ptr<WebSocketServerConn> hijack_httpserver(std::shared_ptr<HttpServerConn> in) {
             return std::make_shared<WebSocketServerConn>(in->hijack());
@@ -349,7 +351,7 @@ namespace socklib {
                 Base64Context b64;
                 SHA1Context hash;
                 std::string result;
-                commonlib2::Reader(found->second + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(commonlib2::sha1, hash);
+                commonlib2::Reader(found->second + ws_magic_guid).readwhile(commonlib2::sha1, hash);
                 commonlib2::Reader(commonlib2::Sized(hash.result)).readwhile(result, commonlib2::base64_encode, &b64);
                 h.emplace("Sec-WebSocket-Accept", result);
             }
@@ -384,14 +386,14 @@ namespace socklib {
             for (auto i = 0; i < 16; i++) {
                 bytes[i] = uni(device);
             }
-            Base64Context b64;
+            commonlib2::Base64Context b64;
             std::string token;
-            commonlib2::Reader(Sized(bytes)).readwhile(token, commonlib2::base64_encode, &b64);
+            commonlib2::Reader(commonlib2::Sized(bytes)).readwhile(token, commonlib2::base64_encode, &b64);
             h.emplace("Sec-WebSocket-Key", token);
-            SHA1Context hash;
+            commonlib2::SHA1Context hash;
             std::string result;
-            Reader(token + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").readwhile(sha1, hash);
-            Reader(Sized(hash.result)).readwhile(result, base64_encode, &b64);
+            commonlib2::Reader(token + ws_magic_guid).readwhile(commonlib2::sha1, hash);
+            commonlib2::Reader(commonlib2::Sized(hash.result)).readwhile(result, commonlib2::base64_encode, &b64);
             auto invoke = [&](auto& h, bool success, const char* reason) {
                 return commonlib2::invoke_cb<F, bool>::invoke(std::forward<F>(cb), h, success, reason);
             };
