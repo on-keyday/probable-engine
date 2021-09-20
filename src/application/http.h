@@ -315,7 +315,7 @@ namespace socklib {
                     h1->close();
                     return nullptr;
                 }
-                if (auto i = h1->response().find("connection"); i == h1->response().end() && i->second.find("close") != ~0) {
+                if (auto i = h1->response().find("connection"); i != h1->response().end() && i->second.find("close") != ~0) {
                     h1->close();
                 }
                 return &h1->response();
