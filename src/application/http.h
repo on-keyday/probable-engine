@@ -307,11 +307,16 @@ namespace socklib {
                 }
                 commonlib2::invoke_cb<F, void>::invoke(std::forward<F>(hcb), "HTTP/1.1", method, h1->path() + h1->query(), header);
                 if (!h1->send(method, header, data, size)) {
+                    h1->close();
                     return nullptr;
                 }
                 bool igbody = commonlib2::ConstString("HEAD") == method;
                 if (!h1->recv(igbody, cancel)) {
+                    h1->close();
                     return nullptr;
+                }
+                if (auto i = h1->response().find("connection"); i == h1->response().end() && i->second.find("close")) {
+                    h1->close();
                 }
                 return &h1->response();
             }
