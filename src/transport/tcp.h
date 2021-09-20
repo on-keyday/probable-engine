@@ -161,7 +161,7 @@ namespace socklib {
             ::addrinfo hint = {0};
             hint.ai_socktype = SOCK_STREAM;
             hint.ai_family = AF_INET;
-            TimeoutContext timer(cancel);
+            TimeoutContext timer(60, cancel);
             OsErrorContext ctx(&timer);
             if (getaddrinfo(host, service, &hint, &got) != 0) {
                 return OpenError::unresolved_address;
