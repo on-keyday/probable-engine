@@ -492,7 +492,7 @@ namespace socklib {
         virtual void close() override {
             if (ssl) {
                 if (!noshutdown) {
-                    TimeoutContext timeout(10);
+                    TimeoutContext timeout(30);
                     SSLErrorContext ctx(ssl, &timeout);
                     while (true) {
                         auto res = SSL_shutdown(ssl);
