@@ -27,7 +27,7 @@ namespace socklib {
         H2Err h2err;
 
        public:
-        OpenErr open(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false, CancelContext* cancel = nullptr) {
+        OpenErr open(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false, int verlimit = 2, CancelContext* cancel = nullptr) {
             close();
             HttpRequestContext ctx;
             if (!Http1::setuphttp(url, encoded, ctx, "http", "https", secure_default ? "https" : "http")) {
@@ -35,7 +35,9 @@ namespace socklib {
             }
             bool secure = ctx.url.scheme == "https";
             OpenErr e;
-            auto tcon = Http1::open_tcp_conn(ctx, cacert, &e, cancel, "\x02h2\x08http/1.1", 12);
+            auto alpn = verlimit == 1 ? "\x08http/1.1" : "\x02h2\x08http/1.1";
+            auto alpnlen = verlimit == 1 ? 9 : 12;
+            auto tcon = Http1::open_tcp_conn(ctx, cacert, &e, cancel, alpn, alpnlen);
             if (!tcon) {
                 return e;
             }
@@ -98,7 +100,7 @@ namespace socklib {
             return version;
         }
 
-        OpenErr reopen(const char* url, bool encoded = false, const char* cacert = nullptr, CancelContext* cancel = nullptr) {
+        OpenErr reopen(const char* url, bool encoded = false, const char* cacert = nullptr, int verlimit = 2, CancelContext* cancel = nullptr) {
             if (!conn || !url) return OpenError::invalid_condition;
             std::string urlstr;
             Http1::fill_urlprefix(host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
@@ -108,7 +110,9 @@ namespace socklib {
                 return OpenError::parse_url;
             }
             auto& borrow = conn->borrow();
-            auto e = Http1::reopen_tcp_conn(borrow, ctx, cacert, cancel, "\x02h2\x08http/1.1", 12);
+            auto alpn = verlimit == 1 ? "\x08http/1.1" : "\x02h2\x08http/1.1";
+            auto alpnlen = verlimit == 1 ? 9 : 12;
+            auto e = Http1::reopen_tcp_conn(borrow, ctx, cacert, cancel, alpn, alpnlen);
             if (!e) {
                 if (e == OpenError::needless_to_reopen) {
                     if (h1) {
@@ -175,12 +179,12 @@ namespace socklib {
             return true;
         }
 
-        OpenErr mustopen(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false, CancelContext* cancel = nullptr) {
+        OpenErr mustopen(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false, int verlimit = 2, CancelContext* cancel = nullptr) {
             if (!conn) {
-                return open(url, encoded, cacert, secure_default, cancel);
+                return open(url, encoded, cacert, secure_default, verlimit, cancel);
             }
             else {
-                return reopen(url, encoded, cacert, cancel);
+                return reopen(url, encoded, cacert, verlimit, cancel);
             }
         }
 
