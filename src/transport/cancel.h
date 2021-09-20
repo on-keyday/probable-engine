@@ -65,6 +65,7 @@ namespace socklib {
         bool cancel_when_block = false;
         int err = 0;
         friend struct Conn;
+        friend struct TCP;
         using CancelContext::CancelContext;
         constexpr OsErrorContext(bool c, CancelContext* parent = nullptr)
             : cancel_when_block(c), CancelContext(parent) {}

@@ -156,12 +156,13 @@ namespace socklib {
 
     struct TCP {
        private:
-        static OpenErr open_detail(int& sock, const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr) {
+        static OpenErr open_detail(int& sock, const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr, CancelContext* cancel = nullptr) {
             if (!Network::Init()) return invalid_socket;
             ::addrinfo hint = {0};
             hint.ai_socktype = SOCK_STREAM;
             hint.ai_family = AF_INET;
-
+            TimeoutContext timer(60, cancel);
+            OsErrorContext ctx(&timer);
             if (getaddrinfo(host, service, &hint, &got) != 0) {
                 return OpenError::unresolved_address;
             }
@@ -179,20 +180,57 @@ namespace socklib {
                 }
                 auto tmp = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
                 if (tmp < 0) continue;
-                if (::connect(tmp, p->ai_addr, p->ai_addrlen) == 0) {
+                u_long l = 1;
+                ::ioctlsocket(tmp, FIONBIO, &l);
+                auto res = ::connect(tmp, p->ai_addr, p->ai_addrlen);
+                if (res == 0) {
                     sock = tmp;
                     selected = p;
+                    l = 0;
+                    ::ioctlsocket(tmp, FIONBIO, &l);
                     break;
                 }
-                ::closesocket(tmp);
+                ::timeval timeout = {0};
+                ::fd_set baseset = {0}, sucset = {0}, errset = {0};
+                FD_ZERO(&baseset);
+                FD_SET(tmp, &baseset);
+                while (true) {
+                    memcpy(&sucset, &baseset, sizeof(::fd_set));
+                    memcpy(&errset, &baseset, sizeof(::fd_set));
+                    timeout.tv_sec = 0;
+                    timeout.tv_usec = 1;
+                    res = ::select(tmp + 1, nullptr, &sucset, &errset, &timeout);
+                    if (res < 0) {
+                        ::closesocket(tmp);
+                        break;
+                    }
+                    if (FD_ISSET(tmp, &errset)) {
+                        ::closesocket(tmp);
+                        break;
+                    }
+                    if (FD_ISSET(tmp, &sucset)) {
+                        sock = tmp;
+                        selected = p;
+                        l = 0;
+                        ::ioctlsocket(tmp, FIONBIO, &l);
+                        break;
+                    }
+                    if (ctx.on_cancel()) {
+                        ::closesocket(tmp);
+                        return OpenError::connect;
+                    }
+                }
+                if (sock != invalid_socket) {
+                    break;
+                }
             }
             return sock == invalid_socket ? OpenError::connect : OpenError::none;
         }
 
        public:
-        static std::shared_ptr<Conn> open(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, OpenErr* err = nullptr) {
+        static std::shared_ptr<Conn> open(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, OpenErr* err = nullptr, CancelContext* cancel = nullptr) {
             std::shared_ptr<Conn> ret;
-            if (auto e = reopen(ret, host, port, service, noblock); !e) {
+            if (auto e = reopen(ret, host, port, service, noblock, cancel); !e) {
                 if (err) *err = e;
                 return nullptr;
             }
@@ -260,7 +298,7 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false, OpenErr* err = nullptr) {
+        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false, OpenErr* err = nullptr, CancelContext* cancel = nullptr) {
             std::shared_ptr<Conn> ret;
             if (auto e = reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len, strictverify); !e) {
                 if (err) *err = e;
@@ -269,10 +307,10 @@ namespace socklib {
             return ret;
         }
 
-        static OpenErr reopen(std::shared_ptr<Conn>& conn, const char* host, unsigned short port, const char* service = nullptr, bool noblock = false) {
+        static OpenErr reopen(std::shared_ptr<Conn>& conn, const char* host, unsigned short port, const char* service = nullptr, bool noblock = false, CancelContext* cancel = nullptr) {
             ::addrinfo *selected = nullptr, *got = nullptr;
             int sock = invalid_socket;
-            auto err = open_detail(sock, conn, false, got, selected, host, port, service);
+            auto err = open_detail(sock, conn, false, got, selected, host, port, service, cancel);
             if (!err) {
                 return err;
             }
@@ -292,10 +330,10 @@ namespace socklib {
             return true;
         }
 
-        static OpenErr reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false) {
+        static OpenErr reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false, CancelContext* cancel = nullptr) {
             ::addrinfo *selected = nullptr, *got = nullptr;
             int sock = invalid_socket;
-            auto err = open_detail(sock, conn, true, got, selected, host, port, service);
+            auto err = open_detail(sock, conn, true, got, selected, host, port, service, cancel);
             if (!err) {
                 return err;
             }
