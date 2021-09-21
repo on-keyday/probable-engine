@@ -157,7 +157,7 @@ namespace socklib {
     struct TCP {
        private:
         static OpenErr open_detail(int& sock, const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
-            if (!Network::Init()) return invalid_socket;
+            if (!Network::Init()) return false;
             ::addrinfo hint = {0};
             hint.ai_socktype = SOCK_STREAM;
             hint.ai_family = (ip == IPMode::v4only ? AF_INET : AF_INET6);
@@ -180,7 +180,15 @@ namespace socklib {
                 }
                 auto tmp = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
                 if (tmp < 0) continue;
-                u_long l = 1;
+                u_long l = 0;
+                if (ip == IPMode::both || ip == IPMode::v6only) {
+                    l = (ip == IPMode::v6only ? 1 : 0);
+                    if (::setsockopt(tmp, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
+                        ::closesocket(tmp);
+                        continue;
+                    }
+                }
+                l = 1;
                 ::ioctlsocket(tmp, FIONBIO, &l);
                 auto res = ::connect(tmp, p->ai_addr, p->ai_addrlen);
                 if (res == 0) {
@@ -387,7 +395,8 @@ namespace socklib {
                         continue;
                     }
                     unsigned int flag = 0;
-                    if (mode == IPMode::both) {
+                    if (mode == IPMode::both || mode == IPMode::v6only) {
+                        flag = (mode == IPMode::v6only ? 1 : 0);
                         if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
                             Conn::set_os_error(sv.err);
                             ::closesocket(sock);
