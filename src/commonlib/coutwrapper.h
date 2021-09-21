@@ -205,6 +205,10 @@ namespace PROJECT_NAME {
         void set_callback(void (*in)(const char*, size_t)) {
             cb = in;
         }
+
+        auto get_callback() -> decltype(cb) {
+            return cb;
+        }
     };
 
     struct CinWrapper : IOWrapper {
@@ -406,6 +410,10 @@ namespace PROJECT_NAME {
 
         void set_callback(void (*in)(const char*, size_t)) {
             cb = in;
+        }
+
+        auto get_callback() -> decltype(cb) {
+            return cb;
         }
     };
 
