@@ -471,6 +471,7 @@ namespace PROJECT_NAME {
             while (r.ref().reading())
                 ;
             r >> result;
+            if (result.size()) result.pop_back();  //for socklib::SockReader
         }
         data.emplace(":body", std::move(result));
         return true;
