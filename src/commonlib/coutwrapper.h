@@ -107,6 +107,7 @@ namespace PROJECT_NAME {
     //this is maybe faster than coutwrapper
     struct StdOutWrapper : IOWrapper {
        private:
+        void (*cb)(const std::string&) = nullptr;
         FILE* fout = nullptr;
         FILE* base = nullptr;
         std::ostringstream ss;
@@ -118,6 +119,12 @@ namespace PROJECT_NAME {
         }
         template <class T>
         StdOutWrapper& operator<<(const T& in) {
+            if (cb) {
+                ss.str(std::string());
+                ss << in;
+                cb(ss.str());
+                return *this;
+            }
             if (onlybuffer) {
                 ss << in;
                 return *this;
@@ -193,6 +200,10 @@ namespace PROJECT_NAME {
         bool is_file() {
             return fout != base;
         }
+
+        void set_callback(void (*cb)(const std::string&)) {
+            cb = cb;
+        }
     };
 
     struct CinWrapper : IOWrapper {
@@ -262,18 +273,18 @@ namespace PROJECT_NAME {
             /*if (get_initial(out)) {
                 return out.size();
             }*/
-            
+
             while (in.peek()) {
 #ifdef _WIN32
                 wchar_t c;
 #else
                 char c;
 #endif
-                if(!in.get(c)){
+                if (!in.get(c)) {
                     in.clear();
                     break;
                 }
-                
+
 #ifdef _WIN32
                 std::string tmp;
                 Reader(Sized(&c, 1)) >> tmp;
@@ -282,7 +293,6 @@ namespace PROJECT_NAME {
                 out += c;
 #endif
                 ret++;
-                
             }
             return ret;
         }
@@ -290,6 +300,7 @@ namespace PROJECT_NAME {
 
     struct CoutWrapper : IOWrapper {
        private:
+        void (*cb)(const std::string&) = nullptr;
         std::ofstream file;
         std::ostringstream ss;
         bool onlybuffer = false;
@@ -305,6 +316,12 @@ namespace PROJECT_NAME {
 
         template <class T>
         CoutWrapper& operator<<(const T& in) {
+            if (cb) {
+                ss.str(std::string());
+                ss << in;
+                cb(ss.str());
+                return *this;
+            }
             if (onlybuffer) {
                 ss << in;
                 return *this;
@@ -334,7 +351,7 @@ namespace PROJECT_NAME {
         }
 
         CoutWrapper& operator<<(std::ios_base& (*in)(std::ios_base&)) {
-            if (onlybuffer) {
+            if (cb || onlybuffer) {
                 ss << in;
                 return *this;
             }
@@ -384,6 +401,10 @@ namespace PROJECT_NAME {
         bool is_file() const {
             return (bool)file;
         }
+
+        void set_callback(void (*cb)(const std::string&)) {
+            cb = cb;
+        }
     };
 
     inline CinWrapper& cin_wrapper() {
@@ -432,49 +453,50 @@ namespace PROJECT_NAME {
         return StdErr;
     }
 
-    template<class Out>
-    struct ThreadSafeOutPut{
+    template <class Out>
+    struct ThreadSafeOutPut {
         std::mutex mut;
         Out& out;
-        ThreadSafeOutPut(Out& o):out(o){}
-        operator Out&(){
+        ThreadSafeOutPut(Out& o)
+            : out(o) {}
+        operator Out&() {
             return out;
         }
 
-        template<class T>
-        ThreadSafeOutPut& operator<<(T&& in){
+        template <class T>
+        ThreadSafeOutPut& operator<<(T&& in) {
             mut.lock();
-            out<<in;
+            out << in;
             mut.unlock();
             return *this;
         }
 
-        Out& get(){
+        Out& get() {
             return out;
         }
     };
 
-    inline ThreadSafeOutPut<CoutWrapper>& cout_wrapper_s(){
+    inline ThreadSafeOutPut<CoutWrapper>& cout_wrapper_s() {
         static ThreadSafeOutPut<CoutWrapper> safe(cout_wrapper());
         return safe;
     }
 
-    inline ThreadSafeOutPut<CoutWrapper>& cerr_wrapper_s(){
+    inline ThreadSafeOutPut<CoutWrapper>& cerr_wrapper_s() {
         static ThreadSafeOutPut<CoutWrapper> safe(cerr_wrapper());
         return safe;
     }
 
-    inline ThreadSafeOutPut<CoutWrapper>& clog_wrapper_s(){
+    inline ThreadSafeOutPut<CoutWrapper>& clog_wrapper_s() {
         static ThreadSafeOutPut<CoutWrapper> safe(clog_wrapper());
         return safe;
     }
 
-    inline ThreadSafeOutPut<StdOutWrapper>& stdout_wrapper_s(){
+    inline ThreadSafeOutPut<StdOutWrapper>& stdout_wrapper_s() {
         static ThreadSafeOutPut<StdOutWrapper> safe(stdout_wrapper());
         return safe;
     }
 
-    inline ThreadSafeOutPut<StdOutWrapper>& stderr_wrapper_s(){
+    inline ThreadSafeOutPut<StdOutWrapper>& stderr_wrapper_s() {
         static ThreadSafeOutPut<StdOutWrapper> safe(stderr_wrapper());
         return safe;
     }
