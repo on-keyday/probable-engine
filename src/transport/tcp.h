@@ -180,22 +180,22 @@ namespace socklib {
                 }
                 auto tmp = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
                 if (tmp < 0) continue;
-                u_long l = 0;
+                u_long flag = 0;
                 if (ip == IPMode::both || ip == IPMode::v6only) {
-                    l = (ip == IPMode::v6only ? 1 : 0);
+                    flag = (ip == IPMode::v6only ? 1 : 0);
                     if (::setsockopt(tmp, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
                         ::closesocket(tmp);
                         continue;
                     }
                 }
-                l = 1;
-                ::ioctlsocket(tmp, FIONBIO, &l);
+                flag = 1;
+                ::ioctlsocket(tmp, FIONBIO, &flag);
                 auto res = ::connect(tmp, p->ai_addr, p->ai_addrlen);
                 if (res == 0) {
                     sock = tmp;
                     selected = p;
-                    l = 0;
-                    ::ioctlsocket(tmp, FIONBIO, &l);
+                    flag = 0;
+                    ::ioctlsocket(tmp, FIONBIO, &flag);
                     break;
                 }
                 ::timeval timeout = {0};
@@ -219,8 +219,8 @@ namespace socklib {
                     if (FD_ISSET(tmp, &sucset)) {
                         sock = tmp;
                         selected = p;
-                        l = 0;
-                        ::ioctlsocket(tmp, FIONBIO, &l);
+                        flag = 0;
+                        ::ioctlsocket(tmp, FIONBIO, &flag);
                         break;
                     }
                     if (ctx.on_cancel()) {
