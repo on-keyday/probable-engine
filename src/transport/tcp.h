@@ -181,15 +181,7 @@ namespace socklib {
                 }
                 auto tmp = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
                 if (tmp < 0) continue;
-                u_long flag = 0;
-                if (ip == IPMode::both || ip == IPMode::v6only) {
-                    flag = (ip == IPMode::v6only ? 1 : 0);
-                    if (::setsockopt(tmp, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
-                        ::closesocket(tmp);
-                        continue;
-                    }
-                }
-                flag = 1;
+                u_long flag = 1;
                 ::ioctlsocket(tmp, FIONBIO, &flag);
                 auto res = ::connect(tmp, p->ai_addr, p->ai_addrlen);
                 if (res == 0) {
