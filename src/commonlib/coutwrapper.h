@@ -201,8 +201,8 @@ namespace PROJECT_NAME {
             return fout != base;
         }
 
-        void set_callback(void (*cb)(const std::string&)) {
-            cb = cb;
+        void set_callback(void (*in)(const std::string&)) {
+            cb = in;
         }
     };
 
@@ -402,8 +402,8 @@ namespace PROJECT_NAME {
             return (bool)file;
         }
 
-        void set_callback(void (*cb)(const std::string&)) {
-            cb = cb;
+        void set_callback(void (*in)(const std::string&)) {
+            cb = in;
         }
     };
 
