@@ -31,6 +31,8 @@
 
 namespace PROJECT_NAME {
     struct IOWrapper {
+        using callback_t = void (*)(const char*, size_t, void*);
+
        private:
         static bool& Flag() {
             static bool flag = false;
@@ -107,7 +109,8 @@ namespace PROJECT_NAME {
     //this is maybe faster than coutwrapper
     struct StdOutWrapper : IOWrapper {
        private:
-        void (*cb)(const char*, size_t) = nullptr;
+        callback_t cb = nullptr;
+        void* ctx = nullptr;
         FILE* fout = nullptr;
         FILE* base = nullptr;
         std::ostringstream ss;
@@ -123,7 +126,7 @@ namespace PROJECT_NAME {
                 ss.str(std::string());
                 ss << in;
                 auto tmp = ss.str();
-                cb(tmp.c_str(), tmp.size());
+                cb(tmp.c_str(), tmp.size(), ctx);
                 return *this;
             }
             if (onlybuffer) {
@@ -202,12 +205,17 @@ namespace PROJECT_NAME {
             return fout != base;
         }
 
-        void set_callback(void (*in)(const char*, size_t)) {
+        void set_callback(callback_t in, void* inctx = nullptr) {
             cb = in;
+            ctx = inctx;
         }
 
-        auto get_callback() -> decltype(cb) {
+        callback_t get_callback() {
             return cb;
+        }
+
+        void* get_ctx() {
+            return ctx;
         }
     };
 
@@ -305,7 +313,8 @@ namespace PROJECT_NAME {
 
     struct CoutWrapper : IOWrapper {
        private:
-        void (*cb)(const char*, size_t) = nullptr;
+        callback_t cb = nullptr;
+        void* ctx = nullptr;
         std::ofstream file;
         std::ostringstream ss;
         bool onlybuffer = false;
@@ -325,7 +334,7 @@ namespace PROJECT_NAME {
                 ss.str(std::string());
                 ss << in;
                 auto tmp = ss.str();
-                cb(tmp.c_str(), tmp.size());
+                cb(tmp.c_str(), tmp.size(), ctx);
                 return *this;
             }
             if (onlybuffer) {
@@ -408,12 +417,17 @@ namespace PROJECT_NAME {
             return (bool)file;
         }
 
-        void set_callback(void (*in)(const char*, size_t)) {
+        void set_callback(callback_t in, void* inctx = nullptr) {
             cb = in;
+            ctx = inctx;
         }
 
-        auto get_callback() -> decltype(cb) {
+        callback_t get_callback() {
             return cb;
+        }
+
+        void* get_ctx() {
+            return ctx;
         }
     };
 
