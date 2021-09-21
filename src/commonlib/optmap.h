@@ -426,7 +426,7 @@ namespace PROJECT_NAME {
                     else {
                         if (auto found = char_opt.find(arg[col]); found == char_opt.end()) {
                             if (any(op & OptOption::ignore_when_not_found)) {
-                                if (invoke(String(arg + col, 1), false)) {
+                                if (!invoke(String(arg + col, 1), false)) {
                                     return OptError::not_found;
                                 }
                                 continue;
