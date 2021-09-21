@@ -156,11 +156,11 @@ namespace socklib {
 
     struct TCP {
        private:
-        static OpenErr open_detail(int& sock, const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr, CancelContext* cancel = nullptr) {
+        static OpenErr open_detail(int& sock, const std::shared_ptr<Conn>& conn, bool secure, addrinfo*& got, addrinfo*& selected, const char* host, unsigned short port = 0, const char* service = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             if (!Network::Init()) return invalid_socket;
             ::addrinfo hint = {0};
             hint.ai_socktype = SOCK_STREAM;
-            hint.ai_family = AF_INET6;
+            hint.ai_family = (ip == IPMode::v4only ? AF_INET : AF_INET6);
             TimeoutContext timer(60, cancel);
             OsErrorContext ctx(&timer);
             if (getaddrinfo(host, service, &hint, &got) != 0) {
@@ -228,9 +228,9 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<Conn> open(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, OpenErr* err = nullptr, CancelContext* cancel = nullptr) {
+        static std::shared_ptr<Conn> open(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, OpenErr* err = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             std::shared_ptr<Conn> ret;
-            if (auto e = reopen(ret, host, port, service, noblock, cancel); !e) {
+            if (auto e = reopen(ret, host, port, service, noblock, cancel, ip); !e) {
                 if (err) *err = e;
                 return nullptr;
             }
@@ -298,19 +298,19 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false, OpenErr* err = nullptr, CancelContext* cancel = nullptr) {
+        static std::shared_ptr<Conn> open_secure(const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false, OpenErr* err = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             std::shared_ptr<Conn> ret;
-            if (auto e = reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len, strictverify); !e) {
+            if (auto e = reopen_secure(ret, host, port, service, noblock, cacert, secure, alpnstr, len, strictverify, cancel, ip); !e) {
                 if (err) *err = e;
                 return nullptr;
             }
             return ret;
         }
 
-        static OpenErr reopen(std::shared_ptr<Conn>& conn, const char* host, unsigned short port, const char* service = nullptr, bool noblock = false, CancelContext* cancel = nullptr) {
+        static OpenErr reopen(std::shared_ptr<Conn>& conn, const char* host, unsigned short port, const char* service = nullptr, bool noblock = false, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             ::addrinfo *selected = nullptr, *got = nullptr;
             int sock = invalid_socket;
-            auto err = open_detail(sock, conn, false, got, selected, host, port, service, cancel);
+            auto err = open_detail(sock, conn, false, got, selected, host, port, service, cancel, ip);
             if (!err) {
                 return err;
             }
@@ -330,10 +330,10 @@ namespace socklib {
             return true;
         }
 
-        static OpenErr reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false, CancelContext* cancel = nullptr) {
+        static OpenErr reopen_secure(std::shared_ptr<Conn>& conn, const char* host, unsigned short port = 0, const char* service = nullptr, bool noblock = false, const char* cacert = nullptr, bool secure = true, const char* alpnstr = nullptr, int len = 0, bool strictverify = false, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             ::addrinfo *selected = nullptr, *got = nullptr;
             int sock = invalid_socket;
-            auto err = open_detail(sock, conn, true, got, selected, host, port, service, cancel);
+            auto err = open_detail(sock, conn, true, got, selected, host, port, service, cancel, ip);
             if (!err) {
                 return err;
             }
