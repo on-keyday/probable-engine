@@ -161,7 +161,7 @@ namespace socklib {
             ::addrinfo hint = {0};
             hint.ai_socktype = SOCK_STREAM;
             hint.ai_family = (ip == IPMode::v4only ? AF_INET : ip == IPMode::v6only ? AF_INET6
-                                                                                    : PF_UNSPEC);
+                                                                                    : AF_UNSPEC);
             TimeoutContext timer(60, cancel);
             OsErrorContext ctx(&timer);
             if (getaddrinfo(host, service, &hint, &got) != 0) {
