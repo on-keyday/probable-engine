@@ -107,7 +107,7 @@ namespace PROJECT_NAME {
     //this is maybe faster than coutwrapper
     struct StdOutWrapper : IOWrapper {
        private:
-        void (*cb)(const std::string&) = nullptr;
+        void (*cb)(const char*, size_t) = nullptr;
         FILE* fout = nullptr;
         FILE* base = nullptr;
         std::ostringstream ss;
@@ -122,7 +122,8 @@ namespace PROJECT_NAME {
             if (cb) {
                 ss.str(std::string());
                 ss << in;
-                cb(ss.str());
+                auto tmp = ss.str();
+                cb(tmp.c_str(), tmp.size());
                 return *this;
             }
             if (onlybuffer) {
@@ -201,7 +202,7 @@ namespace PROJECT_NAME {
             return fout != base;
         }
 
-        void set_callback(void (*in)(const std::string&)) {
+        void set_callback(void (*in)(const char*, size_t)) {
             cb = in;
         }
     };
@@ -300,7 +301,7 @@ namespace PROJECT_NAME {
 
     struct CoutWrapper : IOWrapper {
        private:
-        void (*cb)(const std::string&) = nullptr;
+        void (*cb)(const char*, size_t) = nullptr;
         std::ofstream file;
         std::ostringstream ss;
         bool onlybuffer = false;
@@ -319,7 +320,8 @@ namespace PROJECT_NAME {
             if (cb) {
                 ss.str(std::string());
                 ss << in;
-                cb(ss.str());
+                auto tmp = ss.str();
+                cb(tmp.c_str(), tmp.size());
                 return *this;
             }
             if (onlybuffer) {
@@ -402,7 +404,7 @@ namespace PROJECT_NAME {
             return (bool)file;
         }
 
-        void set_callback(void (*in)(const std::string&)) {
+        void set_callback(void (*in)(const char*, size_t)) {
             cb = in;
         }
     };
