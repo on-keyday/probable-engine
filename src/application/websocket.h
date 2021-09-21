@@ -371,13 +371,13 @@ namespace socklib {
        public:
         template <class F = bool (*)(HttpConn::Header&, bool success, const char* reason)>
         static std::shared_ptr<WebSocketClientConn>
-        open(const char* url, bool encoded = false, const char* cacert = nullptr, F&& cb = F()) {
+        open(const char* url, bool encoded = false, const char* cacert = nullptr, F&& cb = F(), CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             HttpRequestContext ctx;
             if (!Http1::setuphttp(url, encoded, ctx, "ws", "wss", "ws")) {
                 return nullptr;
             }
             auto httpurl = (ctx.url.scheme == "wss" ? "https://" : "http://") + ctx.host_with_port() + ctx.path + ctx.query;
-            auto client = Http1::open(httpurl.c_str(), true, cacert);
+            auto client = Http1::open(httpurl.c_str(), true, cacert, nullptr, cancel, ip);
             if (!client) return nullptr;
             HttpConn::Header h = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version", "13"}};
             std::random_device device;

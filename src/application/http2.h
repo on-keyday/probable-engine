@@ -420,7 +420,7 @@ namespace socklib {
         }
 
        public:
-        static OpenErr reopen(std::shared_ptr<Http2Context>& conn, const char* url, bool encoded = false, const char* cacert = nullptr, CancelContext* cancel = nullptr) {
+        static OpenErr reopen(std::shared_ptr<Http2Context>& conn, const char* url, bool encoded = false, const char* cacert = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             if (!conn || !url) return OpenError::invalid_condition;
             std::string urlstr;
             Http1::fill_urlprefix(conn->host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
@@ -429,7 +429,7 @@ namespace socklib {
             if (!Http1::setuphttp(urlstr.c_str(), encoded, ctx, "http", "https", "https")) {
                 return OpenError::parse_url;
             }
-            if (auto e = Http1::reopen_tcp_conn(conn->borrow(), ctx, cacert, cancel, "\2h2", 3); e == OpenError::needless_to_reopen) {
+            if (auto e = Http1::reopen_tcp_conn(conn->borrow(), ctx, cacert, cancel, ip, "\2h2", 3); e == OpenError::needless_to_reopen) {
                 H2Stream* st;
                 if (!conn->make_stream(st, ctx.path, ctx.query)) {
                     return false;
@@ -456,13 +456,13 @@ namespace socklib {
             }
         }
 
-        static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr, CancelContext* cancel = nullptr) {
+        static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             HttpRequestContext ctx;
             if (!Http1::setuphttp(url, encoded, ctx, "http", "https", "https")) {
                 return nullptr;
             }
             bool secure = ctx.url.scheme == "https";
-            auto conn = Http1::open_tcp_conn(ctx, cacert, err, cancel, "\2h2", 3);
+            auto conn = Http1::open_tcp_conn(ctx, cacert, err, cancel, ip, "\2h2", 3);
             if (!conn) {
                 return nullptr;
             }

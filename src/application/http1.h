@@ -359,14 +359,14 @@ namespace socklib {
         friend struct HttpServer;
 
        private:
-        static std::shared_ptr<Conn> open_tcp_conn(HttpRequestContext& ctx, const char* cacert, OpenErr* err, CancelContext* cancel, const char* alpnstr = nullptr, int len = 0) {
+        static std::shared_ptr<Conn> open_tcp_conn(HttpRequestContext& ctx, const char* cacert, OpenErr* err, CancelContext* cancel, IPMode ip, const char* alpnstr = nullptr, int len = 0) {
             return TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                    cacert, ctx.url.scheme == "https", alpnstr, len, true, err, cancel);
+                                    cacert, ctx.url.scheme == "https", alpnstr, len, true, err, cancel, ip);
         }
 
-        static OpenErr reopen_tcp_conn(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx, const char* cacert, CancelContext* cancel, const char* alpnstr = nullptr, int len = 0) {
+        static OpenErr reopen_tcp_conn(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx, const char* cacert, CancelContext* cancel, IPMode ip, const char* alpnstr = nullptr, int len = 0) {
             return TCP::reopen_secure(conn, ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                      cacert, ctx.url.scheme == "https", alpnstr, len, true, cancel);
+                                      cacert, ctx.url.scheme == "https", alpnstr, len, true, cancel, ip);
         }
 
         static std::shared_ptr<HttpClientConn> init_object(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx) {
@@ -421,8 +421,8 @@ namespace socklib {
             }
         }
 
-        static OpenErr reopen_detail(std::shared_ptr<HttpClientConn>& conn, HttpRequestContext& ctx, const char* cacert, CancelContext* cancel) {
-            auto res = reopen_tcp_conn(conn->borrow(), ctx, cacert, cancel);
+        static OpenErr reopen_detail(std::shared_ptr<HttpClientConn>& conn, HttpRequestContext& ctx, const char* cacert, CancelContext* cancel, IPMode ip) {
+            auto res = reopen_tcp_conn(conn->borrow(), ctx, cacert, cancel, ip);
             if (!res && res != OpenError::needless_to_reopen) return res;
             conn->host = ctx.host_with_port();
             conn->path_ = ctx.path;
@@ -431,18 +431,18 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<HttpClientConn> open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr, CancelContext* cancel = nullptr) {
+        static std::shared_ptr<HttpClientConn> open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             HttpRequestContext ctx;
             if (!setuphttp(url, encoded, ctx)) {
                 return nullptr;
             }
             std::shared_ptr<Conn> conn;
-            conn = open_tcp_conn(ctx, cacert, err, nullptr, 0);
+            conn = open_tcp_conn(ctx, cacert, err, cancel, ip, nullptr, 0);
             if (!conn) return nullptr;
             return init_object(conn, ctx);
         }
 
-        static OpenErr reopen(std::shared_ptr<HttpClientConn>& conn, const char* url, bool encoded = false, const char* cacert = nullptr, CancelContext* cancel = nullptr) {
+        static OpenErr reopen(std::shared_ptr<HttpClientConn>& conn, const char* url, bool encoded = false, const char* cacert = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
             if (!conn || !url) return false;
             std::string urlstr;
             if (conn) {
@@ -453,7 +453,7 @@ namespace socklib {
             if (!setuphttp(urlstr.c_str(), encoded, ctx)) {
                 return OpenError::parse_url;
             }
-            return reopen_detail(conn, ctx, cacert, cancel);
+            return reopen_detail(conn, ctx, cacert, cancel, ip);
         }
 
         static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, size_t timeout = 10, IPMode mode = IPMode::both) {
