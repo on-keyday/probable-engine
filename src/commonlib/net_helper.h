@@ -468,6 +468,7 @@ namespace PROJECT_NAME {
             if (r.readpos() + 1 == r.ref().size()) {
                 return true;
             }
+            r.ref().reading();
             r >> result;
         }
         data.emplace(":body", std::move(result));
