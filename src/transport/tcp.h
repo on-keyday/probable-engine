@@ -160,7 +160,7 @@ namespace socklib {
             if (!Network::Init()) return invalid_socket;
             ::addrinfo hint = {0};
             hint.ai_socktype = SOCK_STREAM;
-            hint.ai_family = AF_INET;
+            hint.ai_family = AF_INET6;
             TimeoutContext timer(60, cancel);
             OsErrorContext ctx(&timer);
             if (getaddrinfo(host, service, &hint, &got) != 0) {
