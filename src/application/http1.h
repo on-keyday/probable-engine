@@ -422,7 +422,7 @@ namespace socklib {
         }
 
         static OpenErr reopen_detail(std::shared_ptr<HttpClientConn>& conn, HttpRequestContext& ctx, const char* cacert, CancelContext* cancel, IPMode ip) {
-            auto res = reopen_tcp_conn(conn->borrow(), ctx, cacert, cancel, ip);
+            auto res = reopen_tcp_conn(conn->borrow(), ctx, cacert, cancel, ip, "\x08http/1.1", 9);
             if (!res && res != OpenError::needless_to_reopen) return res;
             conn->host = ctx.host_with_port();
             conn->path_ = ctx.path;
@@ -437,7 +437,7 @@ namespace socklib {
                 return nullptr;
             }
             std::shared_ptr<Conn> conn;
-            conn = open_tcp_conn(ctx, cacert, err, cancel, ip, nullptr, 0);
+            conn = open_tcp_conn(ctx, cacert, err, cancel, ip, "\x08http/1.1", 9);
             if (!conn) return nullptr;
             return init_object(conn, ctx);
         }
