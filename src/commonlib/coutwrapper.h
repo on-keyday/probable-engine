@@ -122,24 +122,23 @@ namespace PROJECT_NAME {
         }
         template <class T>
         StdOutWrapper& operator<<(const T& in) {
-            if (cb) {
-                ss.str(std::string());
-                ss << in;
-                auto tmp = ss.str();
-                cb(tmp.c_str(), tmp.size(), ctx);
-                return *this;
-            }
             if (onlybuffer) {
                 ss << in;
                 return *this;
             }
-            ss.str("");
+            ss.str(std::string());
             ss << in;
             if (fout != base) {
                 std::string tmp = ss.str();
                 fwrite(tmp.c_str(), 1, tmp.size(), fout);
                 return *this;
             }
+            if (cb) {
+                std::string tmp = ss.str();
+                cb(tmp.c_str(), tmp.size(), ctx);
+                return *this;
+            }
+
             if (!Able_continue()) throw std::runtime_error("not called IOWrapper::Init() before io function");
 #ifdef _WIN32
             std::wstring tmp;
@@ -330,20 +329,19 @@ namespace PROJECT_NAME {
 
         template <class T>
         CoutWrapper& operator<<(const T& in) {
+            if (onlybuffer) {
+                ss << in;
+                return *this;
+            }
+            if (file.is_open()) {
+                file << in;
+                return *this;
+            }
             if (cb) {
                 ss.str(std::string());
                 ss << in;
                 auto tmp = ss.str();
                 cb(tmp.c_str(), tmp.size(), ctx);
-                return *this;
-            }
-            if (onlybuffer) {
-                ss << in;
-                return *this;
-            }
-
-            if (file.is_open()) {
-                file << in;
                 return *this;
             }
 
