@@ -386,12 +386,12 @@ namespace socklib {
 
         static bool
         setuphttp(HttpOpenContext& arg, HttpRequestContext& ctx,
-                  const char* normal = "http", const char* secure = "https", const char* defaultval = "http") {
+                  const char* normal = "http", const char* secure = "https", const char* defaultscheme = "http", const char* defaultpath = "/") {
             using R = commonlib2::Reader<std::string>;
             R(arg.url).readwhile(commonlib2::parse_url, ctx.url);
             if (!ctx.url.succeed) return false;
             if (!ctx.url.scheme.size()) {
-                ctx.url.scheme = defaultval;
+                ctx.url.scheme = defaultscheme;
             }
             else {
                 if (ctx.url.scheme != normal && ctx.url.scheme != secure) {
@@ -399,7 +399,7 @@ namespace socklib {
                 }
             }
             if (!ctx.url.path.size()) {
-                ctx.url.path = "/";
+                ctx.url.path = defaultpath;
             }
             if (!arg.urlencoded) {
                 commonlib2::URLEncodingContext<std::string> encctx;
