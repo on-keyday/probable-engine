@@ -358,10 +358,9 @@ namespace socklib {
             ret->maxid = 1;
         }
 
-        static std::shared_ptr<Http2Context> init_object(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx,
-                                                         std::string&& path, std::string&& query) {
+        static std::shared_ptr<Http2Context> init_object(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx) {
             auto ret = std::make_shared<Http2Context>(std::move(conn), ctx.host_with_port());
-            init_streams(ret, std::move(path), std::move(query));
+            init_streams(ret, std::move(ctx.path), std::move(ctx.query));
             return ret;
         }
 
@@ -412,7 +411,9 @@ namespace socklib {
         static std::shared_ptr<Http2Context> open_h2c(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx) {
             auto conncopy = conn;
             std::string pathcopy = ctx.path, querycopy = ctx.query;
-            auto ret = init_object(conncopy, ctx, std::move(pathcopy), std::move(querycopy));
+            auto ret = init_object(conncopy, ctx);
+            ctx.path = std::move(pathcopy);
+            ctx.query = std::move(querycopy);
             if (!reopen_h2c(conn, ret, ctx)) {
                 return nullptr;
             }
@@ -420,16 +421,17 @@ namespace socklib {
         }
 
        public:
-        static OpenErr reopen(std::shared_ptr<Http2Context>& conn, const char* url, bool encoded = false, const char* cacert = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
-            if (!conn || !url) return OpenError::invalid_condition;
+        static OpenErr reopen(std::shared_ptr<Http2Context>& conn, HttpOpenContext& arg) {
+            if (!conn || !arg.url) return OpenError::invalid_condition;
             std::string urlstr;
-            Http1::fill_urlprefix(conn->host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
-            urlstr += url;
+            Http1::fill_urlprefix(conn->host(), arg, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
+            urlstr += arg.url;
+            arg.url = urlstr.c_str();
             HttpRequestContext ctx;
-            if (!Http1::setuphttp(urlstr.c_str(), encoded, ctx, "http", "https", "https")) {
+            if (!Http1::setuphttp(arg, ctx, "http", "https", "https")) {
                 return OpenError::parse_url;
             }
-            if (auto e = Http1::reopen_tcp_conn(conn->borrow(), ctx, cacert, cancel, ip, "\2h2", 3); e == OpenError::needless_to_reopen) {
+            if (auto e = Http1::reopen_tcp_conn(conn->borrow(), ctx, arg, "\2h2", 3); e == OpenError::needless_to_reopen) {
                 H2Stream* st;
                 if (!conn->make_stream(st, ctx.path, ctx.query)) {
                     return false;
@@ -456,13 +458,13 @@ namespace socklib {
             }
         }
 
-        static std::shared_ptr<Http2Context> open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
+        static std::shared_ptr<Http2Context> open(HttpOpenContext& arg) {
             HttpRequestContext ctx;
-            if (!Http1::setuphttp(url, encoded, ctx, "http", "https", "https")) {
+            if (!Http1::setuphttp(arg, ctx, "http", "https", "https")) {
                 return nullptr;
             }
             bool secure = ctx.url.scheme == "https";
-            auto conn = Http1::open_tcp_conn(ctx, cacert, err, cancel, ip, "\2h2", 3);
+            auto conn = Http1::open_tcp_conn(ctx, arg, "\2h2", 3);
             if (!conn) {
                 return nullptr;
             }
@@ -473,7 +475,7 @@ namespace socklib {
                 if (!conn->write(h2_connection_preface, 24)) {
                     return nullptr;
                 }
-                return init_object(conn, ctx, std::move(ctx.path), std::move(ctx.query));
+                return init_object(conn, ctx);
             }
             else {
                 return open_h2c(conn, ctx);

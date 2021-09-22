@@ -343,6 +343,17 @@ namespace socklib {
         }
     };
 
+    struct HttpOpenContext {
+        const char* url = nullptr;
+        const char* cacert = nullptr;
+        IPMode ipmode = IPMode::both;
+        bool urlencoded = false;
+        CancelContext* cancel = nullptr;
+        const char* proxy = nullptr;
+        unsigned short proxy_port = 0;
+        OpenErr err = true;
+    };
+
     struct HttpRequestContext {
         commonlib2::URLContext<std::string> url;
         unsigned short port = 0;
@@ -359,14 +370,14 @@ namespace socklib {
         friend struct HttpServer;
 
        private:
-        static std::shared_ptr<Conn> open_tcp_conn(HttpRequestContext& ctx, const char* cacert, OpenErr* err, CancelContext* cancel, IPMode ip, const char* alpnstr = nullptr, int len = 0) {
+        static std::shared_ptr<Conn> open_tcp_conn(HttpRequestContext& ctx, HttpOpenContext& arg, const char* alpnstr = nullptr, int len = 0) {
             return TCP::open_secure(ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                    cacert, ctx.url.scheme == "https", alpnstr, len, true, err, cancel, ip);
+                                    arg.cacert, ctx.url.scheme == "https", alpnstr, len, true, &arg.err, arg.cancel, arg.ipmode);
         }
 
-        static OpenErr reopen_tcp_conn(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx, const char* cacert, CancelContext* cancel, IPMode ip, const char* alpnstr = nullptr, int len = 0) {
+        static OpenErr reopen_tcp_conn(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx, HttpOpenContext& arg, const char* alpnstr = nullptr, int len = 0) {
             return TCP::reopen_secure(conn, ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                      cacert, ctx.url.scheme == "https", alpnstr, len, true, cancel, ip);
+                                      arg.cacert, ctx.url.scheme == "https", alpnstr, len, true, arg.cancel, arg.ipmode);
         }
 
         static std::shared_ptr<HttpClientConn> init_object(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx) {
@@ -374,10 +385,10 @@ namespace socklib {
         }
 
         static bool
-        setuphttp(const char* url, bool encoded, HttpRequestContext& ctx,
+        setuphttp(HttpOpenContext& arg, HttpRequestContext& ctx,
                   const char* normal = "http", const char* secure = "https", const char* defaultval = "http") {
             using R = commonlib2::Reader<std::string>;
-            R(url).readwhile(commonlib2::parse_url, ctx.url);
+            R(arg.url).readwhile(commonlib2::parse_url, ctx.url);
             if (!ctx.url.succeed) return false;
             if (!ctx.url.scheme.size()) {
                 ctx.url.scheme = defaultval;
@@ -390,7 +401,7 @@ namespace socklib {
             if (!ctx.url.path.size()) {
                 ctx.url.path = "/";
             }
-            if (!encoded) {
+            if (!arg.urlencoded) {
                 commonlib2::URLEncodingContext<std::string> encctx;
                 encctx.path = true;
                 R(ctx.url.path).readwhile(ctx.path, commonlib2::url_encode, &encctx);
@@ -408,8 +419,8 @@ namespace socklib {
             }
             return true;
         }
-        static void fill_urlprefix(const std::string& host, const char* url, std::string& result, const char* scheme) {
-            auto r = commonlib2::Reader(url);
+        static void fill_urlprefix(const std::string& host, HttpOpenContext& arg, std::string& result, const char* scheme) {
+            auto r = commonlib2::Reader(arg.url);
             if (r.ahead("//")) {
                 result = scheme;
                 result += ":";
@@ -421,8 +432,8 @@ namespace socklib {
             }
         }
 
-        static OpenErr reopen_detail(std::shared_ptr<HttpClientConn>& conn, HttpRequestContext& ctx, const char* cacert, CancelContext* cancel, IPMode ip) {
-            auto res = reopen_tcp_conn(conn->borrow(), ctx, cacert, cancel, ip, "\x08http/1.1", 9);
+        static OpenErr reopen_detail(std::shared_ptr<HttpClientConn>& conn, HttpRequestContext& ctx, HttpOpenContext& arg) {
+            auto res = reopen_tcp_conn(conn->borrow(), ctx, arg, "\x08http/1.1", 9);
             if (!res && res != OpenError::needless_to_reopen) return res;
             conn->host = ctx.host_with_port();
             conn->path_ = ctx.path;
@@ -431,29 +442,28 @@ namespace socklib {
         }
 
        public:
-        static std::shared_ptr<HttpClientConn> open(const char* url, bool encoded = false, const char* cacert = nullptr, OpenErr* err = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
+        static std::shared_ptr<HttpClientConn> open(HttpOpenContext& arg) {
             HttpRequestContext ctx;
-            if (!setuphttp(url, encoded, ctx)) {
+            if (!setuphttp(arg, ctx)) {
                 return nullptr;
             }
             std::shared_ptr<Conn> conn;
-            conn = open_tcp_conn(ctx, cacert, err, cancel, ip, "\x08http/1.1", 9);
+            conn = open_tcp_conn(ctx, arg, "\x08http/1.1", 9);
             if (!conn) return nullptr;
             return init_object(conn, ctx);
         }
 
-        static OpenErr reopen(std::shared_ptr<HttpClientConn>& conn, const char* url, bool encoded = false, const char* cacert = nullptr, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
-            if (!conn || !url) return false;
+        static OpenErr reopen(std::shared_ptr<HttpClientConn>& conn, HttpOpenContext& arg) {
+            if (!conn || !arg.url) return false;
             std::string urlstr;
-            if (conn) {
-                fill_urlprefix(conn->host, url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
-            }
-            urlstr += url;
+            fill_urlprefix(conn->host, arg, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
+            urlstr += arg.url;
+            arg.url = urlstr.c_str();
             HttpRequestContext ctx;
-            if (!setuphttp(urlstr.c_str(), encoded, ctx)) {
+            if (!setuphttp(arg, ctx)) {
                 return OpenError::parse_url;
             }
-            return reopen_detail(conn, ctx, cacert, cancel, ip);
+            return reopen_detail(conn, ctx, arg);
         }
 
         static std::shared_ptr<HttpServerConn> serve(Server& sv, unsigned short port = 80, size_t timeout = 10, IPMode mode = IPMode::both) {

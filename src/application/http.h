@@ -27,17 +27,17 @@ namespace socklib {
         H2Err h2err;
 
        public:
-        OpenErr open(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false, int verlimit = 2, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
+        OpenErr open(HttpOpenContext& arg, bool secure_default = false, int verlimit = 2) {
             close();
             HttpRequestContext ctx;
-            if (!Http1::setuphttp(url, encoded, ctx, "http", "https", secure_default ? "https" : "http")) {
+            if (!Http1::setuphttp(arg, ctx, "http", "https", secure_default ? "https" : "http")) {
                 return false;
             }
             bool secure = ctx.url.scheme == "https";
             OpenErr e;
             auto alpn = verlimit == 1 ? "\x08http/1.1" : "\x02h2\x08http/1.1";
             auto alpnlen = verlimit == 1 ? 9 : 12;
-            auto tcon = Http1::open_tcp_conn(ctx, cacert, &e, cancel, ip, alpn, alpnlen);
+            auto tcon = Http1::open_tcp_conn(ctx, arg, alpn, alpnlen);
             if (!tcon) {
                 return e;
             }
@@ -59,7 +59,7 @@ namespace socklib {
                 if (!tcon->write(h2_connection_preface)) {
                     return false;
                 }
-                auto tmp = Http2::init_object(tcon, ctx, std::move(ctx.path), std::move(ctx.query));
+                auto tmp = Http2::init_object(tcon, ctx);
                 h2 = tmp.get();
                 conn = tmp;
                 version = 2;
@@ -100,19 +100,20 @@ namespace socklib {
             return version;
         }
 
-        OpenErr reopen(const char* url, bool encoded = false, const char* cacert = nullptr, int verlimit = 2, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
-            if (!conn || !url) return OpenError::invalid_condition;
+        OpenErr reopen(HttpOpenContext& arg, int verlimit = 2) {
+            if (!conn || !arg.url) return OpenError::invalid_condition;
             std::string urlstr;
-            Http1::fill_urlprefix(host(), url, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
-            urlstr += url;
+            Http1::fill_urlprefix(host(), arg, urlstr, conn->borrow()->get_ssl() ? "https" : "http");
+            urlstr += arg.url;
+            arg.url = urlstr.c_str();
             HttpRequestContext ctx;
-            if (!Http1::setuphttp(urlstr.c_str(), encoded, ctx)) {
+            if (!Http1::setuphttp(arg, ctx)) {
                 return OpenError::parse_url;
             }
             auto& borrow = conn->borrow();
             auto alpn = verlimit == 1 ? "\x08http/1.1" : "\x02h2\x08http/1.1";
             auto alpnlen = verlimit == 1 ? 9 : 12;
-            auto e = Http1::reopen_tcp_conn(borrow, ctx, cacert, cancel, ip, alpn, alpnlen);
+            auto e = Http1::reopen_tcp_conn(borrow, ctx, arg, alpn, alpnlen);
             if (!e) {
                 if (e == OpenError::needless_to_reopen) {
                     if (h1) {
@@ -157,7 +158,7 @@ namespace socklib {
                 if (!h2) {
                     auto hijack = conn->hijack();
                     close();
-                    auto tmp = Http2::init_object(hijack, ctx, std::move(ctx.path), std::move(ctx.query));
+                    auto tmp = Http2::init_object(hijack, ctx);
                     h2 = tmp.get();
                     conn = tmp;
                 }
@@ -179,12 +180,12 @@ namespace socklib {
             return true;
         }
 
-        OpenErr mustopen(const char* url, bool encoded = false, const char* cacert = nullptr, bool secure_default = false, int verlimit = 2, CancelContext* cancel = nullptr, IPMode ip = IPMode::both) {
+        OpenErr mustopen(HttpOpenContext& arg, bool secure_default = false, int verlimit = 2) {
             if (!conn) {
-                return open(url, encoded, cacert, secure_default, verlimit, cancel, ip);
+                return open(arg, secure_default, verlimit);
             }
             else {
-                return reopen(url, encoded, cacert, verlimit, cancel, ip);
+                return reopen(arg, verlimit);
             }
         }
 
