@@ -447,6 +447,7 @@ namespace socklib {
             auto& base = conn->borrow();
             if (base->get_ssl()) {
                 if (!verify_h2(conn->borrow())) {
+                    arg.err = OpenError::verify;
                     return OpenError::verify;
                 }
                 if (!base->write(h2_connection_preface, 24)) {
@@ -472,6 +473,7 @@ namespace socklib {
             }
             if (secure) {
                 if (!verify_h2(conn)) {
+                    arg.err = OpenError::verify;
                     return nullptr;
                 }
                 if (!conn->write(h2_connection_preface, 24)) {
