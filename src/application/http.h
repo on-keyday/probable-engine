@@ -31,15 +31,15 @@ namespace socklib {
             close();
             HttpRequestContext ctx;
             if (!Http1::setuphttp(arg, ctx, "http", "https", secure_default ? "https" : "http")) {
-                return false;
+                arg.err = OpenError::parse_url;
+                return OpenError::parse_url;
             }
             bool secure = ctx.url.scheme == "https";
-            OpenErr e;
             auto alpn = verlimit == 1 ? "\x08http/1.1" : "\x02h2\x08http/1.1";
             auto alpnlen = verlimit == 1 ? 9 : 12;
             auto tcon = Http1::open_tcp_conn(ctx, arg, alpn, alpnlen);
             if (!tcon) {
-                return e;
+                return arg.err;
             }
             const unsigned char* data = nullptr;
             unsigned int len = 0;
@@ -108,6 +108,7 @@ namespace socklib {
             arg.url = urlstr.c_str();
             HttpRequestContext ctx;
             if (!Http1::setuphttp(arg, ctx)) {
+                arg.err = OpenError::parse_url;
                 return OpenError::parse_url;
             }
             auto& borrow = conn->borrow();

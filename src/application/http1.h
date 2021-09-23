@@ -376,8 +376,9 @@ namespace socklib {
         }
 
         static OpenErr reopen_tcp_conn(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx, HttpOpenContext& arg, const char* alpnstr = nullptr, int len = 0) {
-            return TCP::reopen_secure(conn, ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
-                                      arg.cacert, ctx.url.scheme == "https", alpnstr, len, true, arg.cancel, arg.ipmode);
+            arg.err = TCP::reopen_secure(conn, ctx.url.host.c_str(), ctx.port, ctx.url.scheme.c_str(), true,
+                                         arg.cacert, ctx.url.scheme == "https", alpnstr, len, true, arg.cancel, arg.ipmode);
+            return arg.err;
         }
 
         static std::shared_ptr<HttpClientConn> init_object(std::shared_ptr<Conn>& conn, HttpRequestContext& ctx) {
@@ -445,6 +446,7 @@ namespace socklib {
         static std::shared_ptr<HttpClientConn> open(HttpOpenContext& arg) {
             HttpRequestContext ctx;
             if (!setuphttp(arg, ctx)) {
+                arg.err = OpenError::parse_url;
                 return nullptr;
             }
             std::shared_ptr<Conn> conn;
@@ -461,6 +463,7 @@ namespace socklib {
             arg.url = urlstr.c_str();
             HttpRequestContext ctx;
             if (!setuphttp(arg, ctx)) {
+                arg.err = OpenError::parse_url;
                 return OpenError::parse_url;
             }
             return reopen_detail(conn, ctx, arg);

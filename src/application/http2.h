@@ -429,6 +429,7 @@ namespace socklib {
             arg.url = urlstr.c_str();
             HttpRequestContext ctx;
             if (!Http1::setuphttp(arg, ctx, "http", "https", "https")) {
+                arg.err = OpenError::parse_url;
                 return OpenError::parse_url;
             }
             if (auto e = Http1::reopen_tcp_conn(conn->borrow(), ctx, arg, "\2h2", 3); e == OpenError::needless_to_reopen) {
@@ -461,6 +462,7 @@ namespace socklib {
         static std::shared_ptr<Http2Context> open(HttpOpenContext& arg) {
             HttpRequestContext ctx;
             if (!Http1::setuphttp(arg, ctx, "http", "https", "https")) {
+                arg.err = OpenError::parse_url;
                 return nullptr;
             }
             bool secure = ctx.url.scheme == "https";

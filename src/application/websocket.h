@@ -374,6 +374,7 @@ namespace socklib {
         open(HttpOpenContext& arg, F&& cb = F()) {
             HttpRequestContext ctx;
             if (!Http1::setuphttp(arg, ctx, "ws", "wss", "ws")) {
+                arg.err = OpenError::parse_url;
                 return nullptr;
             }
             auto httpurl = (ctx.url.scheme == "wss" ? "https://" : "http://") + ctx.host_with_port() + ctx.path + ctx.query;
