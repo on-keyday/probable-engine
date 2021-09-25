@@ -28,6 +28,19 @@ namespace PROJECT_NAME {
         option_already_set,
     };
 
+    BEGIN_ENUM_ERROR_MSG(OptError)
+    ENUM_ERROR_MSG(OptError::none, "no error")
+    ENUM_ERROR_MSG(OptError::invalid_argument, "invalid argument")
+    ENUM_ERROR_MSG(OptError::already_exists, "option already exists")
+    ENUM_ERROR_MSG(OptError::no_option, "no option exists")
+    ENUM_ERROR_MSG(OptError::option_suspended, "suspend analyze option")
+    ENUM_ERROR_MSG(OptError::ignore_after, "ignore after option")
+    ENUM_ERROR_MSG(OptError::not_found, "unknown option")
+    ENUM_ERROR_MSG(OptError::need_more_argument, "need more argument")
+    ENUM_ERROR_MSG(OptError::option_already_set, "option already set")
+    END_ENUM_ERROR_MSG
+
+    /*
     constexpr const char* error_message(OptError e) {
         switch (e) {
             case OptError::none:
@@ -53,7 +66,7 @@ namespace PROJECT_NAME {
             default:
                 return "unknown error";
         }
-    }
+    }*/
 
     using OptErr = EnumWrap<OptError, OptError::none, OptError::unknown>;
 

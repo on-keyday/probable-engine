@@ -6,10 +6,10 @@
 
 #pragma once
 
-#include"project_name.h"
+#include "project_name.h"
 
-namespace PROJECT_NAME{
-    #define DEFINE_ENUMOP(TYPE)                              \
+namespace PROJECT_NAME {
+#define DEFINE_ENUMOP(TYPE)                              \
     constexpr TYPE operator&(TYPE a, TYPE b) {           \
         using basety = std::underlying_type_t<TYPE>;     \
         return static_cast<TYPE>((basety)a & (basety)b); \
@@ -26,15 +26,15 @@ namespace PROJECT_NAME{
         using basety = std::underlying_type_t<TYPE>;     \
         return static_cast<TYPE>((basety)a ^ (basety)b); \
     }                                                    \
-    constexpr TYPE &operator&=(TYPE &a, TYPE b) {        \
+    constexpr TYPE& operator&=(TYPE& a, TYPE b) {        \
         a = a & b;                                       \
         return a;                                        \
     }                                                    \
-    constexpr TYPE &operator|=(TYPE &a, TYPE b) {        \
+    constexpr TYPE& operator|=(TYPE& a, TYPE b) {        \
         a = a | b;                                       \
         return a;                                        \
     }                                                    \
-    constexpr TYPE &operator^=(TYPE &a, TYPE b) {        \
+    constexpr TYPE& operator^=(TYPE& a, TYPE b) {        \
         a = a ^ b;                                       \
         return a;                                        \
     }                                                    \
@@ -43,50 +43,64 @@ namespace PROJECT_NAME{
         return static_cast<basety>(a) != 0;              \
     }
 
-
-    template<class E,E trueval,E falseval>
-    struct EnumWrap{
+    template <class E, E trueval, E falseval>
+    struct EnumWrap {
         E e;
-        constexpr EnumWrap():e(falseval){}
-        constexpr EnumWrap(bool i):e(i?trueval:falseval){}
-        constexpr EnumWrap(E i):e(i){}
-        constexpr operator bool()const{
-            return e==trueval;
+        constexpr EnumWrap()
+            : e(falseval) {}
+        constexpr EnumWrap(bool i)
+            : e(i ? trueval : falseval) {}
+        constexpr EnumWrap(E i)
+            : e(i) {}
+        constexpr operator bool() const {
+            return e == trueval;
         }
 
-        constexpr operator E()const{
+        constexpr operator E() const {
             return e;
         }
 
-        constexpr EnumWrap operator|(const EnumWrap& i)const{
-            return e|i.e;  
+        constexpr EnumWrap operator|(const EnumWrap& i) const {
+            return e | i.e;
         }
 
-        constexpr EnumWrap operator&(const EnumWrap& i)const{
-            return e&i.e;  
+        constexpr EnumWrap operator&(const EnumWrap& i) const {
+            return e & i.e;
         }
 
-        constexpr EnumWrap operator^(const EnumWrap& i)const{
-            return e^i.e;  
+        constexpr EnumWrap operator^(const EnumWrap& i) const {
+            return e ^ i.e;
         }
 
-        constexpr EnumWrap& operator|=(const EnumWrap& i){
-            e|=i.e;
-            return *this;  
-        }
-
-        constexpr EnumWrap& operator&=(const EnumWrap& i){
-            e&=i.e;
-            return *this;  
-        }
-
-        constexpr EnumWrap& operator^=(const EnumWrap& i){
-            e^=i.e;
+        constexpr EnumWrap& operator|=(const EnumWrap& i) {
+            e |= i.e;
             return *this;
         }
 
-        constexpr EnumWrap operator~()const{
+        constexpr EnumWrap& operator&=(const EnumWrap& i) {
+            e &= i.e;
+            return *this;
+        }
+
+        constexpr EnumWrap& operator^=(const EnumWrap& i) {
+            e ^= i.e;
+            return *this;
+        }
+
+        constexpr EnumWrap operator~() const {
             return ~e;
         }
     };
-}
+
+#define BEGIN_ENUM_ERROR_MSG(TYPE)                \
+    constexpr const char* error_message(TYPE e) { \
+        switch (e) {
+#define ENUM_ERROR_MSG(e, word) \
+    case e:                     \
+        return word;
+#define END_ENUM_ERROR_MSG      \
+    default:                    \
+        return "unknown error"; \
+        }                       \
+        }
+}  // namespace PROJECT_NAME
