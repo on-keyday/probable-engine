@@ -73,11 +73,11 @@ namespace PROJECT_NAME {
     enum class OptOption {
         none = 0,
         two_prefix_igopt = 0x1,
-        tow_prefix_longname = 0x2,
+        two_prefix_longname = 0x2,
         ignore_when_not_found = 0x4,
         two_same_opt_denied = 0x8,
         parse_all_arg = 0x10,
-        default_mode = two_prefix_igopt | ignore_when_not_found | tow_prefix_longname | parse_all_arg
+        default_mode = two_prefix_igopt | ignore_when_not_found | two_prefix_longname | parse_all_arg
     };
 
     DEFINE_ENUMOP(OptOption)
@@ -401,7 +401,7 @@ namespace PROJECT_NAME {
                                     return OptError::ignore_after;
                                 }
                             }
-                            if (any(op & OptOption::tow_prefix_longname)) {
+                            if (any(op & OptOption::two_prefix_longname)) {
                                 if (arg[2] == 0) {
                                     if (any(op & OptOption::parse_all_arg)) {
                                         if (auto e = all_arg_set(); !e) {
