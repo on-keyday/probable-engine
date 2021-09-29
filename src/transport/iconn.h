@@ -110,6 +110,22 @@ namespace socklib {
                 del = nullptr;
             }
             virtual bool ipaddress(IReadContext& toread) {
+                if (!info) return false;
+                char buf[75] = {0};
+                if (info->ai_family == AF_INET) {
+                    sockaddr_in* addr4 = (sockaddr_in*)info->ai_addr;
+                    inet_ntop(info->ai_family, &addr4->sin_addr, buf, 75);
+                }
+                else if (info->ai_family == AF_INET6) {
+                    sockaddr_in6* addr6 = (sockaddr_in6*)info->ai_addr;
+                    inet_ntop(info->ai_family, &addr6->sin6_addr, buf, 75);
+                }
+                int offset = 0;
+                if (auto tmp = std::string_view(buf); tmp.find(".") != ~0 && tmp.find("::ffff:") == 0) {
+                    offset = 7;
+                }
+                toread.append(buf + offset, strlen(buf) - offset);
+                return true;
             }
             virtual bool reset(IResetContext& set) override {
                 del_addrinfo(info);
