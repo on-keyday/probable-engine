@@ -61,7 +61,7 @@ namespace socklib {
     };
 
     struct OsErrorContext : CancelContext {
-       protected:
+        //protected:
         bool cancel_when_block = false;
         int err = 0;
         friend struct Conn;

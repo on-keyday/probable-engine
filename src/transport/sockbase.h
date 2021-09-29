@@ -546,5 +546,4 @@ namespace socklib {
         }
     };
 #endif
-
 }  // namespace socklib
