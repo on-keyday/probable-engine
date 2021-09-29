@@ -1,11 +1,11 @@
 /*license*/
 #pragma once
 
-#include "platform.h"
+#include "../common/platform.h"
 
 #include <enumext.h>
 
-#include "cancel.h"
+#include "../common/cancel.h"
 
 namespace socklib {
     constexpr int invalid_socket = -1;

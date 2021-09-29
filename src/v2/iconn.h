@@ -1,7 +1,7 @@
 #pragma once
 
-#include "platform.h"
-#include "cancel.h"
+#include "../common/platform.h"
+#include "../common/cancel.h"
 #include <enumext.h>
 
 namespace socklib {
