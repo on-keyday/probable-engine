@@ -111,7 +111,8 @@ namespace socklib {
                 delete del;
                 del = nullptr;
             }
-            virtual bool ipaddress(IReadContext& toread) {
+
+            virtual bool ipaddress(IReadContext& toread) const {
                 if (!info) return false;
                 char buf[75] = {0};
                 if (info->ai_family == AF_INET) {
