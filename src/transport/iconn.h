@@ -65,6 +65,58 @@ namespace socklib {
             virtual ~IConn() = 0;
         };
 
+        struct IpAddressConn : IConn {
+            ::addrinfo* info = nullptr;
+            static bool copy_addrinfo(::addrinfo*& to, const ::addrinfo* from) {
+                if (to || !from) return false;
+                to = new addrinfo(*from);
+                to->ai_next = nullptr;
+                to->ai_canonname = nullptr;
+                to->ai_addr = nullptr;
+                if (from->ai_canonname) {
+                    size_t sz = strlen(to->ai_canonname) + 1;
+                    to->ai_canonname = new char[sz]();
+                    strcpy_s(to->ai_canonname, sz, from->ai_canonname);
+                }
+                if (from->ai_addr) {
+                    to->ai_addr = (sockaddr*)new char[from->ai_addrlen]();
+                    memcpy_s(to->ai_addr, to->ai_addrlen, from->ai_addr, from->ai_addrlen);
+                }
+                return true;
+            }
+
+            static bool cmp_addrinfo(const ::addrinfo* left, const ::addrinfo* right) {
+                if (left == right) return true;
+                if (!left || !right) return false;
+                if (left->ai_addrlen != right->ai_addrlen || left->ai_family != right->ai_family ||
+                    left->ai_flags != right->ai_flags ||
+                    left->ai_protocol != right->ai_protocol || left->ai_socktype != right->ai_socktype) {
+                    return false;
+                }
+                if (memcmp(left->ai_addr, right->ai_addr, right->ai_addrlen) != 0) {
+                    return false;
+                }
+                if (left->ai_canonname != right->ai_canonname && strcmp(left->ai_canonname, right->ai_canonname) != 0) {
+                    return false;
+                }
+                return true;
+            }
+
+            static void del_addrinfo(addrinfo*& del) {
+                if (!del) return;
+                delete[](char*) del->ai_addr;
+                delete[] del->ai_canonname;
+                delete del;
+                del = nullptr;
+            }
+            virtual bool ipaddress(IReadContext& toread) {
+            }
+            virtual bool reset(IResetContext& set) override {
+                del_addrinfo(info);
+                return copy_addrinfo(info, (::addrinfo*)set.context(1));
+            }
+        };
+
         constexpr auto invalid_socket = -1;
         constexpr size_t intmaximum = (std::uint32_t(~0) >> 1);
 
@@ -73,15 +125,18 @@ namespace socklib {
             ::SSL* ssl = nullptr;
             ::SSL_CTX* ctx = nullptr;
             bool nodelctx = false;
+            ::addrinfo* addr = nullptr;
             virtual std::uintptr_t context(size_t index) override {
                 switch (index) {
                     case 0:
                         return std::uint32_t(sock);
                     case 1:
-                        return (std::uintptr_t)ssl;
+                        return (std::uintptr_t)addr;
                     case 2:
-                        return (std::uintptr_t)ctx;
+                        return (std::uintptr_t)ssl;
                     case 3:
+                        return (std::uintptr_t)ctx;
+                    case 4:
                         return nodelctx;
                     default:
                         return 0;
@@ -89,7 +144,7 @@ namespace socklib {
             }
         };
 
-        struct StreamConn : IConn {
+        struct StreamConn : IpAddressConn {
            protected:
             int sock = invalid_socket;
 
@@ -165,6 +220,7 @@ namespace socklib {
             virtual bool reset(IResetContext& ctx) override {
                 close();
                 sock = (int)ctx.context(0);
+                IpAddressConn::reset(ctx);
                 return true;
             }
 
@@ -246,9 +302,9 @@ namespace socklib {
 
             virtual bool reset(IResetContext& set) override {
                 close();
-                ssl = (::SSL*)set.context(1);
-                ctx = (::SSL_CTX*)set.context(2);
-                nodelctx = (bool)set.context(3);
+                ssl = (::SSL*)set.context(2);
+                ctx = (::SSL_CTX*)set.context(3);
+                nodelctx = (bool)set.context(4);
                 return true;
             }
 
