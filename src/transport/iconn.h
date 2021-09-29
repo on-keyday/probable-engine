@@ -19,9 +19,14 @@ namespace socklib {
         struct WriteContext : IWriteContext {
             const char* ptr = 0;
             size_t bufsize = 0;
+            bool cancel_when_block = false;
 
             const char* bufptr() override {
                 return ptr;
+            }
+
+            std::uint64_t flags() override {
+                return cancel_when_block ? 1 : 0;
             }
 
             size_t size() override {
@@ -48,8 +53,13 @@ namespace socklib {
         struct ReadContext : IReadContext {
             using buffer_t = Buf;
             buffer_t buf;
+            bool cancel_when_block = false;
             void append(const char* read, size_t size) override {
                 buf.append(read, size);
+            }
+
+            std::uint64_t flags() override {
+                return cancel_when_block ? 1 : 0;
             }
         };
 
