@@ -95,7 +95,7 @@ namespace socklib {
     };
 
     struct SSLErrorContext : OsErrorContext {
-       protected:
+        //protected:
         ::SSL* ssl = nullptr;
         int sslerr = 0;
 
