@@ -61,6 +61,7 @@ namespace socklib {
             none,
             tcp_socket,
             tcp_over_ssl,
+            file,
         };
 
         enum class ConnStatus {
