@@ -196,6 +196,7 @@ namespace socklib {
             }
         };
 
+        //StreamConn - connection for tcp socket (SOCK_STREAM)
         struct StreamConn : IpAddressConn {
            protected:
             int sock = invalid_socket;
@@ -287,6 +288,7 @@ namespace socklib {
             }
         };
 
+        //SecureStreamConn - secure connection for tcp socket (SOCK_STREAM)
         struct SecureStreamConn : StreamConn {
            protected:
             ::SSL* ssl = nullptr;
