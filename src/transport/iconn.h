@@ -95,8 +95,8 @@ namespace socklib {
             virtual ~IConn() = 0;
         };
 
-        //IpAddressConn - base of all internet connection
-        struct IpAddressConn : IConn {
+        //InetConn - base of all internet connection
+        struct InetConn : IConn {
            protected:
             ::addrinfo* info = nullptr;
 
@@ -197,7 +197,7 @@ namespace socklib {
         };
 
         //StreamConn - connection for tcp socket (SOCK_STREAM)
-        struct StreamConn : IpAddressConn {
+        struct StreamConn : InetConn {
            protected:
             int sock = invalid_socket;
 
@@ -273,7 +273,7 @@ namespace socklib {
             virtual bool reset(IResetContext& ctx) override {
                 close();
                 sock = (int)ctx.context((size_t)ResetIndex::socket);
-                IpAddressConn::reset(ctx);
+                InetConn::reset(ctx);
                 return true;
             }
 
