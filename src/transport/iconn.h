@@ -53,6 +53,14 @@ namespace socklib {
             }
         };
 
+        enum class ResetIndex {
+            socket = 0,
+            addrinfo = 1,
+            ssl = 2,
+            ssl_ctx = 3,
+            nodel_ctx = 4
+        };
+
         struct IResetContext {
             virtual std::uintptr_t context(size_t index) = 0;
         };
@@ -87,6 +95,7 @@ namespace socklib {
             virtual ~IConn() = 0;
         };
 
+        //IpAddressConn - base of all internet conn
         struct IpAddressConn : IConn {
            protected:
             ::addrinfo* info = nullptr;
@@ -156,7 +165,7 @@ namespace socklib {
 
             virtual bool reset(IResetContext& set) override {
                 del_addrinfo(info);
-                return copy_addrinfo(info, (::addrinfo*)set.context(1));
+                return copy_addrinfo(info, (::addrinfo*)set.context((size_t)ResetIndex::addrinfo));
             }
         };
 
@@ -262,7 +271,7 @@ namespace socklib {
 
             virtual bool reset(IResetContext& ctx) override {
                 close();
-                sock = (int)ctx.context(0);
+                sock = (int)ctx.context((size_t)ResetIndex::socket);
                 IpAddressConn::reset(ctx);
                 return true;
             }
@@ -351,9 +360,9 @@ namespace socklib {
 
             virtual bool reset(IResetContext& set) override {
                 close();
-                ssl = (::SSL*)set.context(2);
-                ctx = (::SSL_CTX*)set.context(3);
-                nodelctx = (bool)set.context(4);
+                ssl = (::SSL*)set.context((size_t)ResetIndex::ssl);
+                ctx = (::SSL_CTX*)set.context((size_t)ResetIndex::ssl_ctx);
+                nodelctx = (bool)set.context((size_t)ResetIndex::nodel_ctx);
                 return true;
             }
 
