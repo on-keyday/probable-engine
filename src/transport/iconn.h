@@ -66,7 +66,9 @@ namespace socklib {
         };
 
         struct IpAddressConn : IConn {
+           protected:
             ::addrinfo* info = nullptr;
+
             static bool copy_addrinfo(::addrinfo*& to, const ::addrinfo* from) {
                 if (to || !from) return false;
                 to = new addrinfo(*from);
@@ -124,9 +126,10 @@ namespace socklib {
                 if (auto tmp = std::string_view(buf); tmp.find(".") != ~0 && tmp.find("::ffff:") == 0) {
                     offset = 7;
                 }
-                toread.append(buf + offset, strlen(buf) - offset);
+                toread.append(buf + offset, ::strlen(buf) - offset);
                 return true;
             }
+
             virtual bool reset(IResetContext& set) override {
                 del_addrinfo(info);
                 return copy_addrinfo(info, (::addrinfo*)set.context(1));
