@@ -69,6 +69,7 @@ namespace socklib {
            protected:
             ::addrinfo* info = nullptr;
 
+           public:
             static bool copy_addrinfo(::addrinfo*& to, const ::addrinfo* from) {
                 if (to || !from) return false;
                 to = new addrinfo(*from);
