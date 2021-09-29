@@ -85,7 +85,7 @@ namespace socklib {
             ConnStatus status = ConnStatus::none;
         };
 
-        //IConn Interface
+        //IConn Interface - all connection base
         struct IConn {
             virtual bool write(IWriteContext& towrite, CancelContext* cancel = nullptr) = 0;
             virtual bool read(IReadContext& toread, CancelContext* cancel = nullptr) = 0;
@@ -95,7 +95,7 @@ namespace socklib {
             virtual ~IConn() = 0;
         };
 
-        //IpAddressConn - base of all internet conn
+        //IpAddressConn - base of all internet connection
         struct IpAddressConn : IConn {
            protected:
             ::addrinfo* info = nullptr;
