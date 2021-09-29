@@ -83,7 +83,7 @@ namespace socklib {
             virtual bool read(IReadContext& toread, CancelContext* cancel = nullptr) = 0;
             virtual void close(CancelContext* cancel = nullptr) = 0;
             virtual bool reset(IResetContext& set) = 0;
-            virtual bool stat(ConnStat&) = 0;
+            virtual bool stat(ConnStat&) const = 0;
             virtual ~IConn() = 0;
         };
 
@@ -267,7 +267,7 @@ namespace socklib {
                 return true;
             }
 
-            virtual bool stat(ConnStat& st) override {
+            virtual bool stat(ConnStat& st) const override {
                 st.type = ConnType::tcp_socket;
                 st.status = (sock == invalid_socket ? ConnStatus::none : ConnStatus::has_fd);
                 return true;
@@ -379,7 +379,7 @@ namespace socklib {
                 StreamConn::close(cancel);
             }
 
-            virtual bool stat(ConnStat& st) override {
+            virtual bool stat(ConnStat& st) const override {
                 st.type = ConnType::tcp_over_ssl;
                 st.status = (sock == invalid_socket ? ConnStatus::none : ConnStatus::has_fd);
                 st.status != (ssl ? ConnStatus::secure : ConnStatus::none);
