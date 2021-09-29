@@ -2,6 +2,7 @@
 
 #include "platform.h"
 #include "cancel.h"
+#include <enumext.h>
 
 namespace socklib {
     inline namespace v2 {
@@ -56,12 +57,32 @@ namespace socklib {
             virtual std::uintptr_t context(size_t index) = 0;
         };
 
+        enum class ConnType {
+            none,
+            tcp_socket,
+            tcp_over_ssl,
+        };
+
+        enum class ConnStatus {
+            none = 0,
+            has_fd = 0x1,
+            secure = 0x2,
+        };
+
+        DEFINE_ENUMOP(ConnStatus)
+
+        struct ConnStat {
+            ConnType type = ConnType::none;
+            ConnStatus status = ConnStatus::none;
+        };
+
         //IConn Interface
         struct IConn {
             virtual bool write(IWriteContext& towrite, CancelContext* cancel = nullptr) = 0;
             virtual bool read(IReadContext& toread, CancelContext* cancel = nullptr) = 0;
             virtual void close(CancelContext* cancel = nullptr) = 0;
             virtual bool reset(IResetContext& set) = 0;
+            virtual bool stat(ConnStat&) = 0;
             virtual ~IConn() = 0;
         };
 
@@ -245,6 +266,12 @@ namespace socklib {
                 return true;
             }
 
+            virtual bool stat(ConnStat& st) override {
+                st.type = ConnType::tcp_socket;
+                st.status = (sock == invalid_socket ? ConnStatus::none : ConnStatus::has_fd);
+                return true;
+            }
+
             virtual ~StreamConn() {
                 close();
             }
@@ -349,6 +376,13 @@ namespace socklib {
                     ssl = nullptr;
                 }
                 StreamConn::close(cancel);
+            }
+
+            virtual bool stat(ConnStat& st) override {
+                st.type = ConnType::tcp_over_ssl;
+                st.status = (sock == invalid_socket ? ConnStatus::none : ConnStatus::has_fd);
+                st.status != (ssl ? ConnStatus::secure : ConnStatus::none);
+                return true;
             }
 
             virtual ~SecureStreamConn() {
