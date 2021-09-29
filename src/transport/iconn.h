@@ -215,8 +215,9 @@ namespace socklib {
                     char data[1024] = {0};
                     while (!SSL_read_ex(ssl, data, 1024, &red)) {
                         if (ctx.on_cancel()) {
+                            std::string errstr = "ssl";
                             if (ctx.reason() == CancelReason::ssl_error || ctx.reason() == CancelReason::os_error) {
-                                std::string errstr;
+                                errstr += ":";
                                 ERR_print_errors_cb(
                                     [](const char* str, size_t len, void* u) -> int {
                                         (*(std::string*)u) += str;
@@ -228,7 +229,7 @@ namespace socklib {
                                 }
                             }
                             noshutdown = true;
-                            toread.on_error(ctx.err, &ctx, "ssl");
+                            toread.on_error(ctx.err, &ctx, errstr.c_str());
                             return false;
                         }
                     }
