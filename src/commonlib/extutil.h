@@ -133,4 +133,15 @@ namespace PROJECT_NAME {
         return split_cmd<Buf, Vec>(Buf(str), n, line);
     }
 
+    template <class Buf, class Str, class cmp_t = nexpf_t<Buf>, class not_expect_t = cmpf_t<Buf>>
+    bool equal(Reader<Buf>& r, Str&& token, cmp_t&& cmp = cmp_t(), not_expect_t&& nexpt = not_expect_t()) {
+        return r.expect(token, nexpt, cmp) && r.eof();
+    }
+
+    template <class Buf, class Str, class cmp_t = nexpf_t<Buf>, class not_expect_t = cmpf_t<Buf>>
+    bool equal(Buf&& base, Str&& token, cmp_t&& cmp = cmp_t(), not_expect_t&& nexpt = not_expect_t()) {
+        Reader<Buf> r(std::forward<Buf>(base));
+        return equal(r, token, cmp, nexpt);
+    }
+
 }  // namespace PROJECT_NAME

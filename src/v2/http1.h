@@ -56,6 +56,16 @@ namespace socklib {
             using string_t = String;
             using request_t = RequestContext<String, Header, Body>;
             using parsed_t = request_t::parsed_t;
+
+            static string_t host_with_port(parsed_t& parsed) {
+                string_t res = parsed.host;
+                if (parsed.port.size()) {
+                    res += ':';
+                    res += parsed.port;
+                }
+                return res;
+            }
+
             static bool parse_request(request_t& req, const string_t& expect1 = string_t(), const string_t& expect2 = string_t()) {
                 return parse(req.url, req.parsed, req.default_scheme, req.default_path,
                              &req.err, req.urlencoded, expect1, expect2);
@@ -70,6 +80,7 @@ namespace socklib {
                         *err = e;
                     }
                 };
+                parsed = parsed_t();
                 commonlib2::Reader(url).readwhile(commonlib2::parse_url, parsed);
                 if (!parsed.succeed) {
                     set_err(HttpError::url_parse);
@@ -111,7 +122,8 @@ namespace socklib {
         };
 
         template <class String, class Header, class Body>
-        struct Http {
+        struct HttpBase {
+            using string_t = String;
             using urlparser_t = URLParser<String, Header, Body>;
             using request_t = RequestContext<String, Header, Body>;
             using parsed_t = request_t::parsed_t;
@@ -131,6 +143,8 @@ namespace socklib {
                         tcpopen.alpnstr = "\x02h2";
                         tcpopen.len = 3;
                         break;
+                    case 3:
+                        //http3 unimplemented
                     default:
                         tcpopen.alpnstr = "\x02h2\x08http/1.1";
                         tcpopen.len = 12;
@@ -188,12 +202,34 @@ namespace socklib {
 
         template <class String, class Header, class Body>
         struct HttpConn {
-            using request_t = Http<String, Header, Body>::request_t;
+            using string_t = HttpBase<String, Header, Body>::string_t;
+            using request_t = HttpBase<String, Header, Body>::request_t;
+            using urlparser_t = HttpBase<String, Header, Body>::urlparser_t;
             std::shared_ptr<InetConn> conn;
 
+            bool write_header(request_t& req, CancelContext* cancel) {
+                WriteContext w;
+                string_t towrite = req.method;
+                towrite += ' ';
+                towrite += req.parsed.path;
+                towrite += req.parsed.query;
+                towrite += ' ';
+                towrite += "HTTP/1.1\r\n";
+                towrite += "Host: ";
+                towrite += urlparser_t::host_with_port(req.parsed);
+                towrite += "\r\n";
+                for (auto& h : req.request) {
+                }
+                towrite += "\r\n";
+                w.ptr = str.c_str();
+            }
+
             bool request(request_t& req, CancelContext* cancel = nullptr) {
-                if (!Http::open(conn, req, cancel)) {
+                if (!HttpBase::open(conn, req, cancel)) {
                     return false;
+                }
+                if (req.method.size() == 0) {
+                    req.method = "GET";
                 }
             }
         };
