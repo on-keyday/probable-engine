@@ -218,8 +218,9 @@ namespace socklib {
                 towrite += "Host: ";
                 towrite += urlparser_t::host_with_port(req.parsed);
                 towrite += "\r\n";
+                auto cmp = [](unsigned char c1, unsigned char c2) { return std::toupper(c1) == std::toupper(c2); };
                 for (auto& h : req.request) {
-                    if (commonlib2::equal(h.first, "host")) {
+                    if (commonlib2::str_eq(h.first, "host", cmp)) {
                     }
                 }
                 towrite += "\r\n";

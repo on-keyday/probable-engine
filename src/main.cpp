@@ -525,5 +525,4 @@ void testhttp2() {
 int main(int, char**) {
     socklib::HttpClient client;
     server_proc();
-    commonlib2::str_eq("hoa", "hoa");
 }
