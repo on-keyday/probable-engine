@@ -29,9 +29,11 @@ namespace socklib {
             using string_t = String;
             using header_t = Header;
             using body_t = Body;
+            using parsed_t = commonlib2::URLContext<String>;
             RequestPhase phase;
             string_t method;
             string_t url;
+            parsed_t parsed;
             string_t default_path;
             string_t default_scheme;
             bool urlencoded = false;
@@ -49,41 +51,42 @@ namespace socklib {
         struct URLParser {
             using string_t = String;
             using request_t = RequestContext<String, Header, Body>;
-            using parsed_t = commonlib2::URLContext<String>;
-            bool parse(parsed_t& url, request_t& req, const char* expect1, const char* expect2) {
-                commonlib2::Reader(req.url).readwhile(commonlib2::parse_url, url);
-                if (!url.succeed) {
+            static bool parse(request_t& req, const string_t& expect1 = string_t(), const string_t& expect2 = string_t()) {
+                commonlib2::Reader(req.url).readwhile(commonlib2::parse_url, req.parsed);
+                if (!req.parsed.succeed) {
                     req.err = HttpError::url_parse;
                     return false;
                 }
                 if (expect1 || expect2) {
-                    if (url.scheme.size() && url.scheme != expect1 && url.scheme != expect2) {
+                    if (req.parsed.scheme.size() && req.parsed.scheme != expect1 && req.parsed.scheme != expect2) {
                         req.err = HttpError::expected_scheme;
                         return false;
                     }
                 }
-                if (url.scheme.size() == 0) {
-                    url.scheme = req.default_scheme;
+                if (req.parsed.scheme.size() == 0) {
+                    req.parsed.scheme = req.default_scheme;
                 }
-                if (url.path.size() == 0) {
-                    url.path = req.default_path;
+                if (req.parsed.path.size() == 0) {
+                    req.parsed.path = req.default_path;
                 }
-                if (req.urlencoded) {
+                if (!req.urlencoded) {
                     commonlib2::URLEncodingContext<std::string> encctx;
                     string_t path, query;
                     encctx.path = true;
                     commonlib2::Reader(url.path).readwhile(path, commonlib2::url_encode, &encctx);
                     if (encctx.failed) {
                         req.err = HttpError::url_encode;
+                        return true;
                     }
                     encctx.query = true;
                     encctx.path = false;
                     commonlib2::Reader(url.query).readwhile(query, commonlib2::url_encode, &encctx);
                     if (encctx.failed) {
                         req.err = HttpError::url_encode;
+                        return true;
                     }
-                    url.path = std::move(path);
-                    url.query = std::move(query);
+                    req.parsed.path = std::move(path);
+                    req.parsed.query = std::move(query);
                 }
                 return true;
             }
@@ -91,9 +94,13 @@ namespace socklib {
 
         template <class String, class Header, class Body>
         struct HttpConn {
+            using parser_t = URLParser<String, Header, Body>;
             using request_t = RequestContext<String, Header, Body>;
             std::shared_ptr<InetConn> conn;
             bool request(request_t& req) {
+                if (!parser_t::parse(req)) {
+                    return false;
+                }
             }
         };
 
