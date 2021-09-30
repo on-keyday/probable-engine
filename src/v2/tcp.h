@@ -14,6 +14,12 @@ namespace socklib {
             connect,
             no_address_to_connect,
             canceled,
+            memory,
+            has_ssl_but_ctx,
+            register_host_verify,
+            ssl_connect,
+            cert_not_found,
+            cert_verify_failed,
         };
 
         template <class String>
@@ -26,6 +32,8 @@ namespace socklib {
             string_t cacert;
             int ip_version = 0;
             TCPError err;
+            const char* alpnstr = nullptr;
+            size_t len = 0;
         };
 
         template <class String>
@@ -132,16 +140,120 @@ namespace socklib {
             }
         };
 
+        struct SecureSetter {
+           private:
+            template <class String>
+            static bool setupssl_detail(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<String>& ctx, const char* host, const char* cacert) {
+                bool has_ctx = false, has_ssl = false;
+                if (!sslctx) {
+                    if (ssl) {
+                        ctx.err = TCPError::has_ssl_but_ctx;
+                        return false;
+                    }
+                    sslctx = SSL_CTX_new(TLS_method());
+                    if (!sslctx) {
+                        ctx.err = TCPError::memory;
+                        return false;
+                    }
+                }
+                else {
+                    has_ctx = true;
+                }
+                SSL_CTX_set_options(sslctx, SSL_OP_NO_SSLv2);
+                if (cacert) {
+                    if (!SSL_CTX_load_verify_locations(sslctx, cacert, nullptr)) {
+                        ctx.err = TCPError::register_cacert;
+                        return false;
+                    }
+                }
+                if (ctx.alpnstr && ctx.len) {
+                    SSL_CTX_set_alpn_protos(sslctx, (const unsigned char*)ctx.alpnstr, ctx.len);
+                }
+                if (!ssl) {
+                    ssl = SSL_new(sslctx);
+                    if (!ssl) {
+                        if (!has_ctx) SSL_CTX_free(sslctx);
+                        ctx.err = TCPError::memory;
+                        return false;
+                    }
+                }
+                else {
+                    has_ssl = true;
+                }
+                SSL_set_fd(ssl, sock);
+                SSL_set_tlsext_host_name(ssl, host);
+                auto param = SSL_get0_param(ssl);
+                if (!X509_VERIFY_PARAM_add1_host(param, host, 0)) {
+                    if (!has_ssl) SSL_free(ssl);
+                    if (!has_ctx) SSL_CTX_free(sslctx);
+                    ctx.err = TCPError::register_host_verify;
+                    return false;
+                }
+                if (SSL_connect(ssl) != 1) {
+                    if (!has_ssl) SSL_free(ssl);
+                    if (!has_ctx) SSL_CTX_free(sslctx);
+                    ctx.err = TCPError::ssl_connect;
+                    return false;
+                }
+
+                auto verify = SSL_get_peer_certificate(ssl);
+                if (!verify) {
+                    if (!has_ssl) SSL_free(ssl);
+                    if (!has_ctx) SSL_CTX_free(sslctx);
+                    ctx.err = TCPError::cert_not_found;
+                    return false;
+                }
+                if (SSL_get_verify_result(ssl) != X509_V_OK) {
+                    X509_free(verify);
+                    if (!has_ssl) SSL_free(ssl);
+                    if (!has_ctx) SSL_CTX_free(sslctx);
+                    ctx.err = TCPError::cert_verify_failed;
+                    return false;
+                }
+                return true;
+            }
+
+           public:
+            template <class C>
+            static bool setupssl(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<C*>& ctx) {
+                return setupssl_detail(sock, sslctx, ssl, ctx, ctx.host, ctx.cacert);
+            }
+
+            template <class Str>
+            static bool setupssl(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<Str>& ctx) {
+                return setupssl_detail(sock, sslctx, ssl, ctx, ctx.host.c_str(), ctx.cacert.c_str());
+            }
+        };
+
         template <class String>
         struct TCP {
-            static std::shared_ptr<InetConn> open(TCPOpenContext<String>& ctx, CancelContext* cancel = nullptr) {
+            static bool open(std::shared_ptr<InetConn>& res, TCPOpenContext<String>& ctx, CancelContext* cancel = nullptr) {
                 if (ctx.stat.type != ConnType::tcp_over_ssl) {
                     ctx.stat.type = ConnType::tcp_socket;
                 }
-                ::addrinfo* info;
+                ::addrinfo *info = nullptr, *selected = nullptr;
                 if (!Resolver<String>::resolve(ctx, info)) {
                     return false;
                 }
+                int sock = invalid_socket;
+                if (!Resolver<String>::connect(ctx, cancel, sock, info, selected)) {
+                    return false;
+                }
+                if (ctx.stat.type == ConnType::tcp_socket) {
+                    res = std::make_shared<StreamConn>(sock, selected);
+                }
+                else {
+                    ::SSL* ssl = nullptr;
+                    ::SSL_CTX* sslctx = nullptr;
+                    if (!SecureSetter::setupssl(sock, sslctx, ssl, ctx)) {
+                        ::freeaddrinfo(info);
+                        ::closesocket(sock);
+                        return false;
+                    }
+                    res = std::make_shared<SecureStreamConn>(ssl, sslctx, sock, selected);
+                }
+                ::freeaddrinfo(info);
+                return true;
             }
         };
     }  // namespace v2
