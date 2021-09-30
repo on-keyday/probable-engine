@@ -10,7 +10,8 @@ namespace socklib {
 
         enum class RequestPhase {
             idle,
-            opening,
+            open_direct,
+            open_proxy,
             request_sent,
             response_recv,
             body_parsed,
@@ -22,6 +23,7 @@ namespace socklib {
             url_parse,
             url_encode,
             expected_scheme,
+            alpn_failed,
         };
 
         template <class String, class Header, class Body>
@@ -30,7 +32,7 @@ namespace socklib {
             using header_t = Header;
             using body_t = Body;
             using parsed_t = commonlib2::URLContext<String>;
-            RequestPhase phase;
+            RequestPhase phase = RequestPhase::idle;
             string_t method;
             string_t url;
             parsed_t parsed;
@@ -45,60 +47,152 @@ namespace socklib {
             body_t responsebody;
             TCPError tcperr;
             HttpError err;
+            int ip_version = 0;
+            int http_version = 0;
         };
 
         template <class String, class Header, class Body>
         struct URLParser {
             using string_t = String;
             using request_t = RequestContext<String, Header, Body>;
-            static bool parse(request_t& req, const string_t& expect1 = string_t(), const string_t& expect2 = string_t()) {
-                commonlib2::Reader(req.url).readwhile(commonlib2::parse_url, req.parsed);
-                if (!req.parsed.succeed) {
-                    req.err = HttpError::url_parse;
+            using parsed_t = request_t::parsed_t;
+            static bool parse_request(request_t& req, const string_t& expect1 = string_t(), const string_t& expect2 = string_t()) {
+                return parse(req.url, req.parsed, req.default_scheme, req.default_path,
+                             &req.err, req.urlencoded, expect1, expect2);
+            }
+
+            static bool parse(string_t& url, parsed_t& parsed,
+                              const string_t& default_scheme, const string_t& default_path,
+                              HttpError* err = nullptr, bool urlencoded = false,
+                              const string_t& expect1 = string_t(), const string_t& expect2 = string_t()) {
+                auto set_err = [&](HttpError e) {
+                    if (err) {
+                        *err = e;
+                    }
+                };
+                commonlib2::Reader(url).readwhile(commonlib2::parse_url, parsed);
+                if (!parsed.succeed) {
+                    set_err(HttpError::url_parse);
                     return false;
                 }
                 if (expect1 || expect2) {
-                    if (req.parsed.scheme.size() && req.parsed.scheme != expect1 && req.parsed.scheme != expect2) {
-                        req.err = HttpError::expected_scheme;
+                    if (parsed.scheme.size() && parsed.scheme != expect1 && parsed.scheme != expect2) {
+                        set_err(HttpError::expected_scheme);
                         return false;
                     }
                 }
-                if (req.parsed.scheme.size() == 0) {
-                    req.parsed.scheme = req.default_scheme;
+                if (parsed.scheme.size() == 0) {
+                    parsed.scheme = default_scheme;
                 }
-                if (req.parsed.path.size() == 0) {
-                    req.parsed.path = req.default_path;
+                if (parsed.path.size() == 0) {
+                    parsed.path = default_path;
                 }
-                if (!req.urlencoded) {
+                if (!urlencoded) {
                     commonlib2::URLEncodingContext<std::string> encctx;
                     string_t path, query;
                     encctx.path = true;
-                    commonlib2::Reader(url.path).readwhile(path, commonlib2::url_encode, &encctx);
+                    commonlib2::Reader(parsed.path).readwhile(path, commonlib2::url_encode, &encctx);
                     if (encctx.failed) {
-                        req.err = HttpError::url_encode;
+                        set_err(HttpError::url_encode);
                         return true;
                     }
                     encctx.query = true;
                     encctx.path = false;
-                    commonlib2::Reader(url.query).readwhile(query, commonlib2::url_encode, &encctx);
+                    commonlib2::Reader(parsed.query).readwhile(query, commonlib2::url_encode, &encctx);
                     if (encctx.failed) {
-                        req.err = HttpError::url_encode;
+                        set_err(HttpError::url_encode);
                         return true;
                     }
-                    req.parsed.path = std::move(path);
-                    req.parsed.query = std::move(query);
+                    parsed.path = std::move(path);
+                    parsed.query = std::move(query);
                 }
                 return true;
             }
         };
 
         template <class String, class Header, class Body>
-        struct HttpConn {
-            using parser_t = URLParser<String, Header, Body>;
+        struct Http {
+            using urlparser_t = URLParser<String, Header, Body>;
             using request_t = RequestContext<String, Header, Body>;
+            using parsed_t = request_t::parsed_t;
+
+            static bool open(std::shared_ptr<InetConn>& conn, request_t& req,
+                             CancelContext* cancel = nullptr) {
+                if (!urlparser_t::parse_request(req, "http", "https")) {
+                    return false;
+                }
+                TCPOpenContext<String> tcpopen;
+                switch (req.http_version) {
+                    case 1:
+                        tcpopen.alpnstr = "\x08http/1.1";
+                        tcpopen.len = 9;
+                        break;
+                    case 2:
+                        tcpopen.alpnstr = "\x02h2";
+                        tcpopen.len = 3;
+                        break;
+                    default:
+                        tcpopen.alpnstr = "\x02h2\x08http/1.1";
+                        tcpopen.len = 12;
+                        break;
+                }
+                tcpopen.stat.type = ConnType::tcp_over_ssl;
+                if (req.parsed.scheme == "https") {
+                    tcpope.stat.status = ConnStatus::secure;
+                }
+                tcpopen.ip_version = req.ip_version;
+                tcpopen.host = req.parsed.host;
+                tcpopen.service = req.parsed.scheme;
+                if (req.parsed.port.size()) {
+                    commonlib2::Reader(req.parsed.port) >> tcpopen.port;
+                }
+                std::shared_ptr<InetConn> tmpconn;
+                if (!TCP<String>::open(tmpconn, tcpopen, cancel)) {
+                    req.err = HttpError::tcp_error;
+                    req.tcperr = tcpopen.err;
+                    return false;
+                }
+                ConnStat stat;
+                tmpconn->stat(stat);
+                if (any(stat.status & ConnStatus::secure)) {
+                    const unsigned char* data = nullptr;
+                    const char** tmp = (const char**)&data;
+                    unsigned int len = 0;
+                    SSL_get0_alpn_selected((SSL*)stat.ssl, &data, &len);
+                    if (!data) {
+                        req.err = HttpError::alpn_failed;
+                        return false;
+                    }
+                    bool result = false;
+                    switch (req.http_version) {
+                        case 1:
+                            result = strncmp(tmp, "http/1.1", 8) == 0;
+                            break;
+                        case 2:
+                            result = strncmp(tmp, "h2", 2) == 0;
+                            break;
+                        default:
+                            result = strncmp(tmp, "h2", 2) == 0 || strncmp(tmp, "http/1.1", 8) == 0;
+                            break;
+                    }
+                    if (!result) {
+                        req.err = HttpError::alpn_failed;
+                        return false;
+                    }
+                }
+                req.phase = RequestPhase::open_direct;
+                conn = std::move(tmpconn);
+                return true;
+            }
+        };
+
+        template <class String, class Header, class Body>
+        struct HttpConn {
+            using request_t = Http<String, Header, Body>::request_t;
             std::shared_ptr<InetConn> conn;
-            bool request(request_t& req) {
-                if (!parser_t::parse(req)) {
+
+            bool request(request_t& req, CancelContext* cancel = nullptr) {
+                if (!Http::open(conn, req, cancel)) {
                     return false;
                 }
             }
