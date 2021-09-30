@@ -29,6 +29,7 @@ namespace socklib {
         };
 
         struct HttpConn : private SecureStreamConn {
+            using SecureStreamConn::SecureStreamConn;
         };
 
     }  // namespace v2
