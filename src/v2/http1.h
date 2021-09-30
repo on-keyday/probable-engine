@@ -219,6 +219,8 @@ namespace socklib {
                 towrite += urlparser_t::host_with_port(req.parsed);
                 towrite += "\r\n";
                 for (auto& h : req.request) {
+                    if (commonlib2::equal(h.first, "host")) {
+                    }
                 }
                 towrite += "\r\n";
                 w.ptr = str.c_str();
