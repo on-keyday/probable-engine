@@ -21,6 +21,7 @@ namespace socklib {
             tcp_error,
             url_parse,
             url_encode,
+            expected_scheme,
         };
 
         template <class String, class Header, class Body>
@@ -49,11 +50,17 @@ namespace socklib {
             using string_t = String;
             using request_t = RequestContext<String, Header, Body>;
             using parsed_t = commonlib2::URLContext<String>;
-            bool parse(parsed_t& url, request_t& req) {
+            bool parse(parsed_t& url, request_t& req, const char* expect1, const char* expect2) {
                 commonlib2::Reader(req.url).readwhile(commonlib2::parse_url, url);
-                if (!ctx.url.succeed) {
+                if (!url.succeed) {
                     req.err = HttpError::url_parse;
                     return false;
+                }
+                if (expect1 || expect2) {
+                    if (url.scheme.size() && url.scheme != expect1 && url.scheme != expect2) {
+                        req.err = HttpError::expected_scheme;
+                        return false;
+                    }
                 }
                 if (url.scheme.size() == 0) {
                     url.scheme = req.default_scheme;
