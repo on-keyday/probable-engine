@@ -154,6 +154,10 @@ namespace socklib {
                 del = nullptr;
             }
 
+            InetConn(::addrinfo* p) {
+                copy_addrinfo(info, p);
+            }
+
             virtual bool ipaddress(IReadContext& toread) const {
                 if (!info) return false;
                 char buf[75] = {0};
@@ -212,6 +216,9 @@ namespace socklib {
             int sock = invalid_socket;
 
            public:
+            StreamConn(int s, ::addrinfo* p)
+                : sock(s), InetConn(p) {}
+
             virtual bool write(IWriteContext& towrite, CancelContext* cancel = nullptr) override {
                 //TODO:replace to OSErrorContext
                 OsErrorContext ctx((bool)towrite.flags(), cancel);
@@ -307,6 +314,9 @@ namespace socklib {
             bool nodelctx = false;
 
            public:
+            SecureStreamConn(::SSL* issl, ::SSL_CTX* ictx, int sock, ::addrinfo* info, bool nodelctx = false)
+                : ssl(issl), ctx(ictx), nodelctx(nodelctx), StreamConn(sock, info) {}
+
             virtual bool write(IWriteContext& towrite, CancelContext* cancel = nullptr) override {
                 if (!ssl) StreamConn::write(towrite, cancel);
                 SSLErrorContext ctx(ssl, cancel, (bool)towrite.flags());
