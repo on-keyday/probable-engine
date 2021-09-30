@@ -93,6 +93,8 @@ namespace socklib {
         struct ConnStat {
             ConnType type = ConnType::none;
             ConnStatus status = ConnStatus::none;
+            void* ssl = nullptr;
+            void* ssl_ctx = nullptr;
         };
 
         //IConn Interface - all connection base
@@ -414,6 +416,8 @@ namespace socklib {
                 st.type = ConnType::tcp_over_ssl;
                 st.status = (sock == invalid_socket ? ConnStatus::none : ConnStatus::has_fd);
                 st.status != (ssl ? ConnStatus::secure : ConnStatus::none);
+                st.ssl = ssl;
+                st.ssl_ctx = ctx;
                 return true;
             }
 
