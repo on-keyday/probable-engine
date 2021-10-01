@@ -20,6 +20,8 @@ namespace socklib {
             const char* ptr = 0;
             size_t bufsize = 0;
             bool cancel_when_block = false;
+            void (*errhandler)(void* ctx, std::int64_t ecode, CancelContext* cancel, const char* msg);
+            void* usercontext = nullptr;
 
             const char* bufptr() override {
                 return ptr;
@@ -35,6 +37,12 @@ namespace socklib {
 
             bool done() override {
                 return true;
+            }
+
+            void on_error(std::int64_t ecode, CancelContext* cancel, const char* msg) override {
+                if (errhandler) {
+                    errhandler(usercontext, ecode, cancel, msg);
+                }
             }
         };
 

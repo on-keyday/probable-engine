@@ -26,6 +26,14 @@ namespace socklib {
             alpn_failed,
         };
 
+        enum class RequestFlag {
+            url_encoded,
+            use_proxy,
+            ignore_alpn_failure,
+        };
+
+        DEFINE_ENUMOP(RequestFlag)
+
         template <class String, class Header, class Body>
         struct RequestContext {
             using string_t = String;
@@ -38,8 +46,7 @@ namespace socklib {
             parsed_t parsed;
             string_t default_path;
             string_t default_scheme;
-            bool urlencoded = false;
-            bool use_proxy = false;
+            RequestFlag flag;
             string_t proxy;
             header_t request;
             body_t requestbody;
@@ -49,7 +56,6 @@ namespace socklib {
             HttpError err;
             int ip_version = 0;
             int http_version = 0;
-            bool ignore_alpn_failed = false;
         };
 
         template <class String, class Header, class Body>
@@ -69,7 +75,7 @@ namespace socklib {
 
             static bool parse_request(request_t& req, const string_t& expect1 = string_t(), const string_t& expect2 = string_t()) {
                 return parse(req.url, req.parsed, req.default_scheme, req.default_path,
-                             &req.err, req.urlencoded, expect1, expect2);
+                             &req.err, any(req.flag & RequestFlag::url_encoded), expect1, expect2);
             }
 
             static bool parse(string_t& url, parsed_t& parsed,
@@ -175,7 +181,7 @@ namespace socklib {
                     unsigned int len = 0;
                     SSL_get0_alpn_selected((SSL*)stat.ssl, &data, &len);
                     if (!data) {
-                        if (!req.ignore_alpn_failed) {
+                        if (!any(req.falg & RequestFlag::ignore_alpn_failure)) {
                             req.err = HttpError::alpn_failed;
                             return false;
                         }
@@ -229,6 +235,8 @@ namespace socklib {
                 }
                 towrite += "\r\n";
                 w.ptr = str.c_str();
+                w.bufsize = str.size();
+                conn->write(w, cancel);
             }
 
             bool request(request_t& req, CancelContext* cancel = nullptr) {
