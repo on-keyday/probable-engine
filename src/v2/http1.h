@@ -135,6 +135,10 @@ namespace socklib {
             using request_t = RequestContext<String, Header, Body>;
             using parsed_t = request_t::parsed_t;
 
+            static bool header_cmp(unsigned char c1, unsigned char c2) {
+                return std::toupper(c1) == std::toupper(c2);
+            };
+
             static bool open(std::shared_ptr<InetConn>& conn, request_t& req,
                              CancelContext* cancel = nullptr) {
                 if (!urlparser_t::parse_request(req, "http", "https")) {
@@ -212,9 +216,10 @@ namespace socklib {
 
         template <class String, class Header, class Body>
         struct HttpConn {
-            using string_t = HttpBase<String, Header, Body>::string_t;
-            using request_t = HttpBase<String, Header, Body>::request_t;
-            using urlparser_t = HttpBase<String, Header, Body>::urlparser_t;
+            using base_t = HttpBase<String, Header, Body>;
+            using string_t = base_t::string_t;
+            using request_t = base_t::request_t;
+            using urlparser_t = base_t::urlparser_t;
             std::shared_ptr<InetConn> conn;
 
             bool write_header(request_t& req, CancelContext* cancel) {
@@ -228,15 +233,31 @@ namespace socklib {
                 towrite += "Host: ";
                 towrite += urlparser_t::host_with_port(req.parsed);
                 towrite += "\r\n";
-                auto cmp = [](unsigned char c1, unsigned char c2) { return std::toupper(c1) == std::toupper(c2); };
                 for (auto& h : req.request) {
-                    if (commonlib2::str_eq(h.first, "host", cmp)) {
+                    using commonlib2::str_eq;
+                    if (str_eq(h.first, "host", base_t::header_cmp) || str_eq(h.first, "content-length", base_t::header_cmp)) {
+                        continue;
                     }
                 }
                 towrite += "\r\n";
                 w.ptr = str.c_str();
                 w.bufsize = str.size();
-                conn->write(w, cancel);
+                auto error = [&](std::uint64_t code, CancelContext* cancel, const char* msg) {
+                    std::string_view m(msg);
+                    if (m.find("ssl") != ~0) {
+                        req.tcperr = TCPError::ssl_write;
+                    }
+                    else {
+                        req.tcperr = TCPError::tcp_write;
+                    }
+                    req.err = HttpError::tcp_error;
+                };
+                w.errhandler = [](void* e, std::uint64_t code, CancelContext* cancel, const char* msg) {
+                    auto f = (decltype(error)*)e;
+                    (*f)(code, cancel, msg);
+                };
+                w.usercontext = &error;
+                return conn->write(w, cancel);
             }
 
             bool request(request_t& req, CancelContext* cancel = nullptr) {

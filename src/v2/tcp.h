@@ -20,6 +20,10 @@ namespace socklib {
             ssl_connect,
             cert_not_found,
             cert_verify_failed,
+            ssl_write,
+            tcp_write,
+            ssl_read,
+            tcp_read
         };
 
         template <class String>
