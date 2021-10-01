@@ -525,4 +525,5 @@ void testhttp2() {
 int main(int, char**) {
     socklib::HttpClient client;
     server_proc();
+    sizeof(socklib::HttpOpenContext);
 }
