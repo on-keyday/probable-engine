@@ -607,7 +607,7 @@ namespace socklib {
                 auto tmp = huffman_decode_achar(c, r, tree, fin, allone);
                 if (!tmp) {
                     if (tmp == HpackError::too_short_number) {
-                        if (allone - 1 > 7) {
+                        if (!r.eos() && allone - 1 > 7) {
                             return HpackError::too_large_number;
                         }
                         break;
@@ -853,7 +853,9 @@ namespace socklib {
                     //unimplemented
                     size_t sz = 0;
                     TRY(decode_integer<5>(se, sz, tmp));
-                    if (maxtablesize > 0x80000000) return HpackError::too_large_number;
+                    if (maxtablesize > 0x80000000) {
+                        return HpackError::too_large_number;
+                    }
                     maxtablesize = (std::int32_t)sz;
                     TRY(update_dymap());
                 }
