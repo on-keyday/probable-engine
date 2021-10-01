@@ -101,8 +101,13 @@ namespace socklib {
         struct ConnStat {
             ConnType type = ConnType::none;
             ConnStatus status = ConnStatus::none;
-            void* ssl = nullptr;
-            void* ssl_ctx = nullptr;
+            union {
+                struct {
+                    ::SSL* ssl = nullptr;
+                    ::SSL_CTX* ssl_ctx = nullptr;
+                    ::addrinfo* addrinfo = nullptr;
+                } net;
+            };
         };
 
         //IConn Interface - all connection base
@@ -190,6 +195,11 @@ namespace socklib {
             virtual bool reset(IResetContext& set) override {
                 del_addrinfo(info);
                 return copy_addrinfo(info, (::addrinfo*)set.context((size_t)ResetIndex::addrinfo));
+            }
+
+            virtual bool stat(ConnStat& st) const override {
+                st.net.addrinfo = info;
+                return true;
             }
         };
 
@@ -307,6 +317,7 @@ namespace socklib {
             virtual bool stat(ConnStat& st) const override {
                 st.type = ConnType::tcp_socket;
                 st.status = (sock == invalid_socket ? ConnStatus::none : ConnStatus::has_fd);
+                InetConn::stat(st);
                 return true;
             }
 
@@ -391,7 +402,8 @@ namespace socklib {
             }
 
             virtual bool reset(IResetContext& set) override {
-                close();
+                TimeoutContext timeout(10);
+                close(&timeout);
                 ssl = (::SSL*)set.context((size_t)ResetIndex::ssl);
                 ctx = (::SSL_CTX*)set.context((size_t)ResetIndex::ssl_ctx);
                 nodelctx = (bool)set.context((size_t)ResetIndex::nodel_ctx);
@@ -424,15 +436,16 @@ namespace socklib {
                 st.type = ConnType::tcp_over_ssl;
                 st.status = (sock == invalid_socket ? ConnStatus::none : ConnStatus::has_fd);
                 st.status != (ssl ? ConnStatus::secure : ConnStatus::none);
-                st.ssl = ssl;
-                st.ssl_ctx = ctx;
+                st.net.ssl = ssl;
+                st.net.ssl_ctx = ctx;
+                InetConn::stat(st);
                 return true;
             }
 
             virtual ~SecureStreamConn() {
                 TimeoutContext timeout(10);
                 close(&timeout);
-                if (ctx && nodelctx) {
+                if (ctx && !nodelctx) {
                     ::SSL_CTX_free(ctx);
                 }
                 ctx = nullptr;

@@ -23,7 +23,8 @@ namespace socklib {
             ssl_write,
             tcp_write,
             ssl_read,
-            tcp_read
+            tcp_read,
+            not_reopened,
         };
 
         template <class String>
@@ -38,6 +39,7 @@ namespace socklib {
             TCPError err;
             const char* alpnstr = nullptr;
             size_t len = 0;
+            bool forceopen = false;
         };
 
         template <class String>
@@ -239,22 +241,63 @@ namespace socklib {
                 if (!Resolver<String>::resolve(ctx, info)) {
                     return false;
                 }
+                ConnStat stat;
+                if (res) {
+                    res->stat(stat);
+                }
+                bool not_reopen = false;
                 int sock = invalid_socket;
-                if (!Resolver<String>::connect(ctx, cancel, sock, info, selected)) {
-                    return false;
+                if (!Resolver<String>::connect(
+                        ctx, cancel, sock, info, selected,
+                        [&](::addrinfo* info, bool* result) {
+                            if (!ctx.forceopen && ctx.stat.type == stat.type) {
+                                if (any(stat.status & ConnStatus::has_fd)) {
+                                    if (InetConn::cmp_addrinfo(info, stat.net.addrinfo)) {
+                                        *result = false;
+                                        ctx.err = TCPError::not_reopened;
+                                        not_reopen = true;
+                                        return false;
+                                    }
+                                }
+                            }
+                            return true;
+                        })) {
+                    return not_reopen;
                 }
                 if (ctx.stat.type == ConnType::tcp_socket) {
-                    res = std::make_shared<StreamConn>(sock, selected);
+                    if (res) {
+                        SocketReset reset;
+                        reset.addr = selected;
+                        reset.sock = sock;
+                        res->reset(reset);
+                    }
+                    else {
+                        res = std::make_shared<StreamConn>(sock, selected);
+                    }
                 }
                 else {
                     ::SSL* ssl = nullptr;
                     ::SSL_CTX* sslctx = nullptr;
+                    if (res) {
+                        ssl = stat.net.ssl;
+                        sslctx = stat.net.ssl_ctx;
+                    }
                     if (!SecureSetter::setupssl(sock, sslctx, ssl, ctx)) {
                         ::freeaddrinfo(info);
                         ::closesocket(sock);
                         return false;
                     }
-                    res = std::make_shared<SecureStreamConn>(ssl, sslctx, sock, selected);
+                    if (res) {
+                        SocketReset reset;
+                        reset.addr = selected;
+                        reset.sock = sock;
+                        reset.ssl = ssl;
+                        reset.sslctx = sslctx;
+                        res->reset(reset);
+                    }
+                    else {
+                        res = std::make_shared<SecureStreamConn>(ssl, sslctx, sock, selected);
+                    }
                 }
                 ::freeaddrinfo(info);
                 return true;
