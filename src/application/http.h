@@ -118,11 +118,13 @@ namespace socklib {
             if (!e) {
                 if (e == OpenError::needless_to_reopen) {
                     if (h1) {
+                        h1->host = ctx.host_with_port();
                         h1->path_ = std::move(ctx.path);
                         h1->query_ = std::move(ctx.query);
                         h1->response().clear();
                     }
                     else if (h2) {
+                        h2->host_ = ctx.host_with_port();
                         H2Stream* str = nullptr;
                         if (!h2->make_stream(str, ctx.path, ctx.query)) {
                             return false;
