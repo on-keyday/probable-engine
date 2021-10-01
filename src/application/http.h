@@ -46,7 +46,8 @@ namespace socklib {
             if (secure) {
                 SSL_get0_alpn_selected((SSL*)tcon->get_ssl(), &data, &len);
                 if (!data) {
-                    return false;
+                    //return false;
+                    data = (const unsigned char*)"http/1.1";
                 }
             }
             if (!secure || strncmp("http/1.1", (const char*)data, 8) == 0) {
@@ -138,7 +139,8 @@ namespace socklib {
             if (borrow->get_ssl()) {
                 SSL_get0_alpn_selected((SSL*)borrow->get_ssl(), &data, &len);
                 if (!data) {
-                    return false;
+                    //return false;
+                    data = (const unsigned char*)"http/1.1";
                 }
             }
             if (!borrow->get_ssl() || strncmp("http/1.1", (const char*)data, 8) == 0) {

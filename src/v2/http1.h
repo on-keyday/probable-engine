@@ -49,6 +49,7 @@ namespace socklib {
             HttpError err;
             int ip_version = 0;
             int http_version = 0;
+            bool ignore_alpn_failed = false;
         };
 
         template <class String, class Header, class Body>
@@ -174,8 +175,11 @@ namespace socklib {
                     unsigned int len = 0;
                     SSL_get0_alpn_selected((SSL*)stat.ssl, &data, &len);
                     if (!data) {
-                        req.err = HttpError::alpn_failed;
-                        return false;
+                        if (!req.ignore_alpn_failed) {
+                            req.err = HttpError::alpn_failed;
+                            return false;
+                        }
+                        *tmp = "http/1.1";
                     }
                     bool result = false;
                     switch (req.http_version) {
