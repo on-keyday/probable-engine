@@ -17,4 +17,5 @@ struct TestDerived : TestBase {
 
 int main() {
     auto p = make_request();
+    p->request("google.com", "GET");
 }

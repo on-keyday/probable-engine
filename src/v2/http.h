@@ -66,10 +66,6 @@ namespace socklib {
                 return ctx.responsebody;
             }
 
-            void set_url(String& url) {
-                ctx.url = url;
-            }
-
             void set_httpversion(int version) {
                 ctx.http_version = version;
             }
@@ -79,9 +75,48 @@ namespace socklib {
             }
         };
 
+        template <class String, class Header, class Body>
+        struct ClientRequestProxy : RequestProxy<String, Header, Body> {
+            using base_t = RequestProxy<String, Header, Body>;
+            using client_t = Http1Client<String, Header, Body>;
+
+           private:
+            HttpReadContext<String, Header, Body> readbuf;
+
+           public:
+            ClientRequestProxy()
+                : readbuf(base_t::ctx) {}
+
+            void set_cacert(const String& cacert) {
+                ctx.cacert = cacert;
+            }
+
+            bool set_default_path(DefaultPath defpath) {
+                if (defpath == DefaultPath::abs_url || defpath == DefaultPath::host_port) {
+                    return false;
+                }
+                ctx.default_path = defpath;
+                return true;
+            }
+
+            void set_default_schme(HttpDefaultScheme scehme) {
+                ctx.default_scehme = scehme;
+            }
+
+            bool request(const String& method, const String& url, CancelContext* cancel = nullptr) {
+                ctx.url = url;
+                ctx.method = method;
+                return client_t::request(conn, ctx, cancel);
+            }
+
+            bool response(CancelContext* cancel) {
+                return client_t::response(conn, readbuf, cancel);
+            }
+        };
+
         template <class String = std::string, class Header = std::multimap<String, String>, class Body = String>
-        std::shared_ptr<RequestProxy<String, Header, Body>> make_request() {
-            return std::make_shared<RequestProxy<String, Header, Body>>();
+        std::shared_ptr<ClientRequestProxy<String, Header, Body>> make_request() {
+            return std::make_shared<ClientRequestProxy<String, Header, Body>>();
         }
     }  // namespace v2
 }  // namespace socklib

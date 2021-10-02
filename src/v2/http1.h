@@ -176,11 +176,10 @@ namespace socklib {
             request_sent,
             request_recving,
             request_recved,
-            request_body_recved,
             response_sent,
             response_recving,
             response_recved,
-            response_body_recved,
+            body_recved,
             closed,
             error,
         };
@@ -253,6 +252,7 @@ namespace socklib {
             body_t requestbody;
             std::uint8_t ip_version = 0;
             std::uint8_t http_version = 0;
+            string_t cacert;
 
             //response params
             RequestPhase phase = RequestPhase::idle;
@@ -394,6 +394,7 @@ namespace socklib {
                 tcpopen.ip_version = req.ip_version;
                 tcpopen.host = req.parsed.host;
                 tcpopen.service = req.parsed.scheme;
+                tcpopen.cacert = req.cacert;
                 if (req.parsed.port.size()) {
                     commonlib2::Reader(req.parsed.port) >> tcpopen.port;
                 }
@@ -679,6 +680,7 @@ namespace socklib {
                     size_t chunksize;
                     commonlib2::Reader(num) >> chunksize;
                     if (chunksize == 0) {
+                        req.phase = RequestPhase::body_recved;
                         return false;
                     }
                     if (r.readable() < chunksize) {
@@ -701,7 +703,7 @@ namespace socklib {
                             req.phase = RequestPhase::error;
                         }
                         else {
-                            req.phase = RequestPhase::request_body_recved;
+                            req.phase = RequestPhase::body_recved;
                         }
                         rawdata.erase(0, bodyinfo.size);
                         return false;
@@ -709,6 +711,7 @@ namespace socklib {
                 }
                 else {
                     if (rawdata.size() == 0) {
+                        req.phase = RequestPhase::body_recved;
                         return false;
                     }
                     for (size_t i = 0; i < rawdata.size(); i++) {
@@ -721,40 +724,17 @@ namespace socklib {
         };
 
         template <class String, class Header, class Body>
-        struct Http1Client {
-            using base_t = HttpBase<String, Header, Body>;
-            using string_t = typename base_t::string_t;
-            using request_t = typename base_t::request_t;
-            using urlparser_t = typename base_t::urlparser_t;
-            using headerwriter_t = HttpHeaderWriter<String, Header, Body>;
-
-            static bool request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr) {
-                if (!HttpBase::open(conn, req, cancel, 1)) {
-                    return false;
-                }
-                if (req.resolved_version != 1) {
-                    req.err = HttpError::not_accept_version;
-                    return false;
-                }
-                if (req.method.size() == 0) {
-                    req.method = "GET";
-                }
-                return headerwriter_t::write_request(conn, req, cancel);
-            }
-        };
-
-        template <class String, class Header, class Body>
-        struct RequestReadContext : IReadContext {
+        struct HttpReadContext : IReadContext {
             using base_t = HttpBase<String, Header, Body>;
             using request_t = typename base_t::request_t;
             using string_t = typename base_t::string_t;
             using httpparser_t = HttpHeaderReader<String, Header, Body>;
             using errhandle_t = ErrorHandler<String, Header, Body>;
-            friend struct Http1Request;
-            friend struct Http1Response;
+            friend struct Http1Client;
+            friend struct Http1Server;
 
            public:
-            RequestReadContext(request_t& r)
+            HttpReadContext(request_t& r)
                 : req(r) {}
 
            private:
@@ -763,6 +743,7 @@ namespace socklib {
             bool eos = false;
             HttpBodyInfo bodyinfo;
             string_t rawdata;
+            bool server = false;
 
             virtual bool require() override {
                 return !eos;
@@ -779,17 +760,27 @@ namespace socklib {
                     r.seekend();
                     auto parse_header = [this, &] {
                         r.seek(0);
-                        if (!httpparser_t::parse_httprequest(req, r, bodyinfo)) {
-                            eos = true;
-                            req.phase = RequestPhase::error;
-                            return false;
-                        }
-                        if (req.header_version == 9) {
-                            eos = true;
-                            req.phase = RequestPhase::request_body_recved;
+                        if (server) {
+                            if (!httpparser_t::parse_httprequest(req, r, bodyinfo)) {
+                                eos = true;
+                                req.phase = RequestPhase::error;
+                                return false;
+                            }
+                            if (req.header_version == 9) {
+                                eos = true;
+                                req.phase = RequestPhase::body_recved;
+                            }
+                            else {
+                                req.phase = RequestPhase::request_recved;
+                            }
                         }
                         else {
-                            req.phase = RequestPhase::request_recved;
+                            if (!httpparser_t::parse_httpresponse(req, r, bodyinfo)) {
+                                eos = true;
+                                req.phase = RequestPhase::error;
+                                return false;
+                            }
+                            req.phase = RequestPhase::response_recved;
                         }
                         rawdata.erase(0, r.readpos());
                         nolen = !bodyinfo.chunked && !bodyinfo.has_len;
@@ -814,11 +805,48 @@ namespace socklib {
         };
 
         template <class String, class Header, class Body>
+        struct Http1Client {
+            using base_t = HttpBase<String, Header, Body>;
+            using string_t = typename base_t::string_t;
+            using request_t = typename base_t::request_t;
+            using urlparser_t = typename base_t::urlparser_t;
+            using headerwriter_t = HttpHeaderWriter<String, Header, Body>;
+            using readcontext_t = HttpReadContext<String, Header, Body>;
+
+            static bool request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr) {
+                if (!HttpBase::open(conn, req, cancel, 1)) {
+                    return false;
+                }
+                if (req.resolved_version != 1) {
+                    req.err = HttpError::not_accept_version;
+                    return false;
+                }
+                if (req.method.size() == 0) {
+                    req.method = "GET";
+                }
+                return headerwriter_t::write_request(conn, req, cancel);
+            }
+
+            static bool response(std::shared_ptr<InetConn>& conn, readcontext_t& read, CancelContext* cancel = nullptr) {
+                if (!conn) return false;
+                if (req.phase == RequestPhase::request_sent) {
+                    req.phase = RequestPhase::response_recving;
+                }
+                read.nolen = false;
+                read.server = false;
+                if (!conn->read(read, cancel)) {
+                    return read.nolen
+                }
+                return true;
+            }
+        };
+
+        template <class String, class Header, class Body>
         struct Http1Server {
             using base_t = HttpBase<String, Header, Body>;
             using request_t = typename base_t::request_t;
             using httpwriter_t = HttpHeaderWriter<String, Header, Body>;
-            using readcontext_t = RequestReadContext<String, Header, Body>;
+            using readcontext_t = HttpReadContext<String, Header, Body>;
 
             static bool request(std::shared_ptr<InetConn>& conn, readcontext_t& read, CancelContext* cancel = nullptr) {
                 if (!conn) return false;
@@ -826,6 +854,7 @@ namespace socklib {
                     read.req.phase = RequestPhase::request_recving;
                 }
                 read.nolen = false;
+                read.server = true;
                 if (!conn->read(read, cancel)) {
                     return read.nolen
                 }
