@@ -124,7 +124,7 @@ namespace socklib {
         }
 
         template <class String = std::string, class Header = std::multimap<String, String>, class Body = String>
-        std::shared_ptr<ClientRequestProxy<String, Header, Body>> accept_request() {
+        std::shared_ptr<ServerRequestProxy<String, Header, Body>> accept_request() {
             return std::make_shared<ServerRequestProxy<String, Header, Body>>();
         }
     }  // namespace v2

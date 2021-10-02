@@ -723,8 +723,8 @@ namespace socklib {
                         req.requestbody.push_back(rawdata[0]);
                     }
                     rawdata.clear();
-                    return true;
                 }
+                return true;
             }
         };
 
