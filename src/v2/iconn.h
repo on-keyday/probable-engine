@@ -452,5 +452,16 @@ namespace socklib {
             }
         };
 
+        //IAppConn - application layer connection interface
+        template <class BaseConn>
+        struct IAppConn {
+            virtual std::shared_ptr<BaseConn>& borrow() = 0;
+            virtual std::shared_ptr<BaseConn> hijack() = 0;
+            virtual bool has_conn() const = 0;
+            virtual void close(CancelContext* cancel) = 0;
+        };
+
+        using INetAppConn = IAppConn<InetConn>;
+
     }  // namespace v2
 }  // namespace socklib
