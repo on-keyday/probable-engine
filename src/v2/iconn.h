@@ -3,6 +3,7 @@
 #include "../common/platform.h"
 #include "../common/cancel.h"
 #include <enumext.h>
+#include <memory>
 
 namespace socklib {
     namespace v2 {
@@ -106,8 +107,10 @@ namespace socklib {
                     ::SSL* ssl = nullptr;
                     ::SSL_CTX* ssl_ctx = nullptr;
                     ::addrinfo* addrinfo = nullptr;
-                } net;
+                } net{0};
             };
+
+            constexpr ~ConnStat() {}
         };
 
         //IConn Interface - all connection base

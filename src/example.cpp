@@ -1,4 +1,4 @@
-#include "v2/http1.h"
+#include "v2/http.h"
 #include <map>
 using namespace socklib::v2;
 
@@ -16,4 +16,5 @@ struct TestDerived : TestBase {
 };
 
 int main() {
+    auto p = make_request();
 }
