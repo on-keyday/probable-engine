@@ -120,7 +120,7 @@ namespace socklib {
             virtual void close(CancelContext* cancel = nullptr) = 0;
             virtual bool reset(IResetContext& set) = 0;
             virtual bool stat(ConnStat&) const = 0;
-            virtual ~IConn() = 0;
+            virtual ~IConn() {}
         };
 
         //InetConn - base of all internet connection

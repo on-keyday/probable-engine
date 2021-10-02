@@ -88,24 +88,24 @@ namespace socklib {
                 : readbuf(this->ctx) {}
 
             void set_cacert(const String& cacert) {
-                ctx.cacert = cacert;
+                this->ctx.cacert = cacert;
             }
 
             bool set_default_path(DefaultPath defpath) {
                 if (defpath == DefaultPath::abs_url || defpath == DefaultPath::host_port) {
                     return false;
                 }
-                ctx.default_path = defpath;
+                this->ctx.default_path = defpath;
                 return true;
             }
 
             void set_default_schme(HttpDefaultScheme scehme) {
-                ctx.default_scehme = scehme;
+                this->ctx.default_scehme = scehme;
             }
 
             bool request(const String& method, const String& url, CancelContext* cancel = nullptr) {
-                ctx.url = url;
-                ctx.method = method;
+                this->ctx.url = url;
+                this->ctx.method = method;
                 return client_t::request(this->conn, this->ctx, cancel);
             }
 

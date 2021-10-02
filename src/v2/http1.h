@@ -290,7 +290,7 @@ namespace socklib {
             }
 
             static string_t to_url(parsed_t& parsed) {
-                string_t res = parsed.schme;
+                string_t res = parsed.scheme;
                 res += "://";
                 res += parsed.host;
                 if (parsed.port.size()) {
@@ -525,8 +525,8 @@ namespace socklib {
                     towrite += "\r\n";
                 }
                 WriteContext w;
-                w.ptr = str.c_str();
-                w.bufsize = str.size();
+                w.ptr = towrite.c_str();
+                w.bufsize = towrite.size();
                 return write_to_conn(conn, w, req, cancel);
             }
 
@@ -653,7 +653,7 @@ namespace socklib {
                     req.header_version = 9;
                     return true;
                 }
-                return parse_header(r, body);
+                return parse_header(req, r, body);
             }
 
             template <class Buf>
@@ -693,7 +693,7 @@ namespace socklib {
                     }
                     size_t nowsize = req.requestbody.size();
                     req.requestbody.resize(nowsize + chunksize);
-                    if (r.read_byte(req.requestbody.data() + nowsize, chunksize, commonlib2::translate_byte_as_is, true) < size) {
+                    if (r.read_byte(req.requestbody.data() + nowsize, chunksize, commonlib2::translate_byte_as_is, true) < chunksize) {
                         req.err = HttpError::read_body;
                         req.phase = RequestPhase::error;
                         return false;
@@ -703,7 +703,7 @@ namespace socklib {
                 }
                 else if (bodyinfo.has_len) {
                     if (rawdata.size() >= bodyinfo.size) {
-                        if (r.read_byte(req.requestbody.data(), bodyinfo.size, commonlib2::translate_byte_as_is, true) < size) {
+                        if (r.read_byte(req.requestbody.data(), bodyinfo.size, commonlib2::translate_byte_as_is, true) < bodyinfo.size) {
                             req.err = HttpError::read_body;
                             req.phase = RequestPhase::error;
                         }
