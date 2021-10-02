@@ -16,10 +16,4 @@ struct TestDerived : TestBase {
 };
 
 int main() {
-    Http1Request<std::string, std::multimap<std::string, std::string>, std::vector<char>> request;
-    decltype(request)::request_t ctx;
-    sizeof(ctx);
-    TestDerived de;
-    TestBase& base = de;
-    base.method();
 }

@@ -220,7 +220,15 @@ namespace socklib {
             }
 
             virtual bool has_conn() const override {
-                return (bool)conn;
+                if (!conn) {
+                    return false;
+                }
+                ConnStat stat;
+                conn->stat(stat);
+                if (!any(stat.status & ConnStatus::has_fd)) {
+                    return false;
+                }
+                return true;
             }
 
             virtual void close(CancelContext* cancel) override {
@@ -685,7 +693,7 @@ namespace socklib {
         };
 
         template <class String, class Header, class Body>
-        struct Http1Request {
+        struct Http1Client {
             using base_t = HttpBase<String, Header, Body>;
             using string_t = typename base_t::string_t;
             using request_t = typename base_t::request_t;
@@ -778,12 +786,12 @@ namespace socklib {
         };
 
         template <class String, class Header, class Body>
-        struct Http1Response {
+        struct Http1Server {
             using base_t = HttpBase<String, Header, Body>;
             using request_t = typename base_t::request_t;
             using httpwriter_t = typename HttpHeaderWriter<String, Header, Body>;
 
-            bool request(RequestReadContext& read, CancelContext* cancel = nullptr) {
+            static bool request(RequestReadContext& read, CancelContext* cancel = nullptr) {
                 if (!read.req.has_conn()) {
                     read.req.err = HttpError::transport_not_opened;
                     return false;
@@ -798,7 +806,7 @@ namespace socklib {
                 return true;
             }
 
-            bool response(request_t& req, CancelContext* cancel = nullptr) {
+            static bool response(request_t& req, CancelContext* cancel = nullptr) {
                 if (!req.has_conn()) {
                     req.err = HttpError::transport_not_opened;
                     return false;
