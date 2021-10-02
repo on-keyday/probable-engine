@@ -457,7 +457,7 @@ namespace socklib {
         struct IAppConn {
             virtual std::shared_ptr<BaseConn>& borrow() = 0;
             virtual std::shared_ptr<BaseConn> hijack() = 0;
-            virtual bool has_conn() const = 0;
+            virtual bool enable_conn() const = 0;
             virtual void close(CancelContext* cancel) = 0;
         };
 

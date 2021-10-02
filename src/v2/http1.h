@@ -219,7 +219,7 @@ namespace socklib {
                 return std::move(conn);
             }
 
-            virtual bool has_conn() const override {
+            virtual bool enable_conn() const override {
                 if (!conn) {
                     return false;
                 }
@@ -232,7 +232,9 @@ namespace socklib {
             }
 
             virtual void close(CancelContext* cancel) override {
-                conn->close(cancel);
+                if (conn) {
+                    conn->close(cancel);
+                }
             }
 
             //request params
@@ -252,14 +254,14 @@ namespace socklib {
             std::uint16_t statuscode;
             header_t response;
             body_t responsebody;
-            parsed_t parsed;
-            std::uint8_t resolved_version = 0;
-            std::uint8_t header_version = 0;
 
             //common params
             void (*error_cb)(std::uint64_t code, CancelContext* cancel, const char* msg) = nullptr;
             TCPError tcperr;
             HttpError err;
+            std::uint8_t resolved_version = 0;
+            std::uint8_t header_version = 0;
+            parsed_t parsed;
         };
 
         template <class String, class Header, class Body>
