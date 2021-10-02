@@ -85,7 +85,7 @@ namespace socklib {
 
            public:
             ClientRequestProxy()
-                : readbuf(base_t::ctx) {}
+                : readbuf(this->ctx) {}
 
             void set_cacert(const String& cacert) {
                 ctx.cacert = cacert;
@@ -106,11 +106,11 @@ namespace socklib {
             bool request(const String& method, const String& url, CancelContext* cancel = nullptr) {
                 ctx.url = url;
                 ctx.method = method;
-                return client_t::request(conn, ctx, cancel);
+                return client_t::request(this->conn, this->ctx, cancel);
             }
 
             bool response(CancelContext* cancel) {
-                return client_t::response(conn, readbuf, cancel);
+                return client_t::response(this->conn, readbuf, cancel);
             }
         };
 

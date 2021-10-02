@@ -133,21 +133,21 @@ namespace PROJECT_NAME {
         return split_cmd<Buf, Vec>(Buf(str), n, line);
     }
 
-    template <class Buf, class Str, class cmp_t = nexpf_t<Buf>, class not_expect_t = cmpf_t<Buf>>
+    template <class Buf, class Str, class cmp_t = cmpf_t<Buf>, class not_expect_t = nexpf_t<Buf>>
     bool str_eq(Reader<Buf>& r, Str&& token, cmp_t&& cmp = cmp_t(), not_expect_t&& nexpt = not_expect_t()) {
         return r.expect(token, nexpt, cmp) && r.eof();
     }
 
-    template <class Buf, class Str, class cmp_t = nexpf_t<Buf>, class not_expect_t = cmpf_t<Buf>>
+    template <class Buf, class Str, class cmp_t = cmpf_t<Buf>, class not_expect_t = nexpf_t<Buf>>
     bool str_eq(Buf&& base, Str&& token, cmp_t&& cmp = cmp_t(), not_expect_t&& nexpt = not_expect_t()) {
         Reader<Buf> r(std::forward<Buf>(base));
-        return equal(r, token, cmp, nexpt);
+        return str_eq(r, token, cmp, nexpt);
     }
 
-    template <class C, class Str, class cmp_t = nexpf_t<C*>, class not_expect_t = cmpf_t<C*>>
+    template <class C, class Str, class cmp_t = cmpf_t<C*>, class not_expect_t = nexpf_t<C*>>
     bool str_eq(C* base, Str&& token, cmp_t&& cmp = cmp_t(), not_expect_t&& nexpt = not_expect_t()) {
         Reader<C*> r(base);
-        return equal(r, token, cmp, nexpt);
+        return str_eq(r, token, cmp, nexpt);
     }
 
 }  // namespace PROJECT_NAME

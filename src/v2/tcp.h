@@ -43,7 +43,7 @@ namespace socklib {
         template <class String>
         struct Resolver {
            private:
-            static bool resolve_detail(const char* host, const char* service, int ipver, ::addrinfo*& info) {
+            static bool resolve_detail(TCPOpenContext<String>& ctx, const char* host, const char* service, int ipver, ::addrinfo*& info) {
                 ::addrinfo hint = {0};
                 hint.ai_socktype = SOCK_STREAM;
                 switch (ipver) {
@@ -57,7 +57,7 @@ namespace socklib {
                         hint.ai_family = AF_UNSPEC;
                         break;
                 }
-                if (::getaddrinfo(ctx.host, ctx.service, &hint, &info) != 0) {
+                if (::getaddrinfo(host, service, &hint, &info) != 0) {
                     ctx.err = TCPError::resolve_address;
                     return false;
                 }
@@ -67,18 +67,18 @@ namespace socklib {
            public:
             template <class C>
             static bool resolve(TCPOpenContext<C*>& ctx, ::addrinfo*& info) {
-                return resolve_detail(ctx.host, ctx.service, ctx.ip_version, info);
+                return resolve_detail(ctx, ctx.host, ctx.service, ctx.ip_version, info);
             }
 
             template <class Str>
             static bool resolve(TCPOpenContext<Str>& ctx, ::addrinfo*& info) {
-                return resolve_detail(ctx.host.c_str(), ctx.service.c_str(), ctx.ip_version, info);
+                return resolve_detail(ctx, ctx.host.c_str(), ctx.service.c_str(), ctx.ip_version, info);
             }
 
             static bool connect_loop(::addrinfo* info, int& sock, TCPOpenContext<String>& ctx, CancelContext* cancel) {
                 OsErrorContext canceler(cancel);
-                auto tmp = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-                if (tmp < 0) continue;
+                auto tmp = ::socket(info->ai_family, info->ai_socktype, info->ai_protocol);
+                if (tmp < 0) return false;
                 u_long flag = 1;
                 ::ioctlsocket(tmp, FIONBIO, &flag);
                 auto res = ::connect(tmp, info->ai_addr, info->ai_addrlen);
@@ -109,7 +109,7 @@ namespace socklib {
                     }
                     if (FD_ISSET(tmp, &sucset)) {
                         sock = tmp;
-                        selected = p;
+                        //selected = p;
                         flag = 0;
                         ::ioctlsocket(tmp, FIONBIO, &flag);
                         return true;
@@ -290,7 +290,7 @@ namespace socklib {
                         reset.addr = selected;
                         reset.sock = sock;
                         reset.ssl = ssl;
-                        reset.sslctx = sslctx;
+                        reset.ctx = sslctx;
                         res->reset(reset);
                     }
                     else {

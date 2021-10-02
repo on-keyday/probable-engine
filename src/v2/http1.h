@@ -5,6 +5,7 @@
 
 #include <net_helper.h>
 #include <map>
+#include <string.h>
 
 namespace socklib {
     namespace v2 {
@@ -275,11 +276,15 @@ namespace socklib {
             using request_t = RequestContext<String, Header, Body>;
             using parsed_t = typename request_t::parsed_t;
 
-            static string_t host_with_port(parsed_t& parsed) {
+            static string_t host_with_port(parsed_t& parsed, const string_t& default_port = string_t()) {
                 string_t res = parsed.host;
                 if (parsed.port.size()) {
                     res += ':';
                     res += parsed.port;
+                }
+                else if (default_port.size()) {
+                    res += ':';
+                    res += default_port;
                 }
                 return res;
             }
@@ -312,12 +317,12 @@ namespace socklib {
                     }
                 };
                 parsed = parsed_t();
-                commonlib2::Reader(url).readwhile(commonlib2::parse_url, parsed);
+                commonlib2::Reader<string_t&>(url).readwhile(commonlib2::parse_url, parsed);
                 if (!parsed.succeed) {
                     set_err(HttpError::url_parse);
                     return false;
                 }
-                if (expect1 || expect2) {
+                if (expect1.size() || expect2.size()) {
                     if (parsed.scheme.size() && parsed.scheme != expect1 && parsed.scheme != expect2) {
                         set_err(HttpError::expected_scheme);
                         return false;
@@ -333,14 +338,14 @@ namespace socklib {
                     commonlib2::URLEncodingContext<std::string> encctx;
                     string_t path, query;
                     encctx.path = true;
-                    commonlib2::Reader(parsed.path).readwhile(path, commonlib2::url_encode, &encctx);
+                    commonlib2::Reader<string_t&>(parsed.path).readwhile(path, commonlib2::url_encode, &encctx);
                     if (encctx.failed) {
                         set_err(HttpError::url_encode);
                         return true;
                     }
                     encctx.query = true;
                     encctx.path = false;
-                    commonlib2::Reader(parsed.query).readwhile(query, commonlib2::url_encode, &encctx);
+                    commonlib2::Reader<string_t&>(parsed.query).readwhile(query, commonlib2::url_encode, &encctx);
                     if (encctx.failed) {
                         set_err(HttpError::url_encode);
                         return true;
@@ -389,7 +394,7 @@ namespace socklib {
                 }
                 tcpopen.stat.type = ConnType::tcp_over_ssl;
                 if (req.parsed.scheme == "https") {
-                    tcpope.stat.status = ConnStatus::secure;
+                    tcpopen.stat.status = ConnStatus::secure;
                 }
                 tcpopen.ip_version = req.ip_version;
                 tcpopen.host = req.parsed.host;
@@ -416,7 +421,7 @@ namespace socklib {
                     unsigned int len = 0;
                     SSL_get0_alpn_selected(stat.net.ssl, &data, &len);
                     if (!data) {
-                        if (!any(req.falg & RequestFlag::ignore_alpn_failure)) {
+                        if (!any(req.flag & RequestFlag::ignore_alpn_failure)) {
                             req.err = HttpError::alpn_failed;
                             return false;
                         }
@@ -427,18 +432,18 @@ namespace socklib {
                     switch (req.http_version) {
                         case 1:
                             req.resolved_version = 1;
-                            result = strncmp(tmp, "http/1.1", 8) == 0;
+                            result = strncmp(*tmp, "http/1.1", 8) == 0;
                             break;
                         case 2:
                             req.resolved_version = 2;
-                            result = strncmp(tmp, "h2", 2) == 0;
+                            result = strncmp(*tmp, "h2", 2) == 0;
                             break;
                         default:
-                            if (strncmp(tmp, "h2", 2) == 0) {
+                            if (strncmp(*tmp, "h2", 2) == 0) {
                                 req.resolved_version = 2;
                                 result = true;
                             }
-                            else if (strncmp(tmp, "http/1.1", 8) == 0) {
+                            else if (strncmp(*tmp, "http/1.1", 8) == 0) {
                                 req.resolved_version = 1;
                                 result = true;
                             }
@@ -450,7 +455,7 @@ namespace socklib {
                     }
                 }
                 req.phase = RequestPhase::open_direct;
-                req.conn = std::move(tmpconn);
+                conn = std::move(tmpconn);
                 return true;
             }
         };
@@ -483,11 +488,11 @@ namespace socklib {
             using request_t = typename base_t::request_t;
             using errhandle_t = ErrorHandler<String, Header, Body>;
 
-            bool write_to_conn(std::shared_ptr<InetConn> conn, WriteContext& w, request_t& req, CancelContext* cancel) {
-                auto error = [&](std::uint64_t code, CancelContext* cancel, const char* msg) {
+            static bool write_to_conn(std::shared_ptr<InetConn> conn, WriteContext& w, request_t& req, CancelContext* cancel) {
+                auto error = [&](std::int64_t code, CancelContext* cancel, const char* msg) {
                     errhandle_t::on_error(req, code, cancel, msg);
                 };
-                w.errhandler = [](void* e, std::uint64_t code, CancelContext* cancel, const char* msg) {
+                w.errhandler = +[](void* e, std::int64_t code, CancelContext* cancel, const char* msg) {
                     auto f = (decltype(error)*)e;
                     (*f)(code, cancel, msg);
                 };
@@ -495,7 +500,7 @@ namespace socklib {
                 return conn->write(w, cancel);
             }
 
-            bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, request_t& req, CancelContext* cancel) {
+            static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, request_t& req, CancelContext* cancel) {
                 for (auto& h : req.request) {
                     using commonlib2::str_eq;
                     if (str_eq(h.first, "host", base_t::header_cmp) || str_eq(h.first, "content-length", base_t::header_cmp)) {
@@ -525,11 +530,11 @@ namespace socklib {
                 return write_to_conn(conn, w, req, cancel);
             }
 
-            bool write_request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
+            static bool write_request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
                 string_t towrite = req.method;
                 towrite += ' ';
                 if (req.default_path == DefaultPath::host_port) {
-                    towrite += urlparser_t::host_and_port(req.parsed);
+                    towrite += urlparser_t::host_with_port(req.parsed);
                 }
                 else if (req.default_path == DefaultPath::abs_url) {
                     towrite += urlparser_t::to_url(req.parsed);
@@ -546,7 +551,7 @@ namespace socklib {
                 return write_header_common(conn, towrite, req, cancel);
             }
 
-            bool write_response(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
+            static bool write_response(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
                 string_t towrite;
                 if (req.header_version == 9) {
                     WriteContext w;
@@ -730,14 +735,10 @@ namespace socklib {
             using string_t = typename base_t::string_t;
             using httpparser_t = HttpHeaderReader<String, Header, Body>;
             using errhandle_t = ErrorHandler<String, Header, Body>;
-            friend struct Http1Client;
-            friend struct Http1Server;
 
-           public:
             HttpReadContext(request_t& r)
                 : req(r) {}
 
-           private:
             bool nolen = false;
             request_t& req;
             bool eos = false;
@@ -758,10 +759,10 @@ namespace socklib {
                 rawdata.append(read, size);
                 if (req.phase == RequestPhase::request_recving) {
                     r.seekend();
-                    auto parse_header = [this, &] {
+                    auto parse_header = [&, this] {
                         r.seek(0);
                         if (server) {
-                            if (!httpparser_t::parse_httprequest(req, r, bodyinfo)) {
+                            if (!httpparser_t::parse_request(req, r, bodyinfo)) {
                                 eos = true;
                                 req.phase = RequestPhase::error;
                                 return false;
@@ -775,7 +776,7 @@ namespace socklib {
                             }
                         }
                         else {
-                            if (!httpparser_t::parse_httpresponse(req, r, bodyinfo)) {
+                            if (!httpparser_t::parse_response(req, r, bodyinfo)) {
                                 eos = true;
                                 req.phase = RequestPhase::error;
                                 return false;
@@ -796,7 +797,7 @@ namespace socklib {
                         r.increment();
                     }
                 }
-                if (req.phase = RequestPhase::request_recved) {
+                if (req.phase == RequestPhase::request_recved) {
                     if (!httpparser_t::read_body(req, bodyinfo, rawdata)) {
                         eos = true;
                     }
@@ -814,7 +815,7 @@ namespace socklib {
             using readcontext_t = HttpReadContext<String, Header, Body>;
 
             static bool request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr) {
-                if (!HttpBase::open(conn, req, cancel, 1)) {
+                if (!base_t::open(conn, req, cancel, 1)) {
                     return false;
                 }
                 if (req.resolved_version != 1) {
