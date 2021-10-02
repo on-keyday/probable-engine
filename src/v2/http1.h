@@ -7,6 +7,139 @@
 
 namespace socklib {
     namespace v2 {
+        constexpr const char* reason_phrase(unsigned short status, bool dav = false) {
+            switch (status) {
+                case 100:
+                    return "Continue";
+                case 101:
+                    return "Switching Protocols";
+                case 103:
+                    return "Early Hints";
+                case 200:
+                    return "OK";
+                case 201:
+                    return "Created";
+                case 202:
+                    return "Accepted";
+                case 203:
+                    return "Non-Authoritative Information";
+                case 204:
+                    return "No Content";
+                case 205:
+                    return "Reset Content";
+                case 206:
+                    return "Partial Content";
+                case 300:
+                    return "Multiple Choices";
+                case 301:
+                    return "Moved Permently";
+                case 302:
+                    return "Found";
+                case 303:
+                    return "See Other";
+                case 304:
+                    return "Not Modified";
+                case 307:
+                    return "Temporary Redirect";
+                case 308:
+                    return "Permanent Redirect";
+                case 400:
+                    return "Bad Request";
+                case 401:
+                    return "Unauthorized";
+                case 402:
+                    return "Payment Required";
+                case 403:
+                    return "Forbidden";
+                case 404:
+                    return "Not Found";
+                case 405:
+                    return "Method Not Allowed";
+                case 406:
+                    return "Not Acceptable";
+                case 407:
+                    return "Proxy Authentication Required";
+                case 408:
+                    return "Request Timeout";
+                case 409:
+                    return "Conflict";
+                case 410:
+                    return "Gone";
+                case 411:
+                    return "Length Required";
+                case 412:
+                    return "Precondition Failed";
+                case 413:
+                    return "Payload Too Large";
+                case 414:
+                    return "URI Too Long";
+                case 415:
+                    return "Unsupported Media Type";
+                case 416:
+                    return "Range Not Satisfiable";
+                case 417:
+                    return "Expectation Failed";
+                case 418:
+                    return "I'm a teapot";
+                case 421:
+                    return "Misdirected Request";
+                case 425:
+                    return "Too Early";
+                case 426:
+                    return "Upgrade Required";
+                case 429:
+                    return "Too Many Requests";
+                case 431:
+                    return "Request Header Fields Too Large";
+                case 451:
+                    return "Unavailable For Legal Reasons";
+                case 500:
+                    return "Internal Server Error";
+                case 501:
+                    return "Not Implemented";
+                case 502:
+                    return "Bad Gateway";
+                case 503:
+                    return "Service Unavailable";
+                case 504:
+                    return "Gateway Timeout";
+                case 505:
+                    return "HTTP Version Not Supported";
+                case 506:
+                    return "Variant Also Negotiates";
+                case 510:
+                    return "Not Extended";
+                case 511:
+                    return "Network Authentication Required";
+                default:
+                    break;
+            }
+            if (dav) {
+                switch (status) {
+                    case 102:
+                        return "Processing";
+                    case 207:
+                        return "Multi-Status";
+                    case 208:
+                        return "Already Reported";
+                    case 226:
+                        return "IM Used";
+                    case 422:
+                        return "Unprocessable Entity";
+                    case 423:
+                        return "Locked";
+                    case 424:
+                        return "Failed Dependency";
+                    case 507:
+                        return "Insufficient Storage";
+                    case 508:
+                        return "Loop Detected";
+                    default:
+                        break;
+                }
+            }
+            return "Unknown";
+        }
 
         enum class RequestPhase : std::uint8_t {
             idle,
@@ -15,11 +148,11 @@ namespace socklib {
             request_sent,
             request_recving,
             request_recved,
-            request_body_parsed,
+            request_body_recved,
             response_sent,
             response_recving,
             response_recved,
-            response_body_parsed,
+            response_body_recved,
             closed,
             error,
         };
@@ -32,6 +165,8 @@ namespace socklib {
             alpn_failed,
             not_accept_version,
             invalid_request_format,
+            read_body,
+            transport_not_opened,
         };
 
         enum class RequestFlag : std::uint8_t {
@@ -102,7 +237,7 @@ namespace socklib {
         struct URLParser {
             using string_t = String;
             using request_t = RequestContext<String, Header, Body>;
-            using parsed_t = request_t::parsed_t;
+            using parsed_t = typename request_t::parsed_t;
 
             static string_t host_with_port(parsed_t& parsed) {
                 string_t res = parsed.host;
@@ -173,7 +308,7 @@ namespace socklib {
             using string_t = String;
             using urlparser_t = URLParser<String, Header, Body>;
             using request_t = RequestContext<String, Header, Body>;
-            using parsed_t = request_t::parsed_t;
+            using parsed_t = typename request_t::parsed_t;
 
             static bool header_cmp(unsigned char c1, unsigned char c2) {
                 return std::toupper(c1) == std::toupper(c2);
@@ -272,10 +407,43 @@ namespace socklib {
         };
 
         template <class String, class Header, class Body>
+        struct ErrorHandler {
+            using base_t = HttpBase<String, Header, Body>;
+            using string_t = typename base_t::string_t;
+            using request_t = typename base_t::request_t;
+            static void on_error(request_t& req, std::uint64_t code, CancelContext* cancel, const char* msg) {
+                std::string_view m(msg);
+                if (m.find("ssl") != ~0) {
+                    req.tcperr = TCPError::ssl_write;
+                }
+                else {
+                    req.tcperr = TCPError::tcp_write;
+                }
+                req.err = HttpError::tcp_error;
+                if (req.error_cb) {
+                    req.error_cb(code, cancel, msg);
+                }
+            }
+        };
+
+        template <class String, class Header, class Body>
         struct HttpHeaderWriter {
             using base_t = HttpBase<String, Header, Body>;
-            using string_t = base_t::string_t;
-            using request_t = base_t::request_t;
+            using string_t = typename base_t::string_t;
+            using request_t = typename base_t::request_t;
+            using errhandle_t = ErrorHandler<String, Header, Body>;
+
+            bool write_to_conn(WriteContext& w, request_t& req, CancelContext* cancel, std::shared_ptr<InetConn>& conn) {
+                auto error = [&](std::uint64_t code, CancelContext* cancel, const char* msg) {
+                    errhandle_t::on_error(req, code, cancel, msg);
+                };
+                w.errhandler = [](void* e, std::uint64_t code, CancelContext* cancel, const char* msg) {
+                    auto f = (decltype(error)*)e;
+                    (*f)(code, cancel, msg);
+                };
+                w.usercontext = &error;
+                return conn->write(w, cancel);
+            }
 
             bool write_header_common(string_t& towrite, std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
                 for (auto& h : req.request) {
@@ -304,30 +472,7 @@ namespace socklib {
                 WriteContext w;
                 w.ptr = str.c_str();
                 w.bufsize = str.size();
-                auto error = [&](std::uint64_t code, CancelContext* cancel, const char* msg) {
-                    std::string_view m(msg);
-                    if (m.find("ssl") != ~0) {
-                        req.tcperr = TCPError::ssl_write;
-                    }
-                    else {
-                        req.tcperr = TCPError::tcp_write;
-                    }
-                    req.err = HttpError::tcp_error;
-                    if (req.error_cb) {
-                        req.error_cb(code, cancel, msg);
-                    }
-                };
-                w.errhandler = [](void* e, std::uint64_t code, CancelContext* cancel, const char* msg) {
-                    auto f = (decltype(error)*)e;
-                    (*f)(code, cancel, msg);
-                };
-                w.usercontext = &error;
-                if (conn->write(w, cancel)) {
-                    req.phase = RequestPhase::request_sent;
-                    return true;
-                }
-                req.phase = RequestPhase::error;
-                return false;
+                return write_to_conn(w, req, cancel, conn);
             }
 
             bool write_request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
@@ -345,23 +490,33 @@ namespace socklib {
 
             bool write_response(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
                 string_t towrite;
-                if (req.header_version == 11) {
-                    towrite += "HTTP/1.1 ";
+                if (req.header_version == 9) {
+                    WriteContext w;
+                    w.ptr = req.responsebody.data();
+                    w.bufsize = req.responsebody.size();
+                    if (write_to_conn(w, req, cancel, conn)) {
+                        req.phase = RequestPhase::response_sent;
+                        return true;
+                    }
+                    req.phase = RequestPhase::error;
+                    return false;
                 }
                 else if (req.header_version == 10) {
-                    towrite += "HTTP/1.0";
+                    towrite += "HTTP/1.0 ";
                 }
                 else {
-                    conn->write();
+                    towrite += "HTTP/1.1 ";
                 }
-                towrite += req.parsed.path;
-                towrite += req.parsed.query;
+                towrite += std::to_string(req.statuscode).c_str();
                 towrite += ' ';
-                towrite += "HTTP/1.1\r\n";
-                towrite += "Host: ";
-                towrite += urlparser_t::host_with_port(req.parsed);
+                towrite += reason_phrase(req.statuscode);
                 towrite += "\r\n";
-                return write_header_common(towrite, conn, req, cancel);
+                if (write_header_common(towrite, conn, req, cancel)) {
+                    req.phase = RequestPhase::response_sent;
+                    return true;
+                }
+                req.phase = RequestPhase::error;
+                return false;
             }
         };
 
@@ -374,8 +529,8 @@ namespace socklib {
         template <class String, class Header, class Body>
         struct HttpHeaderReader {
             using base_t = HttpBase<String, Header, Body>;
-            using request_t = base_t::request_t;
-            using string_t = base_t::string_t;
+            using request_t = typename base_t::request_t;
+            using string_t = typename base_t::string_t;
 
             template <class Buf>
             static bool parse_header(request_t& req, commonlib2::Reader<Buf>& r, HttpBodyInfo& body) {
@@ -438,6 +593,7 @@ namespace socklib {
                 return parse_header(r, body);
             }
 
+            template <class Buf>
             static bool parse_response(request_t& req, commonlib2::Reader<Buf>& r, HttpBodyInfo& body) {
                 using commonlib2::str_eq, commonlib2::getline, commonlib2::split;
                 auto status = split(getline(r, false), " ", 2);
@@ -451,14 +607,68 @@ namespace socklib {
                 commonlib2::Reader(status[1]) >> req.statuscode;
                 return parse_header(req, r, body);
             }
+
+            static bool read_body(request_t& req, HttpBodyInfo& bodyinfo, string_t& rawdata) {
+                commonlib2::Reader<string_t&> r(rawdata);
+                if (bodyinfo.chunked) {
+                    r.expect("\r\n");
+                    using commonlib2::getline;
+                    bool noext = true;
+                    string_t num = "0x";
+                    getline(r, num, false, &noext);
+                    if (noext) {
+                        return true;
+                    }
+                    size_t chunksize;
+                    commonlib2::Reader(num) >> chunksize;
+                    if (chunksize == 0) {
+                        return false;
+                    }
+                    if (r.readable() < chunksize) {
+                        return true;
+                    }
+                    size_t nowsize = req.requestbody.size();
+                    req.requestbody.resize(nowsize + chunksize);
+                    if (r.read_byte(req.requestbody.data() + nowsize, chunksize, commonlib2::translate_byte_as_is, true) < size) {
+                        req.err = HttpError::read_body;
+                        req.phase = RequestPhase::error;
+                        return false;
+                    }
+                    r.expect("\r\n");
+                    rawdata.erase(0, r.readpos());
+                }
+                else if (bodyinfo.has_len) {
+                    if (rawdata.size() >= bodyinfo.size) {
+                        if (r.read_byte(req.requestbody.data(), bodyinfo.size, commonlib2::translate_byte_as_is, true) < size) {
+                            req.err = HttpError::read_body;
+                            req.phase = RequestPhase::error;
+                        }
+                        else {
+                            req.phase = RequestPhase::request_body_recved;
+                        }
+                        rawdata.erase(0, bodyinfo.size);
+                        return false;
+                    }
+                }
+                else {
+                    if (rawdata.size() == 0) {
+                        return false;
+                    }
+                    for (size_t i = 0; i < rawdata.size(); i++) {
+                        req.requestbody.push_back(rawdata[0]);
+                    }
+                    rawdata.clear();
+                    return true;
+                }
+            }
         };
 
         template <class String, class Header, class Body>
         struct Http1Request {
             using base_t = HttpBase<String, Header, Body>;
-            using string_t = base_t::string_t;
-            using request_t = base_t::request_t;
-            using urlparser_t = base_t::urlparser_t;
+            using string_t = typename base_t::string_t;
+            using request_t = typename base_t::request_t;
+            using urlparser_t = typename base_t::urlparser_t;
             using headerwriter_t = HttpHeaderWriter<String, Header, Body>;
             std::shared_ptr<InetConn> conn;
 
@@ -478,42 +688,71 @@ namespace socklib {
         };
 
         template <class String, class Header, class Body>
-        struct HttpReadContext : IReadContext {
+        struct RequestReadContext : IReadContext {
             using base_t = HttpBase<String, Header, Body>;
-            using request_t = base_t::request_t;
-            using string_t = base_t::string_t;
+            using request_t = typename base_t::request_t;
+            using string_t = typename base_t::string_t;
             using httpparser_t = HttpHeaderReader<String, Header, Body>;
+            using errhandle_t = ErrorHandler<String, Header, Body>;
+            friend struct Http1Request;
+            friend struct Http1Response;
+
+           public:
+            RequestReadContext(request_t& r)
+                : req(r) {}
+
+           private:
+            bool nolen = false;
             request_t& req;
             bool eos = false;
             HttpBodyInfo bodyinfo;
-            std::string rawdata;
+            string_t rawdata;
 
-            HttpReadContext(request_t& r)
-                : req(r) {}
-
-            virtual bool require() {
+            virtual bool require() override {
                 return !eos;
             }
 
+            virtual void on_error(std::uint64_t errorcode, CancelContext* cancel, const char* msg) override {
+                errhandle_t::on_error(req, errorcode, cancel, msg);
+            }
+
             virtual void append(const char* read, size_t size) override {
+                commonlib2::Reader<string_t&> r(rawdata);
+                rawdata.append(read, size);
                 if (req.phase == RequestPhase::request_recving) {
+                    r.seekend();
                     auto parse_header = [this, &] {
-                        commonlib2::Reader<string_t&> r(rawdata);
+                        r.seek(0);
                         if (!httpparser_t::parse_httprequest(req, r, bodyinfo)) {
                             eos = true;
                             req.phase = RequestPhase::error;
                             return false;
                         }
+                        if (req.header_version == 9) {
+                            eos = true;
+                            req.phase = RequestPhase::request_body_recved;
+                        }
+                        else {
+                            req.phase = RequestPhase::request_recved;
+                        }
+                        rawdata.erase(0, r.readpos());
+                        nolen = !bodyinfo.chunked && !bodyinfo.has_len;
+                        return true;
                     };
-                    rawdata.append(read, size);
-                    auto pos = rawdata.find("\r\n\r\n");
-                    if (pos != ~0) {
-                    }
-                    pos = rawdata.find("\n\n");
-                    if (pos != ~0) {
+                    while (!r.ceof()) {
+                        if (r.expect("\r\n\r\n") || r.expect("\n\n")) {
+                            if (!parse_header()) {
+                                return;
+                            }
+                            break;
+                        }
+                        r.increment();
                     }
                 }
                 if (req.phase = RequestPhase::request_recved) {
+                    if (!httpparser_t::read_body(req, bodyinfo, rawdata)) {
+                        eos = true;
+                    }
                 }
             }
         };
@@ -521,14 +760,31 @@ namespace socklib {
         template <class String, class Header, class Body>
         struct Http1Response {
             using base_t = HttpBase<String, Header, Body>;
+            using request_t = typename base_t::request_t;
             std::shared_ptr<InetConn> conn;
 
-            bool request(request_t& req, CancelContext* cancel = nullptr) {
+            bool request(RequestReadContext& read, CancelContext* cancel = nullptr) {
+                if (!conn) {
+                    read.req.err = HttpError::transport_not_opened;
+                    return false;
+                }
+                ConnStat stat;
+                conn->stat(stat);
+                if (!any(stat.status & ConnStatus::has_fd)) {
+                    read.req.err = HttpError::transport_not_opened;
+                    return false;
+                }
                 if (req.phase == RequestPhase::idle) {
                     req.phase = RequestPhase::request_recving;
                 }
-                HttpReadContext read(req);
-                return conn->read(read, cancel);
+                read.nolen = false;
+                if (!conn->read(read, cancel)) {
+                    return read.nolen
+                }
+                return true;
+            }
+
+            bool response(request_t& req, CancelContext* cancel = nullptr) {
             }
         };
 

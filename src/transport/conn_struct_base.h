@@ -1,5 +1,6 @@
 #pragma once
 #include "sockbase.h"
+#include <memory>
 
 namespace socklib {
     struct SockReader {

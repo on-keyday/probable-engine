@@ -5,7 +5,7 @@
 #include <enumext.h>
 
 namespace socklib {
-    inline namespace v2 {
+    namespace v2 {
         struct IWriteContext {
             virtual const char* bufptr() = 0;
             virtual size_t size() = 0;
