@@ -8,7 +8,7 @@
 namespace socklib {
     namespace v2 {
 
-        enum class RequestPhase {
+        enum class RequestPhase : std::uint8_t {
             idle,
             open_direct,
             open_proxy,
@@ -24,22 +24,48 @@ namespace socklib {
             error,
         };
 
-        enum class HttpError {
+        enum class HttpError : std::uint8_t {
             tcp_error,
             url_parse,
             url_encode,
             expected_scheme,
             alpn_failed,
             not_accept_version,
+            invalid_request_format,
         };
 
-        enum class RequestFlag {
-            url_encoded,
-            use_proxy,
-            ignore_alpn_failure,
+        enum class RequestFlag : std::uint8_t {
+            url_encoded = 0x1,
+            use_proxy = 0x2,
+            ignore_alpn_failure = 0x4,
+            allow_http09 = 0x8,
         };
 
         DEFINE_ENUMOP(RequestFlag)
+
+        enum class DefaultPath : std::uint8_t {
+            root,
+            index_html,
+            index_htm,
+            wildcard,
+            robot_txt,
+        };
+
+        BEGIN_ENUM_STRING_MSG(DefaultPath, default_path)
+        ENUM_STRING_MSG(DefaultPath::index_html, "/index.html")
+        ENUM_STRING_MSG(DefaultPath::index_htm, "/index.htm")
+        ENUM_STRING_MSG(DefaultPath::wildcard, "*")
+        ENUM_STRING_MSG(DefaultPath::robot_txt, "/robot.txt")
+        END_ENUM_STRING_MSG("/")
+
+        enum class HttpDefaultScheme : std::uint8_t {
+            http,
+            https,
+        };
+
+        BEGIN_ENUM_STRING_MSG(HttpDefaultScheme, default_scheme)
+        ENUM_STRING_MSG(HttpDefaultScheme::https, "https")
+        END_ENUM_STRING_MSG("http")
 
         template <class String, class Header, class Body>
         struct RequestContext {
@@ -50,14 +76,14 @@ namespace socklib {
             //input params
             string_t method;  //if not set, GET will set
             string_t url;
-            string_t default_path;
-            string_t default_scheme;
+            DefaultPath default_path = DefaultPath::root;
+            HttpDefaultScheme default_scheme = HttpDefaultScheme::http;
             RequestFlag flag;
             string_t proxy;
             header_t request;
             body_t requestbody;
-            int ip_version = 0;
-            int http_version = 0;
+            std::uint8_t ip_version = 0;
+            std::uint8_t http_version = 0;
             void (*error_cb)(std::uint64_t code, CancelContext* cancel, const char* msg) = nullptr;
 
             //mutable params (overwritten)
@@ -66,13 +92,10 @@ namespace socklib {
             header_t response;
             body_t responsebody;
             parsed_t parsed;
-            int resolved_version = 0;
-            int header_version = 0;
+            std::uint8_t resolved_version = 0;
+            std::uint8_t header_version = 0;
             TCPError tcperr;
             HttpError err;
-
-            //temporary data
-            string_t rawdata;
         };
 
         template <class String, class Header, class Body>
@@ -96,7 +119,7 @@ namespace socklib {
             }
 
             static bool parse(string_t& url, parsed_t& parsed,
-                              const string_t& default_scheme, const string_t& default_path,
+                              HttpDefaultScheme defscheme, DefaultPath defpath,
                               HttpError* err = nullptr, bool urlencoded = false,
                               const string_t& expect1 = string_t(), const string_t& expect2 = string_t()) {
                 auto set_err = [&](HttpError e) {
@@ -117,10 +140,10 @@ namespace socklib {
                     }
                 }
                 if (parsed.scheme.size() == 0) {
-                    parsed.scheme = default_scheme;
+                    parsed.scheme = default_scheme(defscheme);
                 }
                 if (parsed.path.size() == 0) {
-                    parsed.path = default_path;
+                    parsed.path = default_path(defpath);
                 }
                 if (!urlencoded) {
                     commonlib2::URLEncodingContext<std::string> encctx;
@@ -254,7 +277,7 @@ namespace socklib {
             using string_t = base_t::string_t;
             using request_t = base_t::request_t;
 
-            bool write_header_common(string_t& towrite, std::shared_ptr<InetConn> conn, request_t& req, CancelContext* cancel) {
+            bool write_header_common(string_t& towrite, std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
                 for (auto& h : req.request) {
                     using commonlib2::str_eq;
                     if (str_eq(h.first, "host", base_t::header_cmp) || str_eq(h.first, "content-length", base_t::header_cmp)) {
@@ -303,12 +326,34 @@ namespace socklib {
                     req.phase = RequestPhase::request_sent;
                     return true;
                 }
+                req.phase = RequestPhase::error;
                 return false;
             }
 
-            bool write_request(std::shared_ptr<InetConn> conn, request_t& req, CancelContext* cancel) {
+            bool write_request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
                 string_t towrite = req.method;
                 towrite += ' ';
+                towrite += req.parsed.path;
+                towrite += req.parsed.query;
+                towrite += ' ';
+                towrite += "HTTP/1.1\r\n";
+                towrite += "Host: ";
+                towrite += urlparser_t::host_with_port(req.parsed);
+                towrite += "\r\n";
+                return write_header_common(towrite, conn, req, cancel);
+            }
+
+            bool write_response(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
+                string_t towrite;
+                if (req.header_version == 11) {
+                    towrite += "HTTP/1.1 ";
+                }
+                else if (req.header_version == 10) {
+                    towrite += "HTTP/1.0";
+                }
+                else {
+                    conn->write();
+                }
                 towrite += req.parsed.path;
                 towrite += req.parsed.query;
                 towrite += ' ';
@@ -383,7 +428,12 @@ namespace socklib {
                     }
                 }
                 else {
+                    if (!any(req.flag & RequestFlag::allow_http09)) {
+                        req.err = HttpError::invalid_request_format;
+                        return false;
+                    }
                     req.header_version = 9;
+                    return true;
                 }
                 return parse_header(r, body);
             }
@@ -435,6 +485,8 @@ namespace socklib {
             using httpparser_t = HttpHeaderReader<String, Header, Body>;
             request_t& req;
             bool eos = false;
+            HttpBodyInfo bodyinfo;
+            std::string rawdata;
 
             HttpReadContext(request_t& r)
                 : req(r) {}
@@ -446,8 +498,8 @@ namespace socklib {
             virtual void append(const char* read, size_t size) override {
                 if (req.phase == RequestPhase::request_recving) {
                     auto parse_header = [this, &] {
-                        commonlib2::Reader<string_t&> r(req.rawdata);
-                        if () {
+                        commonlib2::Reader<string_t&> r(rawdata);
+                        if (!httpparser_t::parse_httprequest(req, r, bodyinfo)) {
                             eos = true;
                             req.phase = RequestPhase::error;
                             return false;

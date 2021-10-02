@@ -15,7 +15,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 find_package(Threads REQUIRED)
 
-add_executable(sock "src/main.cpp")
+add_executable(sock "src/example.cpp")
 
 if(WIN32)
 target_link_libraries(sock libssl libcrypto ws2_32)

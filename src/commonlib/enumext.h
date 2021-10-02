@@ -91,16 +91,22 @@ namespace PROJECT_NAME {
             return ~e;
         }
     };
-
-#define BEGIN_ENUM_ERROR_MSG(TYPE)                \
-    constexpr const char* error_message(TYPE e) { \
+#define BEGIN_ENUM_STRING_MSG(TYPE, FUNC) \
+    constexpr const char* FUNC(TYPE e) {  \
         switch (e) {
-#define ENUM_ERROR_MSG(e, word) \
-    case e:                     \
+#define BEGIN_ENUM_ERROR_MSG(TYPE) BEGIN_ENUM_STRING_MSG(TYPE, error_message)
+
+#define ENUM_STRING_MSG(e, word) \
+    case e:                      \
         return word;
-#define END_ENUM_ERROR_MSG      \
-    default:                    \
-        return "unknown error"; \
-        }                       \
+#define ENUM_ERROR_MSG(e, word) ENUM_STRING_MSG(e, word)
+
+#define END_ENUM_STRING_MSG(word) \
+    default:                      \
+        return word;              \
+        }                         \
         }
+
+#define END_ENUM_ERROR_MSG END_ENUM_STRING_MSG("unknown error")
+
 }  // namespace PROJECT_NAME

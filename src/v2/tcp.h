@@ -8,7 +8,7 @@
 namespace socklib {
     namespace v2 {
 
-        enum class TCPError {
+        enum class TCPError :std::uint8_t{
             resolve_address,
             register_cacert,
             connect,

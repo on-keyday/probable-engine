@@ -410,7 +410,7 @@ namespace socklib {
                 return true;
             }
 
-            virtual void close(CancelContext* cancel = nullptr) {
+            virtual void close(CancelContext* cancel = nullptr) override {
                 if (ssl) {
                     if (!noshutdown) {
                         SSLErrorContext ctx(ssl, cancel);
@@ -435,7 +435,7 @@ namespace socklib {
             virtual bool stat(ConnStat& st) const override {
                 st.type = ConnType::tcp_over_ssl;
                 st.status = (sock == invalid_socket ? ConnStatus::none : ConnStatus::has_fd);
-                st.status != (ssl ? ConnStatus::secure : ConnStatus::none);
+                st.status |= (ssl ? ConnStatus::secure : ConnStatus::none);
                 st.net.ssl = ssl;
                 st.net.ssl_ctx = ctx;
                 InetConn::stat(st);
