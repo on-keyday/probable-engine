@@ -342,7 +342,9 @@ namespace socklib {
                 : ssl(issl), ctx(ictx), nodelctx(nodelctx), StreamConn(sock, info) {}
 
             virtual bool write(IWriteContext& towrite, CancelContext* cancel = nullptr) override {
-                if (!ssl) StreamConn::write(towrite, cancel);
+                if (!ssl) {
+                    return StreamConn::write(towrite, cancel);
+                }
                 SSLErrorContext ctx(ssl, cancel, (bool)towrite.flags());
                 while (true) {
                     auto ptr = towrite.bufptr();

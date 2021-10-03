@@ -7,35 +7,11 @@
 #include <map>
 #include <string.h>
 
+#include "net_traits.h"
+
 namespace socklib {
     namespace v2 {
-#ifdef COMMONLIB2_HAS_CONCEPTS
-        template <class String>
-        concept StringType = requires(String s) {
-            { s.size() } -> commonlib2::Is_integral;
-            {s.push_back('a')};
-            {s.append(std::declval<const char*>(), std::declval<size_t>())};
-            { s[0] } -> commonlib2::Is_integral;
-            { s.find("string") } -> commonlib2::Is_integral;
-            {s = std::declval<const String>()};
-            {s = std::declval<const char*>()};
-            {s += std::declval<const String>()};
-            {s += std::declval<const char*>()};
-            {s += 'a'};
-            {s.erase(0, 1)};
-            {s.clear()};
-        };
 
-        template <class Vector>
-        concept VectorType = requires(Vector v) {
-            {v.push_back('a')};
-        };
-
-        template <class Header, class String>
-        concept HeaderType = requires(Header h) {
-            {h.emplace(std::declval<String>(), std::declval<String>())};
-        };
-#endif
         constexpr const char* reason_phrase(unsigned short status, bool dav = false) {
             switch (status) {
                 case 100:
@@ -186,6 +162,7 @@ namespace socklib {
         };
 
         enum class HttpError : std::uint8_t {
+            none,
             tcp_error,
             url_parse,
             url_encode,
@@ -199,6 +176,7 @@ namespace socklib {
         };
 
         enum class RequestFlag : std::uint8_t {
+            none = 0,
             url_encoded = 0x1,
             use_proxy = 0x2,
             ignore_alpn_failure = 0x4,
@@ -243,31 +221,31 @@ namespace socklib {
             using body_t = Body;
             using parsed_t = commonlib2::URLContext<String>;
             //request params
-            string_t method;  //if not set, GET will set
-            string_t url;
+            string_t method = string_t();  //if not set, GET will set
+            string_t url = string_t();
             DefaultPath default_path = DefaultPath::root;
             HttpDefaultScheme default_scheme = HttpDefaultScheme::http;
-            RequestFlag flag;
-            string_t proxy;
-            header_t request;
-            body_t requestbody;
+            RequestFlag flag = RequestFlag::none;
+            string_t proxy = string_t();
+            header_t request = header_t();
+            body_t requestbody = body_t();
             std::uint8_t ip_version = 0;
             std::uint8_t http_version = 0;
-            string_t cacert;
+            string_t cacert = string_t();
 
             //response params
             RequestPhase phase = RequestPhase::idle;
-            std::uint16_t statuscode;
-            header_t response;
-            body_t responsebody;
+            std::uint16_t statuscode = 0;
+            header_t response = header_t();
+            body_t responsebody = body_t();
 
             //common params
             void (*error_cb)(std::uint64_t code, CancelContext* cancel, const char* msg) = nullptr;
-            TCPError tcperr;
-            HttpError err;
+            TCPError tcperr = TCPError::none;
+            HttpError err = HttpError::none;
             std::uint8_t resolved_version = 0;
             std::uint8_t header_version = 0;
-            parsed_t parsed;
+            parsed_t parsed = parsed_t();
         };
 
         template <class String, class Header, class Body>
@@ -454,6 +432,9 @@ namespace socklib {
                         return false;
                     }
                 }
+                else {
+                    req.resolved_version = 1;
+                }
                 req.phase = RequestPhase::open_direct;
                 conn = std::move(tmpconn);
                 return true;
@@ -548,7 +529,12 @@ namespace socklib {
                 towrite += "Host: ";
                 towrite += urlparser_t::host_with_port(req.parsed);
                 towrite += "\r\n";
-                return write_header_common(conn, towrite, req, cancel);
+                if (write_header_common(conn, towrite, req, cancel)) {
+                    req.phase = RequestPhase::request_sent;
+                    return true;
+                }
+                req.phase = RequestPhase::error;
+                return false;
             }
 
             static bool write_response(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
@@ -594,9 +580,11 @@ namespace socklib {
             using base_t = HttpBase<String, Header, Body>;
             using request_t = typename base_t::request_t;
             using string_t = typename base_t::string_t;
+            using header_t = Header;
+            using body_t = Body;
 
             template <class Buf>
-            static bool parse_header(request_t& req, commonlib2::Reader<Buf>& r, HttpBodyInfo& body) {
+            static bool parse_header(request_t& req, commonlib2::Reader<Buf>& r, HttpBodyInfo& body, header_t& header) {
                 using commonlib2::str_eq, commonlib2::getline, commonlib2::split;
                 while (true) {
                     auto tmp = getline<string_t>(r, false);
@@ -620,7 +608,7 @@ namespace socklib {
                         body.has_len = true;
                         commonlib2::Reader(f[1]) >> body.size;
                     }
-                    req.request.emplace(f[0], f[1]);
+                    header.emplace(f[0], f[1]);
                 }
                 return true;
             }
@@ -653,7 +641,7 @@ namespace socklib {
                     req.header_version = 9;
                     return true;
                 }
-                return parse_header(req, r, body);
+                return parse_header(req, r, body, req.request);
             }
 
             template <class Buf>
@@ -668,10 +656,10 @@ namespace socklib {
                     req.header_version = 10;
                 }
                 commonlib2::Reader(status[1]) >> req.statuscode;
-                return parse_header(req, r, body);
+                return parse_header(req, r, body, req.response);
             }
 
-            static bool read_body(request_t& req, HttpBodyInfo& bodyinfo, string_t& rawdata) {
+            static bool read_body(request_t& req, HttpBodyInfo& bodyinfo, string_t& rawdata, body_t& body) {
                 commonlib2::Reader<string_t&> r(rawdata);
                 if (bodyinfo.chunked) {
                     r.expect("\r\n");
@@ -691,9 +679,9 @@ namespace socklib {
                     if (r.readable() < chunksize) {
                         return true;
                     }
-                    size_t nowsize = req.requestbody.size();
-                    req.requestbody.resize(nowsize + chunksize);
-                    if (r.read_byte(req.requestbody.data() + nowsize, chunksize, commonlib2::translate_byte_as_is, true) < chunksize) {
+                    size_t nowsize = body.size();
+                    body.resize(nowsize + chunksize);
+                    if (r.read_byte(body.data() + nowsize, chunksize, commonlib2::translate_byte_as_is, true) < chunksize) {
                         req.err = HttpError::read_body;
                         req.phase = RequestPhase::error;
                         return false;
@@ -703,7 +691,8 @@ namespace socklib {
                 }
                 else if (bodyinfo.has_len) {
                     if (rawdata.size() >= bodyinfo.size) {
-                        if (r.read_byte(req.requestbody.data(), bodyinfo.size, commonlib2::translate_byte_as_is, true) < bodyinfo.size) {
+                        body.resize(bodyinfo.size);
+                        if (r.read_byte(body.data(), bodyinfo.size, commonlib2::translate_byte_as_is, true) < bodyinfo.size) {
                             req.err = HttpError::read_body;
                             req.phase = RequestPhase::error;
                         }
@@ -720,7 +709,7 @@ namespace socklib {
                         return false;
                     }
                     for (size_t i = 0; i < rawdata.size(); i++) {
-                        req.requestbody.push_back(rawdata[0]);
+                        body.push_back(rawdata[i]);
                     }
                     rawdata.clear();
                 }
@@ -756,9 +745,10 @@ namespace socklib {
 
             virtual void append(const char* read, size_t size) override {
                 commonlib2::Reader<string_t&> r(rawdata);
+                size_t last = rawdata.size();
                 rawdata.append(read, size);
-                if (req.phase == RequestPhase::request_recving) {
-                    r.seekend();
+                if (req.phase == RequestPhase::request_recving || req.phase == RequestPhase::response_recving) {
+                    r.seek(last);
                     auto parse_header = [&, this] {
                         r.seek(0);
                         if (server) {
@@ -788,17 +778,24 @@ namespace socklib {
                         return true;
                     };
                     while (!r.ceof()) {
-                        if (r.expect("\r\n\r\n") || r.expect("\n\n")) {
-                            if (!parse_header()) {
-                                return;
+                        if (r.achar() == '\r' || r.achar() == '\n') {
+                            if (r.expect("\r\n\r\n") || r.expect("\n\n")) {
+                                if (!parse_header()) {
+                                    return;
+                                }
+                                break;
                             }
-                            break;
                         }
                         r.increment();
                     }
                 }
                 if (req.phase == RequestPhase::request_recved) {
-                    if (!httpparser_t::read_body(req, bodyinfo, rawdata)) {
+                    if (!httpparser_t::read_body(req, bodyinfo, rawdata, req.requestbody)) {
+                        eos = true;
+                    }
+                }
+                else if (req.phase == RequestPhase::response_recved) {
+                    if (!httpparser_t::read_body(req, bodyinfo, rawdata, req.responsebody)) {
                         eos = true;
                     }
                 }
@@ -815,9 +812,7 @@ namespace socklib {
             using readcontext_t = HttpReadContext<String, Header, Body>;
 
             static bool request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr) {
-                if (!base_t::open(conn, req, cancel, 1)) {
-                    return false;
-                }
+                if (!conn) return false;
                 if (req.resolved_version != 1) {
                     req.err = HttpError::not_accept_version;
                     return false;
@@ -830,13 +825,17 @@ namespace socklib {
 
             static bool response(std::shared_ptr<InetConn>& conn, readcontext_t& read, CancelContext* cancel = nullptr) {
                 if (!conn) return false;
-                if (req.phase == RequestPhase::request_sent) {
-                    req.phase = RequestPhase::response_recving;
+                if (read.req.phase == RequestPhase::idle) {
+                    read.req.err = HttpError::invalid_phase;
+                    return false;
+                }
+                if (read.req.phase == RequestPhase::request_sent) {
+                    read.req.phase = RequestPhase::response_recving;
                 }
                 read.nolen = false;
                 read.server = false;
                 if (!conn->read(read, cancel)) {
-                    return read.nolen
+                    return read.nolen;
                 }
                 return true;
             }

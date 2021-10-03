@@ -78,7 +78,8 @@ namespace socklib {
         template <class String, class Header, class Body>
         struct ClientRequestProxy : RequestProxy<String, Header, Body> {
             using base_t = RequestProxy<String, Header, Body>;
-            using client_t = Http1Client<String, Header, Body>;
+            using http1client_t = Http1Client<String, Header, Body>;
+            using opener_t = HttpBase<String, Header, Body>;
 
            private:
             HttpReadContext<String, Header, Body> readbuf;
@@ -106,11 +107,25 @@ namespace socklib {
             bool request(const String& method, const String& url, CancelContext* cancel = nullptr) {
                 this->ctx.url = url;
                 this->ctx.method = method;
-                return client_t::request(this->conn, this->ctx, cancel);
+                if (!opener_t::open(this->conn, this->ctx, cancel, 1)) {
+                    return false;
+                }
+                if (this->ctx.resolved_version == 2) {
+                    //unimplemented h2
+                }
+                else {
+                    if (this->ctx.http_version == 2) {
+                        //unimplemented h2c
+                    }
+                    else {
+                        return http1client_t::request(this->conn, this->ctx, cancel);
+                    }
+                }
+                return false;
             }
 
             bool response(CancelContext* cancel) {
-                return client_t::response(this->conn, readbuf, cancel);
+                return http1client_t::response(this->conn, readbuf, cancel);
             }
         };
 

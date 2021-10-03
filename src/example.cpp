@@ -1,5 +1,6 @@
 #include "v2/http.h"
 #include <map>
+using namespace socklib;
 using namespace socklib::v2;
 
 struct TestBase {
@@ -17,5 +18,9 @@ struct TestDerived : TestBase {
 
 int main() {
     auto p = make_request();
-    p->request("GET", "google.com");
+    TimeoutContext timeout(30);
+    p->set_httpversion(1);
+    p->set_cacert("D:/commonlib/netsoft/cacert.pem");
+    auto res = p->request("GET", "google.com", &timeout);
+    res = p->response(&timeout);
 }

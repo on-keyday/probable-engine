@@ -9,6 +9,8 @@ namespace socklib {
     namespace v2 {
 
         enum class TCPError : std::uint8_t {
+            none,
+            initialize_network,
             resolve_address,
             register_cacert,
             connect,
@@ -38,12 +40,50 @@ namespace socklib {
             const char* alpnstr = nullptr;
             size_t len = 0;
             bool forceopen = false;
+            bool non_block = true;
+        };
+
+        struct NetWorkInit {
+            static NetWorkInit& instance() {
+                static NetWorkInit inst;
+                return inst;
+            }
+
+           private:
+            NetWorkInit() {
+                Init();
+            }
+            bool Init_impl() {
+#ifdef _WIN32
+                WSADATA data{0};
+                if (WSAStartup(MAKEWORD(2, 2), &data)) {
+                    return false;
+                }
+#endif
+                return true;
+            }
+
+            ~NetWorkInit() {
+#ifdef _WIN32
+                WSACleanup();
+#endif
+            }
+
+           public:
+            bool Init() {
+                static bool res = Init_impl();
+                return res;
+            }
         };
 
         template <class String>
         struct Resolver {
            private:
             static bool resolve_detail(TCPOpenContext<String>& ctx, const char* host, const char* service, int ipver, ::addrinfo*& info) {
+                if (!NetWorkInit::instance().Init()) {
+                    ctx.err = TCPError::initialize_network;
+                    return false;
+                }
                 ::addrinfo hint = {0};
                 hint.ai_socktype = SOCK_STREAM;
                 switch (ipver) {
@@ -57,7 +97,7 @@ namespace socklib {
                         hint.ai_family = AF_UNSPEC;
                         break;
                 }
-                if (::getaddrinfo(host, service, &hint, &info) != 0) {
+                if (auto res = ::getaddrinfo(host, service, &hint, &info); res != 0) {
                     ctx.err = TCPError::resolve_address;
                     return false;
                 }
@@ -84,8 +124,10 @@ namespace socklib {
                 auto res = ::connect(tmp, info->ai_addr, info->ai_addrlen);
                 if (res == 0) {
                     sock = tmp;
-                    flag = 0;
-                    ::ioctlsocket(tmp, FIONBIO, &flag);
+                    if (!ctx.non_block) {
+                        flag = 0;
+                        ::ioctlsocket(tmp, FIONBIO, &flag);
+                    }
                     return true;
                 }
                 ::timeval timeout = {0};
@@ -110,8 +152,10 @@ namespace socklib {
                     if (FD_ISSET(tmp, &sucset)) {
                         sock = tmp;
                         //selected = p;
-                        flag = 0;
-                        ::ioctlsocket(tmp, FIONBIO, &flag);
+                        if (!ctx.non_block) {
+                            flag = 0;
+                            ::ioctlsocket(tmp, FIONBIO, &flag);
+                        }
                         return true;
                     }
                     if (canceler.on_cancel()) {
@@ -280,10 +324,12 @@ namespace socklib {
                         ssl = stat.net.ssl;
                         sslctx = stat.net.ssl_ctx;
                     }
-                    if (!SecureSetter::setupssl(sock, sslctx, ssl, ctx)) {
-                        ::freeaddrinfo(info);
-                        ::closesocket(sock);
-                        return false;
+                    if (any(ctx.stat.status & ConnStatus::secure)) {
+                        if (!SecureSetter::setupssl(sock, sslctx, ssl, ctx)) {
+                            ::freeaddrinfo(info);
+                            ::closesocket(sock);
+                            return false;
+                        }
                     }
                     if (res) {
                         SocketReset reset;
