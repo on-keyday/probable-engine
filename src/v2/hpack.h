@@ -537,6 +537,18 @@ namespace socklib {
             const h2huffman_tree* get(bool flag) const {
                 return flag ? one : zero;
             }
+
+            bool has_char() const {
+                return has_c;
+            }
+
+            unsigned char get_char() const {
+                return c;
+            }
+
+            bool is_eos() const {
+                return eos;
+            }
         };
 
         enum class HpackError {
@@ -556,7 +568,6 @@ namespace socklib {
             using string_t = String;
             using writer_t = bitvec_writer<String>;
             using reader_t = bitvec_reader<String>;
-            using vec_t = bitvec_t<String>;
 
             static size_t gethuffmanlen(const string_t& str) {
                 size_t ret = 0;
@@ -567,7 +578,7 @@ namespace socklib {
             }
 
             static string_t encode(const string_t& in) {
-                bitvec_writer vec;
+                writer_t vec;
                 for (auto c : in) {
                     vec.append(h2huffman[(unsigned char)c]);
                 }
@@ -578,13 +589,14 @@ namespace socklib {
                 return vec.data();
             }
 
+           private:
             static HpkErr decode_achar(unsigned char& c, reader_t& r, const h2huffman_tree* t, const h2huffman_tree*& fin, std::uint32_t& allone) {
                 for (;;) {
                     if (!t) {
                         return HpackError::invalid_value;
                     }
-                    if (t->has_c) {
-                        c = t->c;
+                    if (t->has_char()) {
+                        c = t->get_char();
                         fin = t;
                         return true;
                     }
@@ -598,6 +610,7 @@ namespace socklib {
                 }
             }
 
+           public:
             static HpkErr decode(string_t& res, string_t& src) {
                 reader_t r(src);
                 auto tree = h2huffman_tree::tree();
@@ -615,7 +628,7 @@ namespace socklib {
                         }
                         return tmp;
                     }
-                    if (fin->eos) {
+                    if (fin->is_eos()) {
                         return HpackError::invalid_value;
                     }
                     res.push_back(c);
@@ -690,11 +703,11 @@ namespace socklib {
             static void encode(commonlib2::Serializer<string_t&>& se, const string_t& value) {
                 if (value.size() > huffman_coder::gethuffmanlen(value)) {
                     string_t enc = huffman_coder::encode(value);
-                    integer_coder::encode<7>(se, enc.size(), 0x80);
+                    integer_coder::template encode<7>(se, enc.size(), 0x80);
                     se.write_byte(enc);
                 }
                 else {
-                    integer_code::encode<7>(se, value.size(), 0);
+                    integer_coder::template encode<7>(se, value.size(), 0);
                     se.write_byte(value);
                 }
             }
@@ -702,7 +715,7 @@ namespace socklib {
             static HpkErr decode(string_t& str, commonlib2::Deserializer<string_t&>& se) {
                 size_t sz = 0;
                 unsigned char mask = 0;
-                TRY(integer_coder::decode<7>(se, sz, mask));
+                TRY(integer_coder::template decode<7>(se, sz, mask));
                 TRY(se.read_byte(str, sz));
                 if (mask & 0x80) {
                     string_t decoded;
@@ -724,6 +737,7 @@ namespace socklib {
             using table_t = Table;
             using header_t = Header;
 
+           private:
             template <class F>
             static bool get_idx(F&& f, size_t& idx, table_t& dymap) {
                 if (auto found = std::find_if(predefined_header.begin() + 1, predefined_header.end(), [&](auto& c) {
@@ -753,8 +767,9 @@ namespace socklib {
                 return size;
             }
 
+           public:
             template <bool adddy = false>
-            static HpkErr encode(header_t& src, string_t& dst,
+            static HpkErr encode(const header_t& src, string_t& dst,
                                  table_t& dymap, std::uint32_t maxtablesize) {
                 commonlib2::Serializer<string_t&> se(dst);
                 for (auto& h : src) {
@@ -764,7 +779,7 @@ namespace socklib {
                                 return k == h.first && v == h.second;
                             },
                             idx, dymap)) {
-                        TRY(integer_coder::encode<7>(se, idx, 0x80));
+                        TRY(integer_coder::template encode<7>(se, idx, 0x80));
                     }
                     else {
                         if (get_idx(
@@ -773,10 +788,10 @@ namespace socklib {
                                 },
                                 idx, dymap)) {
                             if (adddy) {
-                                TRY(integer_coder::encode<6>(se, idx, 0x40));
+                                TRY(integer_coder::template encode<6>(se, idx, 0x40));
                             }
                             else {
-                                TRY(integer_coder::encode<4>(se, idx, 0));
+                                TRY(integer_coder::template encode<4>(se, idx, 0));
                             }
                         }
                         else {
@@ -799,7 +814,7 @@ namespace socklib {
                 return true;
             }
 
-            static HpkErr decode(header_tr& res, string_t& src,
+            static HpkErr decode(header_t& res, string_t& src,
                                  table_t& dymap, std::uint32_t& maxtablesize) {
                 auto update_dymap = [&] {
                     size_t tablesize = calc_table_size(dymap);
@@ -840,7 +855,7 @@ namespace socklib {
                     };
                     if (tmp & 0x80) {
                         size_t idx = 0;
-                        TRY(integer_coder::decode<7>(se, idx, tmp));
+                        TRY(integer_coder::template decode<7>(se, idx, tmp));
                         if (idx == 0) {
                             return HpackError::invalid_value;
                         }
@@ -860,7 +875,7 @@ namespace socklib {
                     else if (tmp & 0x40) {
                         size_t sz = 0;
 
-                        TRY(integer_coder::decode<6>(se, sz, tmp));
+                        TRY(integer_coder::template decode<6>(se, sz, tmp));
 
                         if (sz == 0) {
                             TRY(read_two_literal());
@@ -874,7 +889,7 @@ namespace socklib {
                     else if (tmp & 0x20) {  //dynamic table size change
                         //unimplemented
                         size_t sz = 0;
-                        TRY(integer_coder::decode<5>(se, sz, tmp));
+                        TRY(integer_coder::template decode<5>(se, sz, tmp));
                         if (maxtablesize > 0x80000000) {
                             return HpackError::too_large_number;
                         }
@@ -883,7 +898,7 @@ namespace socklib {
                     }
                     else {
                         size_t sz = 0;
-                        TRY(integer_coder::decode<4>(se, sz, tmp));
+                        TRY(integer_coder::template decode<4>(se, sz, tmp));
                         if (sz == 0) {
                             TRY(read_two_literal());
                         }
