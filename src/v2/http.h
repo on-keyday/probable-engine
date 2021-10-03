@@ -73,19 +73,19 @@ namespace socklib {
                 : readbuf(this->ctx) {}
 
             Header& requestHeader() {
-                return ctx.request;
+                return this->ctx.request;
             }
 
             Body& requestBody() {
-                return ctx.requestbody;
+                return this->ctx.requestbody;
             }
 
             const Header& responseHeader() {
-                return ctx.response;
+                return this->ctx.response;
             }
 
             const Body& responseBody() {
-                return ctx.responsebody;
+                return this->ctx.responsebody;
             }
 
             void set_cacert(const String& cacert) {
@@ -132,15 +132,15 @@ namespace socklib {
         template <class String, class Header, class Body>
         struct ServerRequestProxy : RequestProxy<String, Header, Body> {
             const Header& requestHeader() {
-                return ctx.request;
+                return this->ctx.request;
             }
 
             const Body& requestBody() {
-                return ctx.requestbody;
+                return this->ctx.requestbody;
             }
 
             Header& responseHeader() {
-                return ctx.response;
+                return this->ctx.response;
             }
 
             Body& responseBody() {
