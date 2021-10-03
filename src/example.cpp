@@ -52,8 +52,8 @@ int main() {
     TestDerived d;
     using table = std::deque<std::pair<std::string, std::string>>;
     using header = std::multimap<std::string, std::string>;
-    using dataframe = H2DataFrame<std::string, std::map, header, table>;
-    using headerframe = H2HeaderFrame<std::string, std::map, header, table>;
+    using dataframe = H2DataFrame<std::string, std::map, header, std::string, table>;
+    using headerframe = H2HeaderFrame<std::string, std::map, header, std::string, table>;
     dataframe data;
     headerframe head;
     commonlib2::Serializer<std::string> se;

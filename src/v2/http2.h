@@ -1,5 +1,6 @@
 #pragma once
 #include "hpack.h"
+#include "http_base.h"
 #include <net_helper.h>
 
 namespace socklib {
@@ -87,9 +88,9 @@ namespace socklib {
             bool exclusive = false;
         };
 
-#define H2TYPE_PARAMS template <class String, template <class...> class Map, class Header, class Table>
+#define H2TYPE_PARAMS template <class String, template <class...> class Map, class Header, class Body, class Table>
 
-#define TEMPLATE_PARAM <String, Map, Header, Table>
+#define TEMPLATE_PARAM <String, Map, Header,Body, Table>
 
 #define DEF_H2TYPE(NAME) \
     H2TYPE_PARAMS        \
@@ -138,15 +139,16 @@ namespace socklib {
         DEC_FRAME(H2GoAwayFrame);
         DEC_FRAME(H2WindowUpdateFrame);
 
-        template <class String, template <class...> class Map, class Header, class Table>
+        H2TYPE_PARAMS
         struct H2Frame {
-            using h2request_t = Http2RequestContext<String, Map, Header, Table>;
+            using h2request_t = Http2RequestContext<String, Map, Header, Body, Table>;
             using string_t = String;
             using header_t = Header;
             using hpack_t = Hpack<String, Table, Header>;
             using writer_t = commonlib2::Serializer<string_t>;
             using reader_t = commonlib2::Deserializer<string_t&>;
             using rawframe_t = commonlib2::HTTP2Frame<string_t>;
+            using body_t = Body;
 #define USING_H2FRAME                                  \
     using string_t = typename H2FRAME::string_t;       \
     using header_t = typename H2FRAME::header_t;       \
@@ -154,7 +156,8 @@ namespace socklib {
     using hpack_t = typename H2FRAME::hpack_t;         \
     using writer_t = typename H2FRAME::writer_t;       \
     using reader_t = typename H2FRAME::reader_t;       \
-    using rawframe_t = typename H2FRAME::rawframe_t
+    using rawframe_t = typename H2FRAME::rawframe_t;   \
+    using body_t = typename H2FRAME::body_t
 
            protected:
             H2FType type = H2FType::unknown;
@@ -292,26 +295,59 @@ namespace socklib {
         DEF_H2TYPE(Http2ReadContext)
             : IReadContext {
             USING_H2FRAME;
+            using h1request_t = RequestContext<string_t, header_t, body_t>;
+            using errorhandle_t = ErrorHandler<string_t, header_t, body_t>;
+            h1request_t& req;
+            h2request_t& ctx;
+            string_t rawdata;
+
+            Http2ReadContext(h1request_t & r, h2request_t & c)
+                : req(r), ctx(c) {}
+
+            virtual void on_error(std::int64_t errcode, CancelContext * cancel, const char* msg) override {
+                errorhandle_t::on_error(req, errcode, cancel, msg);
+            }
+
+            virtual void append(const char* ptr, size_t size) override {
+                rawdata.append(ptr, size);
+            }
         };
 
         DEF_H2TYPE(Http2Reader) {
             USING_H2FRAME;
-            static H2Err read_a_frame(std::shared_ptr<InetConn> & conn, IReadContext & read, rawframe_t & frame) {
+            using h2readcontext_t = Http2ReadContext<String, Map, Header, Body, Table>;
+            static H2Err read_a_frame(std::shared_ptr<InetConn> & conn, h2readcontext_t & read, rawframe_t & frame, CancelContext* cancel = nullptr) {
                 if (!conn) return false;
+                commonlib2::Reader<string_t&> r(read.rawdata);
+                if (!read.rawdata.size()) {
+                    if (!conn->read(read, cancel)) {
+                        return false;
+                    }
+                }
                 for (;;) {
                     r.readwhile(commonlib2::http2frame_reader, frame);
                     if (frame.continues) {
-                        TRY(r.ref().reading());
+                        if (!conn->read(read, cancel)) {
+                            return false;
+                        }
                         continue;
                     }
                     if (!frame.succeed) {
-                        return false;
+                        return H2Error::protocol;
                     }
                     break;
                 }
-                r.ref().ref().erase(0, 9 + frame.buf.size());
-                r.seek(0);
+                rawdata.erase(0, 9 + frame.buf.size());
                 return true;
+            }
+
+            H2Err make_frame(std::shared_ptr<H2Frame> & res, rawframe_t & frame) {
+#define F(TYPE) TYPE TEMPLATE_PARAM
+
+#undef F
+            }
+
+            static H2Err read(std::shared_ptr<H2Frame> & res) {
             }
         };
 
@@ -449,7 +485,7 @@ namespace socklib {
                         se.write(padding);
                     }
                     if (any(this->flag & H2Flag::priority)) {
-                        if (auto e = write_depends(weight, se); !e) {
+                        if (auto e = H2FRAME::write_depends(weight, se); !e) {
                             t.err = e;
                             return false;
                         }
@@ -476,6 +512,8 @@ namespace socklib {
 #undef DEF_H2TYPE
 #undef DEC_FRAME
 #undef DETECTTYPE
+#undef USING_H2FRAME
+
 #undef TRY
     }  // namespace v2
 
