@@ -66,7 +66,7 @@ namespace socklib {
             using opener_t = HttpBase<String, Header, Body>;
 
            private:
-            HttpReadContext<String, Header, Body> readbuf;
+            Http1ReadContext<String, Header, Body> readbuf;
 
            public:
             ClientRequestProxy()

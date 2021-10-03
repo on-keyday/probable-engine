@@ -87,26 +87,15 @@ namespace socklib {
             bool exclusive = false;
         };
 
-        template <class String, template <class...> class Map>
-#ifdef COMMONLIB2_HAS_CONCEPTS
-        requires StringType<String>
-#endif
-        struct Http2RequestContext {
-            using settings_t = Map<std::uint16_t, std::uint32_t>;
-            H2Error err = H2Error::none;
-            HpackError hpackerr = HpackError::none;
-            settings_t remote_settings;
-            settings_t local_settings;
-        };
-        /*
-#define TRY(...) \
-    if (auto e = (__VA_ARGS__); !e) return e
-    */
-
-#define DEC_FRAME(NAME) template <class String, template <class...> class Map, class Header, class Table> \
-struct NAME
+#define H2TYPE_PARAMS template <class String, template <class...> class Map, class Header, class Table>
 
 #define TEMPLATE_PARAM <String, Map, Header, Table>
+
+#define DEF_H2TYPE(NAME) \
+    H2TYPE_PARAMS        \
+    struct NAME
+
+#define DEC_FRAME(NAME) DEF_H2TYPE(NAME)
 
 #define H2FRAME H2Frame TEMPLATE_PARAM
 
@@ -120,6 +109,25 @@ struct NAME
 #define DETECTTYPE(TYPE, FUNC) DETECTTYPE_RET(TYPE, FUNC, nullptr)
 #define THISTYPE(TYPE, FUNC) DETECTTYPE_RET(TYPE, FUNC, this, override)
 
+        H2TYPE_PARAMS
+#ifdef COMMONLIB2_HAS_CONCEPTS
+        requires StringType<String>
+#endif
+        struct Http2RequestContext {
+            using settings_t = Map<std::uint16_t, std::uint32_t>;
+            using table_t = Table;
+            H2Error err = H2Error::none;
+            HpackError hpackerr = HpackError::none;
+            settings_t remote_settings;
+            settings_t local_settings;
+            table_t remote_table;
+            table_t local_table;
+        };
+        /*
+#define TRY(...) \
+    if (auto e = (__VA_ARGS__); !e) return e
+    */
+
         DEC_FRAME(H2DataFrame);
         DEC_FRAME(H2HeaderFrame);
         DEC_FRAME(H2PriorityFrame);
@@ -132,7 +140,7 @@ struct NAME
 
         template <class String, template <class...> class Map, class Header, class Table>
         struct H2Frame {
-            using h2request_t = Http2RequestContext<String, Map>;
+            using h2request_t = Http2RequestContext<String, Map, Header, Table>;
             using string_t = String;
             using header_t = Header;
             using hpack_t = Hpack<String, Table, Header>;
@@ -211,7 +219,9 @@ struct NAME
             static H2Err read_depends(H2Weight& w, string_t& buf) {
                 reader_t se(buf);
                 std::uint32_t id_ = 0;
-                TRY(se.read_ntoh(w.depends_id));
+                if (!se.read_ntoh(w.depends_id)) {
+                    return false;
+                }
                 w.exclusive = (bool)(w.depends_id & commonlib2::msb_on<std::uint32_t>());
                 w.depends_id &= ~commonlib2::msb_on<std::uint32_t>();
                 if (!se.read_ntoh(w.weight)) {
@@ -277,6 +287,32 @@ struct NAME
             }
 
             virtual ~H2Frame() noexcept {}
+        };
+
+        DEF_H2TYPE(Http2ReadContext)
+            : IReadContext {
+            USING_H2FRAME;
+        };
+
+        DEF_H2TYPE(Http2Reader) {
+            USING_H2FRAME;
+            static H2Err read_a_frame(std::shared_ptr<InetConn> & conn, IReadContext & read, rawframe_t & frame) {
+                if (!conn) return false;
+                for (;;) {
+                    r.readwhile(commonlib2::http2frame_reader, frame);
+                    if (frame.continues) {
+                        TRY(r.ref().reading());
+                        continue;
+                    }
+                    if (!frame.succeed) {
+                        return false;
+                    }
+                    break;
+                }
+                r.ref().ref().erase(0, 9 + frame.buf.size());
+                r.seek(0);
+                return true;
+            }
         };
 
         DEF_FRAME(H2DataFrame) {
@@ -346,7 +382,7 @@ struct NAME
 
            private:
             header_t header_;
-            H2Weight& weight;
+            H2Weight weight;
             std::uint8_t padding = 0;
 
            public:
@@ -367,18 +403,23 @@ struct NAME
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
-                H2Frame::parse(v, t);
+                H2FRAME::parse(v, t);
                 if (any(this->flag & H2Flag::padded)) {
-                    TRY(remove_padding(v.buf, v.len, this->padding));
+                    if (auto e = H2FRAME::remove_padding(v.buf, v.len, this->padding); !e) {
+                        return e;
+                    }
                 }
                 if (any(this->flag & H2Flag::priority)) {
-                    read_depends(this->weight, v.buf);
+                    if (auto e = H2FRAME::read_depends(this->weight, v.buf)) {
+                        return e;
+                    }
                     //set_priority = true;
                 }
                 if (!any(this->flag & H2Flag::end_headers)) {
-                    TRY(t->read_continuous(v.id, v.buf));
+                    /*if (t->read_continuous(v.id, v.buf)) {
+                    }*/
                 }
-                if (auto e = hpack_t::decode(header_, v.buf, t->remote_table, t.remote_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
+                if (auto e = hpack_t::decode(header_, v.buf, t.remote_table, t.remote_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
                     t.hpackerr = e;
                     t.err = H2Error::compression;
                     return t.err;
@@ -388,7 +429,7 @@ struct NAME
 
             H2Err serialize(std::uint32_t fsize, writer_t & se, h2request_t & t) override {
                 string_t hpacked;
-                if (auto e = hpack_t::encode<true>(header_, hpacked, t->local_table, t->local_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
+                if (auto e = hpack_t::template encode<true>(header_, hpacked, t.local_table, t.local_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
                     t.hpackerr = e;
                     t.err = H2Error::compression;
                     return t.err;
@@ -399,8 +440,8 @@ struct NAME
                 if (any(this->flag & H2Flag::priority)) {
                     plus += 5;
                 }
-                auto write_header = [&](std::uint32_t len, auto& to_write) {
-                    if (auto e = H2Frame::serialize(len, se, t); !e) {
+                auto write_header = [&](std::uint32_t len, auto& to_write) -> H2Err {
+                    if (auto e = H2FRAME::serialize(len, se, t); !e) {
                         t.err = e;
                         return t.err;
                     }
@@ -432,6 +473,7 @@ struct NAME
 #undef THISTYPE
 #undef TEMPLATE_PARAM
 #undef DEF_FRAME
+#undef DEF_H2TYPE
 #undef DEC_FRAME
 #undef DETECTTYPE
 #undef TRY

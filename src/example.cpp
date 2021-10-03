@@ -55,7 +55,7 @@ int main() {
     using dataframe = H2DataFrame<std::string, std::map, header, table>;
     using headerframe = H2HeaderFrame<std::string, std::map, header, table>;
     dataframe data;
-    headerframe header;
+    headerframe head;
     commonlib2::Serializer<std::string> se;
     dataframe::h2request_t req;
     data.serialize(100000, se, req);
