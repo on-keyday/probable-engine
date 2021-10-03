@@ -112,13 +112,13 @@ struct NAME
 
 #define DEF_FRAME(NAME) DEC_FRAME(NAME) : H2FRAME
 
-#define DETECTTYPE_RET(TYPE, FUNC, RET)   \
-    virtual TYPE TEMPLATE_PARAM* FUNC() { \
-        return RET;                       \
+#define DETECTTYPE_RET(TYPE, FUNC, RET, ...)          \
+    virtual TYPE TEMPLATE_PARAM* FUNC() __VA_ARGS__ { \
+        return RET;                                   \
     }
 
 #define DETECTTYPE(TYPE, FUNC) DETECTTYPE_RET(TYPE, FUNC, nullptr)
-#define THISTYPE(TYPE, FUNC) DETECTTYPE_RET(TYPE, FUNC, this)
+#define THISTYPE(TYPE, FUNC) DETECTTYPE_RET(TYPE, FUNC, this, override)
 
         DEC_FRAME(H2DataFrame);
         DEC_FRAME(H2HeaderFrame);
@@ -139,13 +139,13 @@ struct NAME
             using writer_t = commonlib2::Serializer<string_t>;
             using reader_t = commonlib2::Deserializer<string_t&>;
             using rawframe_t = commonlib2::HTTP2Frame<string_t>;
-#define USING_H2FRAME                                \
-    using string_t = typename H2FRAME::string_t;     \
-    using header_t = typename H2FRAME::header_t;     \
-    using h2request_t = typename H2FRAME::request_t; \
-    using hpack_t = typename H2FRAME::hpack_t;       \
-    using writer_t = typename H2FRAME::writer_t;     \
-    using reader_t = typename H2FRAME::reader_t;     \
+#define USING_H2FRAME                                  \
+    using string_t = typename H2FRAME::string_t;       \
+    using header_t = typename H2FRAME::header_t;       \
+    using h2request_t = typename H2FRAME::h2request_t; \
+    using hpack_t = typename H2FRAME::hpack_t;         \
+    using writer_t = typename H2FRAME::writer_t;       \
+    using reader_t = typename H2FRAME::reader_t;       \
     using rawframe_t = typename H2FRAME::rawframe_t
 
            protected:
@@ -293,9 +293,9 @@ struct NAME
                 return padding;
             }
             H2Err parse(rawframe_t & v, h2request_t & t) override {
-                H2Frame::parse(v, t);
+                H2FRAME::parse(v, t);
                 if (any(this->flag & H2Flag::padded)) {
-                    if (auto e = remove_padding(v.buf, v.len, this->padding); !e) {
+                    if (auto e = H2FRAME::remove_padding(v.buf, v.len, this->padding); !e) {
                         t.err = e;
                         return t.err;
                     }
@@ -320,7 +320,7 @@ struct NAME
                     t.err = H2Error::frame_size;
                     return t.err;
                 }
-                base_t::serialize((int)willsize, se, t);
+                H2FRAME::serialize((int)willsize, se, t);
                 if (any(this->flag & H2Flag::padded)) {
                     se.write(padding);
                 }
@@ -396,12 +396,18 @@ struct NAME
                     plus += 5;
                 }
                 auto write_header = [&](std::uint32_t len, auto& to_write) {
-                    TRY(H2Frame::serialize(len, se, t));
+                    if (auto e = H2Frame::serialize(len, se, t); !e) {
+                        t.err = e;
+                        return t.err;
+                    }
                     if (any(this->flag & H2Flag::padded)) {
                         se.write(padding);
                     }
                     if (any(this->flag & H2Flag::priority)) {
-                        TRY(write_depends(weight, se));
+                        if (auto e = write_depends(weight, se); !e) {
+                            t.err = e;
+                            return false;
+                        }
                     }
                     se.write_byte(to_write);
                     for (auto i = 0; i < padding; i++) {
@@ -409,7 +415,7 @@ struct NAME
                     }
                     return H2Err(true);
                 };
-                if (auto e = write_continuous(this->streamid, write_header, se, fsize, hpacked, this->flag, flagcpy, padding, plus); !e) {
+                if (auto e = H2FRAME::write_continuous(this->streamid, write_header, se, fsize, hpacked, this->flag, flagcpy, padding, plus); !e) {
                     t.err = e;
                     return e;
                 }
