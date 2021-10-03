@@ -92,12 +92,19 @@ namespace socklib {
         requires StringType<String>
 #endif
         struct Http2RequestContext {
+            using settings_t = Map<std::uint16_t, std::uint32_t>;
+            H2Error err = H2Error::none;
+            HpackError hpackerr = HpackError::none;
+            settings_t remote_settings;
+            settings_t local_settings;
         };
 
 #define TRY(...) \
     if (auto e = (__VA_ARGS__); !e) return e
-#define DEC_FRAME(NAME) template <class String, template <class...> class Map> \
+#define DEC_FRAME(NAME) template <class String, template <class...> class Map, class Header> \
 struct NAME
+#define H2FRAME H2Frame<String, Map, Header>
+
         DEC_FRAME(H2DataFrame);
         DEC_FRAME(H2HeaderFrame);
         DEC_FRAME(H2PriorityFrame);
@@ -108,10 +115,12 @@ struct NAME
         DEC_FRAME(H2GoAwayFrame);
         DEC_FRAME(H2WindowUpdateFrame);
 
-        template <class String, template <class...> class Map>
+        template <class String, template <class...> class Map, class Header>
         struct H2Frame {
+            using base_t = H2Frame<String, Map>;
             using h2request_t = Http2RequestContext<String, Map>;
             using string_t = String;
+            using header_t = Header;
 
            protected:
             H2FType type = H2FType::unknown;
@@ -119,7 +128,6 @@ struct NAME
             std::int32_t streamid = 0;
 
            public:
-            constexpr H2Frame() {}
             constexpr H2Frame(H2FType type)
                 : type(type) {}
 
@@ -172,14 +180,13 @@ struct NAME
                 return true;
             }
 
-            static H2Err read_depends(bool& exclusive, int& id, std::uint8_t& weight, string_t& buf) {
+            static H2Err read_depends(H2Weight& w, string_t& buf) {
                 commonlib2::Deserializer<string_t&> se(buf);
                 std::uint32_t id_ = 0;
-                TRY(se.read_ntoh(id_));
-                exclusive = (bool)(id_ & commonlib2::msb_on<std::uint32_t>());
-                id_ &= ~commonlib2::msb_on<std::uint32_t>();
-                id = (int)id_;
-                TRY(se.read_ntoh(weight));
+                TRY(se.read_ntoh(w.depends_id));
+                w.exclusive = (bool)(w.depends_id & commonlib2::msb_on<std::uint32_t>());
+                w.depends_id &= ~commonlib2::msb_on<std::uint32_t>();
+                TRY(se.read_ntoh(w.weight));
                 buf.erase(0, 5);
                 return true;
             }
@@ -221,9 +228,9 @@ struct NAME
             }
 
            public:
-#define DETECTTYPE(TYPE, FUNC)          \
-    virtual TYPE<String, Map>* FUNC() { \
-        return nullptr;                 \
+#define DETECTTYPE(TYPE, FUNC)                  \
+    virtual TYPE<String, Map, Header>* FUNC() { \
+        return nullptr;                         \
     }
             DETECTTYPE(H2DataFrame, data)
             DETECTTYPE(H2HeaderFrame, header)
@@ -243,13 +250,155 @@ struct NAME
 
             virtual ~H2Frame() noexcept {}
         };
-#define DEF_FRAME(NAME) DEC_FRAME(NAME) : H2Frame<String, Map>
 
-        DEF_FRAME(H2DataFrame){
+#define DEF_FRAME(NAME) DEC_FRAME(NAME) : H2FRAME
 
+        DEF_FRAME(H2DataFrame) {
+           private:
+            string_t data_;
+            std::uint8_t padding = 0;
+
+           public:
+            H2DataFrame()
+                : H2FRAME(H2FType::data) {}
+
+            std::string& payload() {
+                return data_;
+            }
+            std::uint8_t padlen() const {
+                return padding;
+            }
+            H2Err parse(commonlib2::HTTP2Frame<string_t> & v, h2request_t & t) override {
+                H2Frame::parse(v, t);
+                if (any(this->flag & H2Flag::padded)) {
+                    TRY(remove_padding(v.buf, v.len, this->padding));
+                }
+                data_ = std::move(v.buf);
+                return true;
+            }
+
+            H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<string_t> & se, h2request_t & t) override {
+                size_t idx = 0;
+                unsigned char plus = 0;
+                H2Flag flagcpy = this->flag;
+                this->flag &= ~H2Flag::end_stream;
+                if (!any(this->flag & H2Flag::padded)) {
+                    padding = 0;
+                }
+                else {
+                    plus = 1;
+                }
+                size_t willsize = fsize - padding - plus, padoct = padding + plus;
+                if (willsize > t.local_settings[key(H2PredefinedSetting::max_frame_size)]) {
+                    t.err = H2Error::frame_size;
+                    return t.err;
+                }
+                base_t::serialize((int)willsize, se, t);
+                if (any(this->flag & H2Flag::padded)) {
+                    se.write(padding);
+                }
+                se.write_byte(data_);
+                for (auto i = 0; i < padding; i++) {
+                    se.write('\0');
+                }
+                return true;
+            }
+
+            virtual H2DataFrame<String, Map, Header>* data() override {
+                return this;
+            }
         };
+
+        DEF_FRAME(H2HeaderFrame) {
+            H2HeaderFrame()
+                : H2FRAME(H2FType::header) {}
+
+           private:
+            header_t header_;
+            H2Weight& weight;
+            //bool set_priority = false;
+            std::uint8_t padding = 0;
+
+           public:
+            header_t& header_map() {
+                return header_;
+            }
+
+            bool get_weight(H2Weight & w) const {
+                if (!any(this->flag & H2Flag::priority)) return false;
+                w.exclusive = weight.exclusive;
+                w.depends_id = weight.depends;
+                w.weight = weight.weight;
+                return true;
+            }
+
+            std::uint8_t padlen() const {
+                return padding;
+            }
+
+            H2Err parse(commonlib2::HTTP2Frame<std::string> & v, Http2Conn * t) override {
+                H2Frame::parse(v, t);
+                if (any(this->flag & H2Flag::padded)) {
+                    TRY(remove_padding(v.buf, v.len, this->padding));
+                }
+                if (any(this->flag & H2Flag::priority)) {
+                    TRY(read_depends(exclusive, depends, weight, v.buf));
+                    //set_priority = true;
+                }
+                if (!any(this->flag & H2Flag::end_headers)) {
+                    TRY(t->read_continuous(v.id, v.buf));
+                }
+                if (auto e = Hpack::decode(header_, v.buf, t->remote_table, t.remote_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
+                    t.hpackerr = e;
+                    t.err = H2Error::compression;
+                    return t.err;
+                }
+                return true;
+            }
+
+            H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string> & se, Http2Conn * t) override {
+                std::string hpacked;
+                if (!Hpack::encode<true>(header_, hpacked, t->local_table, t->local_settings[key(H2PredefinedSetting::header_table_size]))) {
+                    return H2Error::compression;
+                }
+                H2Flag flagcpy = flag;
+                std::uint8_t plus = 0;
+                flag |= H2Flag::end_headers;
+                /*if (!any(flag & H2Flag::padded)) {
+                padding = 0;
+            }
+            else {
+                plus = 1;
+            }*/
+                if (any(flag & H2Flag::priority)) {
+                    plus += 5;
+                }
+                auto write_header = [&](std::uint32_t len, auto& to_write) {
+                    TRY(H2Frame::serialize(len, se, t));
+                    if (any(flag & H2Flag::padded)) {
+                        se.write(padding);
+                    }
+                    if (any(flag & H2Flag::priority)) {
+                        TRY(write_depends(exclusive, depends, weight, se));
+                    }
+                    se.write_byte(to_write);
+                    for (auto i = 0; i < padding; i++) {
+                        se.write('\0');
+                    }
+                    return H2Err(true);
+                };
+                TRY(write_continuous(streamid, write_header, se, fsize, hpacked, flag, flagcpy, padding, plus));
+                return true;
+            }
+            virtual H2HeaderFrame<String, Map>* data() override {
+                return this;
+            }
+        };
+
+#undef H2FRAME
 #undef DEF_FRAME
 #undef DEC_FRAME
 #undef TRY
     }  // namespace v2
+
 }  // namespace socklib
