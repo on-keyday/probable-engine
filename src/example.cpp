@@ -1,5 +1,6 @@
 #include "v2/http.h"
-#include "v2/hpack.h"
+#include "v2/http2.h"
+
 #include <map>
 #include <deque>
 using namespace socklib;
@@ -48,12 +49,11 @@ int main() {
     res = p->response(&timeout);
 
     TestDerived d;
-
-    using hpack = Hpack<std::string, std::deque<std::pair<std::string, std::string>>, std::multimap<std::string, std::string>>;
-    std::string dst;
-    hpack::table_t table, after;
-    hpack::header_t header;
-    std::uint32_t v = 9999;
-    hpack::encode({{"cf-ray", "69846a37db520aba-KIZ"}}, dst, table, 9999);
-    hpack::decode(header, dst, after, v);
+    using table = std::deque<std::pair<std::string, std::string>>;
+    using header = std::multimap<std::string, std::string>;
+    using frame = H2DataFrame<std::string, std::map, header, table>;
+    frame data;
+    commonlib2::Serializer<std::string> se;
+    frame::h2request_t req;
+    data.serialize(100000, se, req);
 }
