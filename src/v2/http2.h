@@ -612,6 +612,8 @@ namespace socklib {
         DEF_FRAME(H2SettingsFrame) {
             USING_H2FRAME;
             using settings_t = typename h2request_t::settings_t;
+            constexpr H2SettingsFrame()
+                : H2FRAME(H2FType::settings) {}
 
            private:
             settings_t oldset;
@@ -620,10 +622,10 @@ namespace socklib {
            public:
             H2Err parse(commonlib2::HTTP2Frame<std::string> & v, Http2Conn * t) override {
                 H2Frame::parse(v, t);
-                if (streamid != 0) {
+                if (this->streamid != 0) {
                     return H2Error::protocol;
                 }
-                if (any(flag & H2Flag::ack)) {
+                if (any(this->flag & H2Flag::ack)) {
                     if (v.len != 0) {
                         return H2Error::frame_size;
                     }
@@ -632,7 +634,7 @@ namespace socklib {
                 if (v.len % 6) {
                     return H2Error::frame_size;
                 }
-                commonlib2::Deserializer<std::string&> se(v.buf);
+                reader_t se(v.buf);
                 while (!se.base_reader().ceof()) {
                     std::uint16_t key = 0;
                     std::uint32_t value = 0;
