@@ -1,6 +1,9 @@
 #pragma once
 #include <array>
 #include "net_traits.h"
+#include <enumext.h>
+#include <serializer.h>
+#include <stdint.h>
 
 namespace socklib {
     namespace v2 {
@@ -536,8 +539,20 @@ namespace socklib {
             }
         };
 
+        enum class HpackError {
+            none,
+            too_large_number,
+            too_short_number,
+            internal,
+            invalid_mask,
+            invalid_value,
+            not_exists,
+        };
+
+        using HpkErr = commonlib2::EnumWrap<HpackError, HpackError::none, HpackError::internal>;
+
         template <class String>
-        struct Hpack {
+        struct Http2HuffmanCoder {
             using string_t = String;
             using writer_t = bitvec_writer<String>;
             using reader_t = bitvec_reader<String>;
@@ -551,7 +566,7 @@ namespace socklib {
                 return (ret + 7) / 8;
             }
 
-            static string_t huffman_encode(const string_t& in) {
+            static string_t encode(const string_t& in) {
                 bitvec_writer vec;
                 for (auto c : in) {
                     vec.append(h2huffman[(unsigned char)c]);
@@ -562,6 +577,325 @@ namespace socklib {
                 }
                 return vec.data();
             }
+
+            static HpkErr decode_achar(unsigned char& c, reader_t& r, const h2huffman_tree* t, const h2huffman_tree*& fin, std::uint32_t& allone) {
+                for (;;) {
+                    if (!t) {
+                        return HpackError::invalid_value;
+                    }
+                    if (t->has_c) {
+                        c = t->c;
+                        fin = t;
+                        return true;
+                    }
+                    bool f = r.get();
+                    if (!r.incremant()) {
+                        return HpackError::too_short_number;
+                    }
+                    const h2huffman_tree* next = t->get(f);
+                    allone = (allone && f) ? allone + 1 : 0;
+                    t = next;
+                }
+            }
+
+            static HpkErr decode(string_t& res, string_t& src) {
+                reader_t r(src);
+                auto tree = h2huffman_tree::tree();
+                while (!r.eos()) {
+                    unsigned char c = 0;
+                    const h2huffman_tree* fin = nullptr;
+                    std::uint32_t allone = 1;
+                    auto tmp = decode_achar(c, r, tree, fin, allone);
+                    if (!tmp) {
+                        if (tmp == HpackError::too_short_number) {
+                            if (!r.eos() && allone - 1 > 7) {
+                                return HpackError::too_large_number;
+                            }
+                            break;
+                        }
+                        return tmp;
+                    }
+                    if (fin->eos) {
+                        return HpackError::invalid_value;
+                    }
+                    res.push_back(c);
+                }
+                return true;
+            }
         };
+#define TRY(...) \
+    if (auto e = (__VA_ARGS__); !e) return e
+        template <class String>
+        struct HapckIntegerCoder {
+            using string_t = String;
+
+            template <std::uint32_t n>
+            static HpkErr decode(commonlib2::Deserializer<string_t&>& se, size_t& sz, std::uint8_t& firstmask) {
+                static_assert(n > 0 && n <= 8, "invalid range");
+                constexpr unsigned char msk = static_cast<std::uint8_t>(~0) >> (8 - n);
+                unsigned char tmp = 0;
+
+                TRY(se.template read_as<std::uint8_t>(tmp));
+                firstmask = tmp & ~msk;
+                tmp &= msk;
+                sz = tmp;
+                if (tmp < msk) {
+                    return true;
+                }
+                size_t m = 0;
+                constexpr auto pow = [](size_t x) -> size_t {
+                    return commonlib2::msb_on<size_t>() >> ((sizeof(size_t) * 8 - 1) - x);
+                };
+                do {
+                    TRY(se.template read_as<std::uint8_t>(tmp));
+                    sz += (tmp & 0x7f) * pow(m);
+                    m += 7;
+                    if (m > (sizeof(size_t) * 8 - 1)) {
+                        return HpackError::too_large_number;
+                    }
+                } while (tmp & 0x80);
+                return true;
+            }
+
+            template <std::uint32_t n>
+            static HpkErr encode(commonlib2::Serializer<string_t&> se, size_t sz, std::uint8_t firstmask) {
+                static_assert(n > 0 && n <= 8, "invalid range");
+                constexpr unsigned char msk = static_cast<std::uint8_t>(~0) >> (8 - n);
+                if (firstmask & msk) {
+                    return HpackError::invalid_mask;
+                }
+                if (sz < (size_t)msk) {
+                    se.template write_as<std::uint8_t>(firstmask | sz);
+                }
+                else {
+                    se.template write_as<std::uint8_t>(firstmask | msk);
+                    sz -= msk;
+                    while (sz > 0x7f) {
+                        se.template write_as<std::uint8_t>((sz % 0x80) | 0x80);
+                        sz /= 0x80;
+                    }
+                    se.template write_as<std::uint8_t>(sz);
+                }
+                return true;
+            }
+        };
+
+        template <class String>
+        struct HpackStringCoder {
+            using huffman_coder = Http2HuffmanCoder<String>;
+            using integer_coder = HapckIntegerCoder<String>;
+
+            using string_t = String;
+
+            static void encode(commonlib2::Serializer<string_t&>& se, const string_t& value) {
+                if (value.size() > huffman_coder::gethuffmanlen(value)) {
+                    string_t enc = huffman_coder::encode(value);
+                    integer_coder::encode<7>(se, enc.size(), 0x80);
+                    se.write_byte(enc);
+                }
+                else {
+                    integer_code::encode<7>(se, value.size(), 0);
+                    se.write_byte(value);
+                }
+            }
+
+            static HpkErr decode(string_t& str, commonlib2::Deserializer<string_t&>& se) {
+                size_t sz = 0;
+                unsigned char mask = 0;
+                TRY(integer_coder::decode<7>(se, sz, mask));
+                TRY(se.read_byte(str, sz));
+                if (mask & 0x80) {
+                    string_t decoded;
+                    TRY(huffman_coder::decode(decoded, str));
+                    str = std::move(decoded);
+                }
+                return true;
+            }
+        };
+
+        template <class String, class Table, class Header>
+#ifdef COMMONLIB2_HAS_CONCEPTS
+        requires HpackDynamycTable<Table, String>
+#endif
+        struct Hpack {
+            using string_coder = HpackStringCoder<String>;
+            using integer_coder = HapckIntegerCoder<String>;
+            using string_t = String;
+            using table_t = Table;
+            using header_t = Header;
+
+            template <class F>
+            static bool get_idx(F&& f, size_t& idx, table_t& dymap) {
+                if (auto found = std::find_if(predefined_header.begin() + 1, predefined_header.end(), [&](auto& c) {
+                        return f(c.first, c.second);
+                    });
+                    found != predefined_header.end()) {
+                    idx = std::distance(predefined_header.begin(), found);
+                }
+                else if (auto found = std::find_if(dymap.begin(), dymap.end(), [&](auto& c) {
+                             return f(c.first, c.second);
+                         });
+                         found != dymap.end()) {
+                    idx = std::distance(dymap.begin(), found) + predefined_header_size;
+                }
+                else {
+                    return false;
+                }
+                return true;
+            }
+
+            static size_t calc_table_size(table_t& table) {
+                size_t size = 32;
+                for (auto& e : table) {
+                    size += e.first.size();
+                    size += e.second.size();
+                }
+                return size;
+            }
+
+            template <bool adddy = false>
+            static HpkErr encode(header_t& src, string_t& dst,
+                                 table_t& dymap, std::uint32_t maxtablesize) {
+                commonlib2::Serializer<string_t&> se(dst);
+                for (auto& h : src) {
+                    size_t idx = 0;
+                    if (get_idx(
+                            [&](const auto& k, const auto& v) {
+                                return k == h.first && v == h.second;
+                            },
+                            idx, dymap)) {
+                        TRY(integer_coder::encode<7>(se, idx, 0x80));
+                    }
+                    else {
+                        if (get_idx(
+                                [&](const auto& k, const auto&) {
+                                    return k == h.first;
+                                },
+                                idx, dymap)) {
+                            if (adddy) {
+                                TRY(integer_coder::encode<6>(se, idx, 0x40));
+                            }
+                            else {
+                                TRY(integer_coder::encode<4>(se, idx, 0));
+                            }
+                        }
+                        else {
+                            se.template write_as<std::uint8_t>(0);
+                            string_coder::encode(se, h.first);
+                        }
+                        string_coder::encode(se, h.second);
+                        if (adddy) {
+                            dymap.push_front({h.first, h.second});
+                            size_t tablesize = calc_table_size(dymap);
+                            while (tablesize > maxtablesize) {
+                                if (!dymap.size()) return false;
+                                tablesize -= dymap.back().first.size();
+                                tablesize -= dymap.back().second.size();
+                                dymap.pop_back();
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+
+            static HpkErr decode(header_tr& res, string_t& src,
+                                 table_t& dymap, std::uint32_t& maxtablesize) {
+                auto update_dymap = [&] {
+                    size_t tablesize = calc_table_size(dymap);
+                    while (tablesize > maxtablesize) {
+                        if (tablesize == 32) break;  //TODO: check what written in RFC means
+                        if (!dymap.size()) {
+                            return false;
+                        }
+                        tablesize -= dymap.back().first.size();
+                        tablesize -= dymap.back().second.size();
+                        dymap.pop_back();
+                    }
+                    return true;
+                };
+                commonlib2::Deserializer<string_t&> se(src);
+                while (!se.base_reader().ceof()) {
+                    unsigned char tmp = se.base_reader().achar();
+                    string_t key, value;
+                    auto read_two_literal = [&]() -> HpkErr {
+                        TRY(string_coder::decode(key, se));
+                        TRY(string_coder::decode(value, se));
+                        res.emplace(key, value);
+                        return true;
+                    };
+                    auto read_idx_and_literal = [&](size_t idx) -> HpkErr {
+                        if (idx < predefined_header_size) {
+                            key = predefined_header[idx].first;
+                        }
+                        else {
+                            if (dymap.size() <= idx - predefined_header_size) {
+                                return HpackError::not_exists;
+                            }
+                            key = dymap[idx - predefined_header_size].first;
+                        }
+                        TRY(string_coder::decode(value, se));
+                        res.emplace(key, value);
+                        return true;
+                    };
+                    if (tmp & 0x80) {
+                        size_t idx = 0;
+                        TRY(integer_coder::decode<7>(se, idx, tmp));
+                        if (idx == 0) {
+                            return HpackError::invalid_value;
+                        }
+                        if (idx < predefined_header_size) {
+                            if (!predefined_header[idx].second[0]) {
+                                return HpackError::not_exists;
+                            }
+                            res.emplace(predefined_header[idx].first, predefined_header[idx].second);
+                        }
+                        else {
+                            if (dymap.size() <= idx - predefined_header_size) {
+                                return HpackError::not_exists;
+                            }
+                            res.emplace(dymap[idx - predefined_header_size].first, dymap[idx - predefined_header_size].second);
+                        }
+                    }
+                    else if (tmp & 0x40) {
+                        size_t sz = 0;
+
+                        TRY(integer_coder::decode<6>(se, sz, tmp));
+
+                        if (sz == 0) {
+                            TRY(read_two_literal());
+                        }
+                        else {
+                            TRY(read_idx_and_literal(sz));
+                        }
+                        dymap.push_front({key, value});
+                        TRY(update_dymap());
+                    }
+                    else if (tmp & 0x20) {  //dynamic table size change
+                        //unimplemented
+                        size_t sz = 0;
+                        TRY(integer_coder::decode<5>(se, sz, tmp));
+                        if (maxtablesize > 0x80000000) {
+                            return HpackError::too_large_number;
+                        }
+                        maxtablesize = (std::int32_t)sz;
+                        TRY(update_dymap());
+                    }
+                    else {
+                        size_t sz = 0;
+                        TRY(integer_coder::decode<4>(se, sz, tmp));
+                        if (sz == 0) {
+                            TRY(read_two_literal());
+                        }
+                        else {
+                            TRY(read_idx_and_literal(sz));
+                        }
+                    }
+                }
+                return true;
+            }
+        };
+
+#undef TRY
     }  // namespace v2
 }  // namespace socklib

@@ -810,7 +810,7 @@ namespace socklib {
                         if (dymap.size() <= idx - predefined_header_size) {
                             return HpackError::not_exists;
                         }
-                        key = dymap[idx - predefined_header_size].second;
+                        key = dymap[idx - predefined_header_size].first;
                     }
                     TRY(decode_str(value, se));
                     res.emplace(key, value);

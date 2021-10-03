@@ -42,6 +42,19 @@ namespace socklib {
             { t[0] } -> Is_referece;
             {t.push_back('a')};
         };
+
+        template <class Table, class String>
+        concept HpackDynamycTable = requires(Table t) {
+            {t.push_front({std::declval<String>(), std::declval<String>()})};
+            {t.begin() != t.end()};
+            {(*t.begin()).first};
+            {(*t.begin()).second};
+            {t.size()};
+            {t.back().first};
+            {t.back().second};
+            {t.pop_back()};
+            {t[1]};
+        };
 #endif
     }  // namespace v2
 }  // namespace socklib
