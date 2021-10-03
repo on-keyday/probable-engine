@@ -44,6 +44,7 @@ int main() {
     auto p = make_request();
     TimeoutContext timeout(30);
     p->set_httpversion(1);
+    p->requestHeader() = {{"Accept", "text/html"}};
     p->set_cacert("D:/commonlib/netsoft/cacert.pem");
     auto res = p->request("GET", "google.com", &timeout);
     res = p->response(&timeout);
@@ -51,9 +52,11 @@ int main() {
     TestDerived d;
     using table = std::deque<std::pair<std::string, std::string>>;
     using header = std::multimap<std::string, std::string>;
-    using frame = H2DataFrame<std::string, std::map, header, table>;
-    frame data;
+    using dataframe = H2DataFrame<std::string, std::map, header, table>;
+    using headerframe = H2HeaderFrame<std::string, std::map, header, table>;
+    dataframe data;
+    headerframe header;
     commonlib2::Serializer<std::string> se;
-    frame::h2request_t req;
+    dataframe::h2request_t req;
     data.serialize(100000, se, req);
 }

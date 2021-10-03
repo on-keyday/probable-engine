@@ -50,22 +50,6 @@ namespace socklib {
                 return ctx.phase;
             }
 
-            Header& request() {
-                return ctx.request;
-            }
-
-            Body& requestBody() {
-                return ctx.requestbody;
-            }
-
-            Header& response() {
-                return ctx.response;
-            }
-
-            Body& responseBody() {
-                return ctx.responsebody;
-            }
-
             void set_httpversion(int version) {
                 ctx.http_version = version;
             }
@@ -87,6 +71,22 @@ namespace socklib {
            public:
             ClientRequestProxy()
                 : readbuf(this->ctx) {}
+
+            Header& requestHeader() {
+                return ctx.request;
+            }
+
+            Body& requestBody() {
+                return ctx.requestbody;
+            }
+
+            const Header& responseHeader() {
+                return ctx.response;
+            }
+
+            const Body& responseBody() {
+                return ctx.responsebody;
+            }
 
             void set_cacert(const String& cacert) {
                 this->ctx.cacert = cacert;
@@ -131,6 +131,21 @@ namespace socklib {
 
         template <class String, class Header, class Body>
         struct ServerRequestProxy : RequestProxy<String, Header, Body> {
+            const Header& requestHeader() {
+                return ctx.request;
+            }
+
+            const Body& requestBody() {
+                return ctx.requestbody;
+            }
+
+            Header& responseHeader() {
+                return ctx.response;
+            }
+
+            Body& responseBody() {
+                return ctx.responsebody;
+            }
         };
 
         template <class String = std::string, class Header = std::multimap<String, String>, class Body = String>

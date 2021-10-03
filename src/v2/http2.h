@@ -232,12 +232,16 @@ struct NAME
                     plus += 1;
                 }
                 if (hpacked.size() + padding + plus <= fsize) {
-                    TRY(write_header((std::uint32_t)(hpacked.size() + padding + plus), hpacked));
+                    if (auto e = write_header((std::uint32_t)(hpacked.size() + padding + plus), hpacked); !e) {
+                        return e;
+                    }
                 }
                 else {
                     flag = flagcpy;
                     std::string_view view(hpacked.data(), fsize - (padding + plus));
-                    TRY(write_header(fsize, view));
+                    if (auto e = write_header(fsize, view); !e) {
+                        return e;
+                    }
                     size_t idx = fsize - (padding + plus);
                     while (hpacked.size() - idx) {
                         if (hpacked.size() - idx <= fsize) {
@@ -382,8 +386,8 @@ struct NAME
                 return true;
             }
 
-            H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string> & se, h2request_t & t) override {
-                std::string hpacked;
+            H2Err serialize(std::uint32_t fsize, writer_t & se, h2request_t & t) override {
+                string_t hpacked;
                 if (auto e = hpack_t::encode<true>(header_, hpacked, t->local_table, t->local_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
                     t.hpackerr = e;
                     t.err = H2Error::compression;
@@ -419,7 +423,6 @@ struct NAME
                     t.err = e;
                     return e;
                 }
-
                 return true;
             }
         };
