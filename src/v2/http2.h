@@ -538,6 +538,39 @@ namespace socklib {
             }
         };
 
+        DEF_FRAME(H2PriorityFrame) {
+            USING_H2FRAME;
+
+           private:
+            H2Weight weight;
+
+           public:
+            void get_weight(H2Weight & w) const {
+                w.exclusive = weight.exclusive;
+                w.depends_id = weight.depends;
+                w.weight = weight.weight;
+            }
+
+            H2Err parse(commonlib2::HTTP2Frame<std::string> & v, h2request_t & t) override {
+                H2Frame::parse(v, t);
+                if (auto e = read_depends(weight, v.buf); !e) {
+                    t.err = e;
+                    return e;
+                }
+                return true;
+            }
+
+            H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string> & se, h2request_t & t) override {
+                if (auto e = H2FRAME::serialize(5, se, t); !e) {
+                    t.err = e;
+                    return e;
+                }
+                return write_depends(weight, se);
+            }
+
+            THISTYPE(H2PriorityFrame, priority)
+        };
+
 #undef H2FRAME
 #undef DETECTTYPE_RET
 #undef THISTYPE
