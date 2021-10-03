@@ -115,12 +115,13 @@ struct NAME
         DEC_FRAME(H2GoAwayFrame);
         DEC_FRAME(H2WindowUpdateFrame);
 
-        template <class String, template <class...> class Map, class Header>
+        template <class String, template <class...> class Map, class Header, class Table>
         struct H2Frame {
             using base_t = H2Frame<String, Map>;
             using h2request_t = Http2RequestContext<String, Map>;
             using string_t = String;
             using header_t = Header;
+            using hpack_t = Hpack<String, Table, Header>;
 
            protected:
             H2FType type = H2FType::unknown;
@@ -169,14 +170,14 @@ struct NAME
                 return true;
             }
 
-            static H2Err write_depends(bool exclusive, int id, std::uint8_t weight, commonlib2::Serializer<std::string>& se) {
-                TRY(id >= 0);
-                std::uint32_t mask = exclusive ? commonlib2::msb_on<std::uint32_t>() : 0;
-                std::uint32_t to_write = (std::uint32_t)id;
+            static H2Err write_depends(H2Weight& w, commonlib2::Serializer<std::string>& se) {
+                TRY(w.depends_id >= 0);
+                std::uint32_t mask = w.exclusive ? commonlib2::msb_on<std::uint32_t>() : 0;
+                std::uint32_t to_write = (std::uint32_t)w.depends_id;
                 to_write |= mask;
                 to_write = commonlib2::translate_byte_net_and_host<std::uint32_t>(&to_write);
                 se.write(to_write);
-                se.write(weight);
+                se.write(w.weight);
                 return true;
             }
 
@@ -342,7 +343,7 @@ struct NAME
                     TRY(remove_padding(v.buf, v.len, this->padding));
                 }
                 if (any(this->flag & H2Flag::priority)) {
-                    TRY(read_depends(exclusive, depends, weight, v.buf));
+                    TRY(read_depends(weight, v.buf));
                     //set_priority = true;
                 }
                 if (!any(this->flag & H2Flag::end_headers)) {
