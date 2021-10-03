@@ -606,9 +606,73 @@ namespace socklib {
                 return true;
             }
 
-            H2RstStreamFrame* rst_stream() override {
-                return this;
+            THISTYPE(H2RstStreamFrame, rst_stream);
+        };
+
+        DEF_FRAME(H2SettingsFrame) {
+            USING_H2FRAME;
+            using settings_t = typename h2request_t::settings_t;
+
+           private:
+            settings_t oldset;
+            settings_t newset;
+
+           public:
+            H2Err parse(commonlib2::HTTP2Frame<std::string> & v, Http2Conn * t) override {
+                H2Frame::parse(v, t);
+                if (streamid != 0) {
+                    return H2Error::protocol;
+                }
+                if (any(flag & H2Flag::ack)) {
+                    if (v.len != 0) {
+                        return H2Error::frame_size;
+                    }
+                    return true;
+                }
+                if (v.len % 6) {
+                    return H2Error::frame_size;
+                }
+                commonlib2::Deserializer<std::string&> se(v.buf);
+                while (!se.base_reader().ceof()) {
+                    std::uint16_t key = 0;
+                    std::uint32_t value = 0;
+                    if (!se.read_ntoh(key)) {
+                        t.err = H2Error::internal;
+                        return false;
+                    }
+                    if (!se.read_ntoh(value)) {
+                        t.err = H2Error::internal;
+                        return false;
+                    }
+                    newset[key] = value;
+                    auto& tmp = t.remote_settings[key];
+                    oldset[key] = value;
+                    tmp = value;
+                }
+                return true;
             }
+
+            H2Err serialize(std::uint32_t fsize, writer_t & se, Http2Conn * t) override {
+                if (any(this->flag & H2Flag::ack)) {
+                    H2FRAME::serialize(0, se, t);
+                    return true;
+                }
+                auto ressize = newset.size() * 6;
+                if (fsize < ressize) {
+                    return H2Error::frame_size;
+                }
+                H2Frame::serialize((std::uint32_t)ressize, se, t);
+                for (auto& s : newset) {
+                    auto& tmp = t.local_settings[s.first];
+                    oldset[s.first] = tmp;
+                    tmp = s.second;
+                    se.write_hton(s.first);
+                    se.write_hton(s.second);
+                }
+                return true;
+            }
+
+            THISTYPE(H2SettingsFrame, settings);
         };
 
 #undef H2FRAME
