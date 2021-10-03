@@ -124,10 +124,6 @@ namespace socklib {
             table_t remote_table;
             table_t local_table;
         };
-        /*
-#define TRY(...) \
-    if (auto e = (__VA_ARGS__); !e) return e
-    */
 
         DEC_FRAME(H2DataFrame);
         DEC_FRAME(H2HeaderFrame);
@@ -541,6 +537,9 @@ namespace socklib {
         DEF_FRAME(H2PriorityFrame) {
             USING_H2FRAME;
 
+            constexpr H2PriorityFrame()
+                : H2FRAME(H2FType::priority) {}
+
            private:
             H2Weight weight;
 
@@ -551,7 +550,7 @@ namespace socklib {
                 w.weight = weight.weight;
             }
 
-            H2Err parse(commonlib2::HTTP2Frame<std::string> & v, h2request_t & t) override {
+            H2Err parse(rawframe_t & v, h2request_t & t) override {
                 H2Frame::parse(v, t);
                 if (auto e = read_depends(weight, v.buf); !e) {
                     t.err = e;
@@ -569,6 +568,47 @@ namespace socklib {
             }
 
             THISTYPE(H2PriorityFrame, priority)
+        };
+
+        DEF_FRAME(H2RstStreamFrame) {
+            USING_H2FRAME;
+            constexpr H2RstStreamFrame()
+                : H2FRAME(H2FType::rst_stream) {}
+
+           private:
+            std::uint32_t errcode = 0;
+
+           public:
+            std::uint32_t code() const {
+                return errcode;
+            }
+
+            H2Err parse(rawframe_t & v, h2request_t & t) override {
+                H2Frame::parse(v, t);
+                if (v.len != 4) {
+                    t.err = H2Error::frame_size;
+                    return t.err;
+                }
+                reader_t se(v.buf);
+                if (!se.read_ntoh(errcode)) {
+                    t.err = H2Error::internal;
+                    return false;
+                }
+                return true;
+            }
+
+            H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string> & se, h2request_t & t) override {
+                if (auto e = H2Frame::serialize(4, se, t)) {
+                    t.err = e;
+                    return e;
+                }
+                se.write_hton(errcode);
+                return true;
+            }
+
+            H2RstStreamFrame* rst_stream() override {
+                return this;
+            }
         };
 
 #undef H2FRAME
