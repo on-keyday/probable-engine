@@ -341,13 +341,47 @@ namespace socklib {
                 return true;
             }
 
-            H2Err make_frame(std::shared_ptr<H2Frame> & res, rawframe_t & frame) {
-#define F(TYPE) TYPE TEMPLATE_PARAM
+            template <class Frame>
+            H2Err get_frame(rawframe_t & frame, std::shared_ptr<H2FRAME> & res) {
+                res = std::make_shared<Frame>();
+                return res->parse(frame);
+            }
 
+            H2Err make_frame(std::shared_ptr<H2FRAME> & res, rawframe_t & frame) {
+#define F(TYPE) TYPE TEMPLATE_PARAM
+                switch (frame.type) {
+                    case 0:
+                        return get_frame<F(H2DataFrame)>(frame, res);
+                    case 1:
+                        return get_frame<F(H2HeaderFrame)>(frame, res);
+                    case 2:
+                        return get_frame<F(H2PriorityFrame)>(frame, res);
+                    case 3:
+                        return get_frame<F(H2RstStreamFrame)>(frame, res);
+                    case 4:
+                        return get_frame<F(H2SettingsFrame)>(frame, res);
+                    case 5:
+                        return get_frame<F(H2PushPromiseFrame)>(frame, res);
+                    case 6:
+                        return get_frame<F(H2PingFrame)>(frame, res);
+                    case 7:
+                        return get_frame<F(H2GoAwayFrame)>(frame, res);
+                    case 8:
+                        return get_frame<F(H2WindowUpdateFrame)>(frame, res, this);
+                    case 9:
+                        return H2Error::protocol;
+                    default:
+                        return H2Error::unimplemented;
+                }
 #undef F
             }
 
-            static H2Err read(std::shared_ptr<H2Frame> & res) {
+            static H2Err read(std::shared_ptr<InetConn> & conn, std::shared_ptr<H2FRAME> & res, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
+                rawframe_t frame;
+                if (auto e = read_a_frame(conn, ctx, frame, cancel); !e) {
+                    return e;
+                }
+                return make_frame(res, frame);
             }
         };
 
