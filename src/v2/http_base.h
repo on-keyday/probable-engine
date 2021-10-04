@@ -186,6 +186,7 @@ namespace socklib {
             use_proxy = 0x2,
             ignore_alpn_failure = 0x4,
             allow_http09 = 0x8,
+            host_is_small = 0x10,
         };
 
         DEFINE_ENUMOP(RequestFlag)

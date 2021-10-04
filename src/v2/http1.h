@@ -17,7 +17,7 @@ namespace socklib {
             using urlparser_t = URLParser<String, Header, Body>;
             using string_t = typename base_t::string_t;
             using request_t = typename base_t::request_t;
-            using errhandle_t = ErrorHandler<String, Header, Body>;
+            using errorhandle_t = ErrorHandler<String, Header, Body>;
 
             static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, request_t& req, CancelContext* cancel) {
                 for (auto& h : req.request) {
@@ -46,7 +46,7 @@ namespace socklib {
                 WriteContext w;
                 w.ptr = towrite.c_str();
                 w.bufsize = towrite.size();
-                return errohandle_t::write_to_conn(conn, w, req, cancel);
+                return errorhandle_t::write_to_conn(conn, w, req, cancel);
             }
 
             static bool write_request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
@@ -64,7 +64,12 @@ namespace socklib {
                 }
                 towrite += ' ';
                 towrite += "HTTP/1.1\r\n";
-                towrite += "Host: ";
+                if (any(req.flag & RequestFlag::host_is_small)) {
+                    towrite += "host: ";
+                }
+                else {
+                    towrite += "Host: ";
+                }
                 towrite += urlparser_t::host_with_port(req.parsed);
                 towrite += "\r\n";
                 if (write_header_common(conn, towrite, req, cancel)) {

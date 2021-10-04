@@ -128,6 +128,11 @@ namespace socklib {
         };
 
         constexpr auto h2_connection_preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+        H2TYPE_PARAMS
+#ifdef COMMONLIB2_HAS_CONCEPTS
+        requires StringType<String>
+#endif
+        struct Http2RequestContext;
 
         H2TYPE_PARAMS
         struct H2Stream {
@@ -156,6 +161,7 @@ namespace socklib {
             table_t local_table;
             streams_t streams;
             std::uint64_t stream_count;
+            std::int32_t window;
         };
 
         DEC_FRAME(H2DataFrame);
@@ -188,7 +194,7 @@ namespace socklib {
     using reader_t = typename H2FRAME::reader_t;       \
     using rawframe_t = typename H2FRAME::rawframe_t;   \
     using body_t = typename H2FRAME::body_t;           \
-    using errorhandle_t = typename H2FRAME::errrohandle_t
+    using errorhandle_t = typename H2FRAME::errorhandle_t
 
            protected:
             H2FType type = H2FType::unknown;
@@ -198,7 +204,7 @@ namespace socklib {
            public:
             constexpr H2Frame(H2FType type)
                 : type(type) {}
-            H2FType type() const {
+            H2FType get_type() const {
                 return type;
             }
 
@@ -989,7 +995,7 @@ namespace socklib {
                 return true;
             }
 
-            H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string> & se, Http2Conn * t) override {
+            H2Err serialize(std::uint32_t fsize, writer_t & se, h2request_t & t) override {
                 if (value <= 0) {
                     t.err = H2Error::protocol;
                     return t.err;
