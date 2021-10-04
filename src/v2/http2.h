@@ -160,17 +160,18 @@ namespace socklib {
                     if (!set_header(req.response)) {
                         return false;
                     }
+                    towrite.emplace(":status", std::to_string(req.statuscode).c_str())
+                }
+                else {
+                    if (!set_header(req.request)) {
+                        return false;
+                    }
                     string_t path;
                     base_t::write_path(path, req);
                     towrite.emplace(":method", req.method);
                     towrite.emplace(":authority", urlparser_t::host_with_port(req.parsed));
                     towrite.emplace(":path", path);
                     towrite.emplace(":scheme", req.parsed.scheme);
-                }
-                else {
-                    if (!set_header(req.request)) {
-                        return false;
-                    }
                 }
             }
 #undef F
