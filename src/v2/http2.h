@@ -486,12 +486,10 @@ namespace socklib {
                     if (auto e = H2FRAME::read_depends(this->weight, v.buf)) {
                         return e;
                     }
-                    //set_priority = true;
                 }
-                if (!any(this->flag & H2Flag::end_headers)) {
-                    /*if (t->read_continuous(v.id, v.buf)) {
-                    }*/
-                }
+                /*if (!any(this->flag & H2Flag::end_headers)) {
+
+                }*/
                 if (auto e = hpack_t::decode(header_, v.buf, t.remote_table, t.remote_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
                     t.hpackerr = e;
                     t.err = H2Error::compression;
