@@ -123,6 +123,13 @@ namespace socklib {
         };
 
         H2TYPE_PARAMS
+        struct StreamFlowUpdater {
+            using h2request_t = Http2RequestContext TEMPLATE_PARAM;
+            static bool update() {
+            }
+        };
+
+        H2TYPE_PARAMS
         struct H2FrmaeWriter {
 #define F(TYPE) TYPE TEMPLATE_PARAM
             using conn_t = std::shared_ptr<InetConn>;
@@ -130,10 +137,12 @@ namespace socklib {
             using h2request_t = Http2RequestContext TEMPLATE_PARAM;
             using errorhandle_t = ErrorHandler<String, Header, Body>;
             using base_t = HttpBase<String, Header, Body>;
+            using string_t = String;
 
             bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx) {
                 F(H2HeaderFrame)
                 hframe;
+                auto& towrite = hframe.header_map();
                 auto set_header = [&](auto& header) {
                     for (auto& h : header) {
                         if (auto e = base_t::is_valid_field(h, req); e < 0) {
@@ -142,12 +151,23 @@ namespace socklib {
                         else if (e == 0) {
                             continue;
                         }
-                        hframe.header_map().emplace(h.first, h.second);
+                        towrite.emplace(h.first, h.second);
                     }
                     return false;
                 };
                 if (ctx.server) {
                     if (!set_header(req.response)) {
+                        return false;
+                    }
+                    string_t path;
+                    base_t::write_path(path, req);
+                    towrite.emplace(":method", req.method);
+                    towrite.emplace(":authority");
+                    towrite.emplace(":path", path);
+                    towrite.emplace(":scheme", req.parsed.scheme);
+                }
+                else {
+                    if (!set_header(req.request)) {
                         return false;
                     }
                 }

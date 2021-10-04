@@ -50,16 +50,7 @@ namespace socklib {
             static bool write_request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
                 string_t towrite = req.method;
                 towrite += ' ';
-                if (req.default_path == DefaultPath::host_port) {
-                    towrite += urlparser_t::host_with_port(req.parsed);
-                }
-                else if (req.default_path == DefaultPath::abs_url) {
-                    towrite += urlparser_t::to_url(req.parsed);
-                }
-                else {
-                    towrite += req.parsed.path;
-                    towrite += req.parsed.query;
-                }
+                base_t::write_path(towrite, req);
                 towrite += ' ';
                 towrite += "HTTP/1.1\r\n";
                 if (any(req.flag & RequestFlag::host_is_small)) {

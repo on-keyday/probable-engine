@@ -219,6 +219,10 @@ namespace socklib {
         ENUM_STRING_MSG(HttpDefaultScheme::https, "https")
         END_ENUM_STRING_MSG("http")
 
+        BEGIN_ENUM_STRING_MSG(HttpDefaultScheme, default_port)
+        ENUM_STRING_MSG(HttpDefaultScheme::https, "443")
+        END_ENUM_STRING_MSG("80")
+
         template <class String, class Header, class Body>
 #ifdef COMMONLIB2_HAS_CONCEPTS
         requires StringType<String> && HeaderType<Header, String> && VectorType<Body>
@@ -474,6 +478,19 @@ namespace socklib {
                 req.phase = RequestPhase::open_direct;
                 conn = std::move(tmpconn);
                 return true;
+            }
+
+            static void write_path(string_t& towrite, request_t& req) {
+                if (req.default_path == DefaultPath::host_port) {
+                    towrite += urlparser_t::host_with_port(req.parsed, req.parsed.scheme == "https" ? default_port(HttpDefaultScheme::https) : default_port(HttpDefaultScheme::http));
+                }
+                else if (req.default_path == DefaultPath::abs_url) {
+                    towrite += urlparser_t::to_url(req.parsed);
+                }
+                else {
+                    towrite += req.parsed.path;
+                    towrite += req.parsed.query;
+                }
             }
         };
 
