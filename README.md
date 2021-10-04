@@ -1,7 +1,7 @@
 # socklib
 simple socket library(c++)
 
-**warning:**  this library is still in development and not released, so destructive changes will be able to occur. no documentation and no support exists
+**warning:**  this library is still in development and not released, so destructive changes will be able to occur.also, no documentation and no support exists.
 
 ## License
 MIT License
