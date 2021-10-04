@@ -16,14 +16,27 @@ namespace socklib {
         H2TYPE_PARAMS
         struct WindowUpdater {
             using h2request_t = Http2RequestContext TEMPLATE_PARAM;
-            using h1request_t = RequestContext<String, Header, Body>;
             using updateframe_t = H2WindowUpdateFrame TEMPLATE_PARAM;
+            using settingsframe_t = H2SettingsFrame TEMPLATE_PARAM;
             using stream_t = H2Stream TEMPLATE_PARAM;
-            static H2Err update(h2request_t& ctx, h1request_t& req, updateframe_t* frame) {
+
+            static bool update(h2request_t& ctx, updateframe_t* frame) {
                 if (!frame) return false;
                 auto up = frame->update();
                 auto id = frame->get_id();
                 stream_t& stream = ctx.streams[id];
+                stream.remote_window += up;
+                return true;
+            }
+
+            static bool resize(h2request_t& ctx, settingsframe_t* frame) {
+                if (!frame) return false;
+                auto& settings = frame->new_settings();
+                if (auto found = settings.find(key(H2PredefinedSetting::initial_window_size)); found != settings.end()) {
+                    std::uint32_t currentwindowsize = frame->old_settings()[key(H2PredefinedSetting::initial_window_size)];
+                    std::uint32_t newwindowsize = found->size;
+                }
+                return true;
             }
         };
 #undef H2TYPE_PARAMS

@@ -139,8 +139,8 @@ namespace socklib {
         struct H2Stream {
             //using request_t = Http2RequestContext TEMPLATE_PARAM;
             using string_t = String;
-            request_t* ctx;
-            std::int32_t id;
+            //request_t* ctx;
+            //std::int32_t id;
             std::int64_t local_window;
             std::int64_t remote_window;
             H2StreamState state;
@@ -717,6 +717,14 @@ namespace socklib {
             settings_t newset;
 
            public:
+            settings_t& new_settings() {
+                return newset;
+            }
+
+            settings_t& old_settings() {
+                return oldset;
+            }
+
             H2Err parse(rawframe_t & v, h2request_t & t) override {
                 H2Frame::parse(v, t);
                 if (this->streamid != 0) {
