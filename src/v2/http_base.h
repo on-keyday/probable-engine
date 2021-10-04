@@ -370,6 +370,18 @@ namespace socklib {
                 return true;
             }
 
+            template <class KeyVal>
+            static int is_valid_field(KeyVal& h, request_t& req) {
+                if (!base_t::is_valid_field(h)) {
+                    if (any(req.flag & RequestFlag::invalid_header_is_error)) {
+                        req.err = HttpError::invalid_header;
+                        return -1;
+                    }
+                    return 0;
+                }
+                return 1;
+            }
+
             static bool open(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr, int prev_version = 0) {
                 if (!urlparser_t::parse_request(req, "http", "https")) {
                     return false;

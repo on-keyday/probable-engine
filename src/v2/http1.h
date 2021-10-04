@@ -21,11 +21,10 @@ namespace socklib {
 
             static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, request_t& req, CancelContext* cancel) {
                 for (auto& h : req.request) {
-                    if (!base_t::is_valid_field(h)) {
-                        if (any(req.flag & RequestFlag::invalid_header_is_error)) {
-                            req.err = HttpError::invalid_header;
-                            return false;
-                        }
+                    if (auto e = base_t::is_valid_field(h, req); e < 0) {
+                        return false;
+                    }
+                    else if (e == 0) {
                         continue;
                     }
                     towrite += h.first;

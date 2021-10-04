@@ -129,16 +129,17 @@ namespace socklib {
             using h1request_t = RequestContext<String, Header, Body>;
             using h2request_t = Http2RequestContext TEMPLATE_PARAM;
             using errorhandle_t = ErrorHandler<String, Header, Body>;
+            using base_t = HttpBase<String, Header, Body>;
 
             bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx) {
                 F(H2HeaderFrame)
-                h;
-                if (ctx.server) {
-                    h.header_map() = req.response;
-                }
-                else {
-                    h.header_map() = req.request;
-                }
+                hframe;
+                auto set_header = [&](auto& header) {
+                    for (auto& h : header) {
+                        if (!base_t::is_valid_field(h)) {
+                        }
+                    }
+                };
             }
 #undef F
         };
