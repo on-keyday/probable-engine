@@ -464,6 +464,18 @@ namespace socklib {
                     req.error_cb(code, cancel, msg);
                 }
             }
+
+            static bool write_to_conn(std::shared_ptr<InetConn>& conn, WriteContext& w, request_t& req, CancelContext* cancel) {
+                auto error = [&](std::int64_t code, CancelContext* cancel, const char* msg) {
+                    on_error(req, code, cancel, msg);
+                };
+                w.errhandler = +[](void* e, std::int64_t code, CancelContext* cancel, const char* msg) {
+                    auto f = (decltype(error)*)e;
+                    (*f)(code, cancel, msg);
+                };
+                w.usercontext = &error;
+                return conn->write(w, cancel);
+            }
         };
     }  // namespace v2
 }  // namespace socklib

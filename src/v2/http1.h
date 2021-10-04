@@ -19,18 +19,6 @@ namespace socklib {
             using request_t = typename base_t::request_t;
             using errhandle_t = ErrorHandler<String, Header, Body>;
 
-            static bool write_to_conn(std::shared_ptr<InetConn> conn, WriteContext& w, request_t& req, CancelContext* cancel) {
-                auto error = [&](std::int64_t code, CancelContext* cancel, const char* msg) {
-                    errhandle_t::on_error(req, code, cancel, msg);
-                };
-                w.errhandler = +[](void* e, std::int64_t code, CancelContext* cancel, const char* msg) {
-                    auto f = (decltype(error)*)e;
-                    (*f)(code, cancel, msg);
-                };
-                w.usercontext = &error;
-                return conn->write(w, cancel);
-            }
-
             static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, request_t& req, CancelContext* cancel) {
                 for (auto& h : req.request) {
                     using commonlib2::str_eq;
@@ -58,7 +46,7 @@ namespace socklib {
                 WriteContext w;
                 w.ptr = towrite.c_str();
                 w.bufsize = towrite.size();
-                return write_to_conn(conn, w, req, cancel);
+                return errohandle_t::write_to_conn(conn, w, req, cancel);
             }
 
             static bool write_request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
@@ -93,7 +81,7 @@ namespace socklib {
                     WriteContext w;
                     w.ptr = req.responsebody.data();
                     w.bufsize = req.responsebody.size();
-                    if (write_to_conn(conn, w, req, cancel)) {
+                    if (errorhandle_t::write_to_conn(conn, w, req, cancel)) {
                         req.phase = RequestPhase::response_sent;
                         return true;
                     }
