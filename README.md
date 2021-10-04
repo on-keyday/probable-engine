@@ -1,7 +1,7 @@
 # socklib
 simple socket library(c++)
 
-**warning:**  this library is still in development that destructive changes will be able to occur
+**warning:**  this library is still in development and not released, so destructive changes will be able to occur
 ## How to Build
 0. Before build, install software below and add to PATH.
    - cmake(https://cmake.org/download/)
