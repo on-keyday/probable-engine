@@ -566,7 +566,7 @@ namespace socklib {
                 return true;
             }
 
-            H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string> & se, h2request_t & t) override {
+            H2Err serialize(std::uint32_t fsize, writer_t & se, h2request_t & t) override {
                 if (auto e = H2FRAME::serialize(5, se, t); !e) {
                     t.err = e;
                     return e;
