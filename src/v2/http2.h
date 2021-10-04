@@ -33,8 +33,16 @@ namespace socklib {
                 if (!frame) return false;
                 auto& settings = frame->new_settings();
                 if (auto found = settings.find(key(H2PredefinedSetting::initial_window_size)); found != settings.end()) {
-                    std::uint32_t currentwindowsize = frame->old_settings()[key(H2PredefinedSetting::initial_window_size)];
-                    std::uint32_t newwindowsize = found->size;
+                    std::uint32_t current_initial = frame->old_settings()[key(H2PredefinedSetting::initial_window_size)];
+                    std::uint32_t new_initial = found->size;
+                    for (auto& stpair : ctx.streams) {
+                        //refer URL below (Qiita) (Japanese)
+                        //https://qiita.com/Jxck_/items/622162ad8bcb69fa043d#%E9%80%94%E4%B8%AD%E3%81%A7%E3%81%AE-settings-frame
+                        stream_t& stream = stpair.second;
+                        std::int64_t& current_window = stream.remote_window;
+                        std::int64_t& new_window = stream.remote_window;
+                        new_window = new_initial - (current_initial - current_window);
+                    }
                 }
                 return true;
             }
