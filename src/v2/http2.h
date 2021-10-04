@@ -170,6 +170,9 @@ namespace socklib {
            public:
             constexpr H2Frame(H2FType type)
                 : type(type) {}
+            H2FType type() const {
+                return type;
+            }
 
             virtual H2Err parse(rawframe_t& v, h2request_t&) {
                 type = (H2FType)v.type;
@@ -184,7 +187,7 @@ namespace socklib {
             }
 
            protected:
-            static H2Err serialize_impl(std::uint32_t len, std::int32_t streamid, H2FType type, H2Flag flag, commonlib2::Serializer<string_t>& se) {
+            static H2Err serialize_impl(std::uint32_t len, std::int32_t streamid, H2FType type, H2Flag flag, writer_t& se) {
                 if (len > 0xffffff || streamid < 0) {
                     return H2Error::protocol;
                 }
@@ -350,7 +353,13 @@ namespace socklib {
                 return res->parse(frame);
             }
 
-            H2Err make_frame(std::shared_ptr<H2FRAME> & res, rawframe_t & frame) {
+            bool read_continuous(rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
+                H2Flag flag = H2Flag(frmae.flag);
+                if (!any(flag & H2Flag::end_headers)) {
+                }
+            }
+
+            H2Err make_frame(std::shared_ptr<H2FRAME> & res, rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
 #define F(TYPE) TYPE TEMPLATE_PARAM
                 switch (frame.type) {
                     case 0:
@@ -384,7 +393,10 @@ namespace socklib {
                 if (auto e = read_a_frame(conn, ctx, frame, cancel); !e) {
                     return e;
                 }
-                return make_frame(res, frame);
+                if (auto e = make_frame(res, frame, conn, ctx, cancel); !e) {
+                    ctx.ctx.err = e;
+                    return e;
+                }
             }
         };
 
@@ -678,6 +690,99 @@ namespace socklib {
             }
 
             THISTYPE(H2SettingsFrame, settings);
+        };
+
+        DEF_FRAME(H2PushPromiseFrame) {
+            USING_H2FRAME;
+            H2PushPromiseFrame()
+                : H2FRAME(H2FType::push_promise) {}
+
+           private:
+            std::int32_t promiseid = 0;
+            header_t header_;
+            std::uint8_t padding = 0;
+
+           public:
+            header_t& header_map() {
+                return header_;
+            }
+
+            std::uint8_t padlen() const {
+                return padding;
+            }
+
+            std::int32_t id() const {
+                return promiseid;
+            }
+
+            H2Err parse(rawframe_t & v, h2request_t & t) override {
+                if (!t.remote_settings[(unsigned short)H2PredefinedSetting::enable_push]) {
+                    t.err = H2Error::protocol;
+                    return t.err;
+                }
+                H2Frame::parse(v, t);
+                if (any(this->flag & H2Flag::padded)) {
+                    if (auto e = H2FRAME::remove_padding(v.buf, v.len, padding); !e) {
+                        t.err = e;
+                        return e;
+                    }
+                }
+                reader_t se(v.buf);
+                if (!se.read_ntoh(promiseid)) {
+                    t.err = H2Error::internal;
+                    return false;
+                }
+                if (promiseid <= 0) {
+                    t.err = H2Error::protocol;
+                    return t.err;
+                }
+                v.buf.erase(0, 4);
+                /*if (!any(this->flag & H2Flag::end_headers)) {
+                    TRY(t->read_continuous(v.id, v.buf));
+                }*/
+                if (auto e = hpack_t::decode(header_, v.buf, t.remote_table, t.remote_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
+                    t.hapckerr = e;
+                    t.err = H2Error::compression;
+                    return t.err;
+                }
+                return true;
+            }
+
+            H2Err serialize(std::uint32_t fsize, writer_t & se, h2request_t & t) override {
+                if (!t.local_settings[(unsigned short)H2PredefinedSetting::enable_push]) {
+                    t.err = H2Error::protocol;
+                    return t.err;
+                }
+                string_t hpacked;
+                if (auto e = hpack_t::template encode<true>(header_, hpacked, t.local_table, t.local_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
+                    t.hpackerr = e;
+                    t.err = H2Error::compression;
+                    return t.err;
+                }
+                H2Flag flagcpy = this->flag;
+                std::uint8_t plus = 0;
+                this->flag |= H2Flag::end_headers;
+                auto write_promise = [&](std::uint32_t len, auto& to_write) {
+                    if (auto e = H2FRAME::serialize(len, se, t); !e) {
+                        t.err = e;
+                        return e;
+                    }
+                    if (any(this->flag & H2Flag::padded)) {
+                        se.write(padding);
+                    }
+                    se.write_hton(promiseid);
+                    se.write_byte(to_write);
+                    for (auto i = 0; i < padding; i++) {
+                        se.write('\0');
+                    }
+                    return H2Err(true);
+                };
+                if (auto e = H2FRAME::write_continuous(this->streamid, write_promise, se, fsize, hpacked, this->flag, flagcpy, padding, plus); !e) {
+                    t.err = e;
+                }
+                this->flag = flagcpy;
+                return true;
+            }
         };
 
 #undef H2FRAME
