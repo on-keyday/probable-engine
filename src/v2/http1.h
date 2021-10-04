@@ -21,12 +21,11 @@ namespace socklib {
 
             static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, request_t& req, CancelContext* cancel) {
                 for (auto& h : req.request) {
-                    using commonlib2::str_eq;
-                    if (str_eq(h.first, "host", base_t::header_cmp) || str_eq(h.first, "content-length", base_t::header_cmp)) {
-                        continue;
-                    }
-                    if (h.first.find(":") != ~0 || h.first.find("\r") != ~0 || h.first.find("\n") != ~0 ||
-                        h.second.find("\r") != ~0 || h.second.find("\n") != ~0) {
+                    if (!base_t::is_valid_field(h)) {
+                        if (any(req.flag & RequestFlag::invalid_header_is_error)) {
+                            req.err = HttpError::invalid_header;
+                            return false;
+                        }
                         continue;
                     }
                     towrite += h.first;

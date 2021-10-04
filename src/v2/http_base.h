@@ -178,6 +178,7 @@ namespace socklib {
             read_body,
             transport_not_opened,
             invalid_phase,
+            invalid_header,
         };
 
         enum class RequestFlag : std::uint8_t {
@@ -187,6 +188,7 @@ namespace socklib {
             ignore_alpn_failure = 0x4,
             allow_http09 = 0x8,
             host_is_small = 0x10,
+            invalid_header_is_error = 0x20,
         };
 
         DEFINE_ENUMOP(RequestFlag)
@@ -354,6 +356,19 @@ namespace socklib {
             static bool header_cmp(unsigned char c1, unsigned char c2) {
                 return std::toupper(c1) == std::toupper(c2);
             };
+
+            template <class KeyVal>
+            static bool is_valid_field(KeyVal& h) {
+                using commonlib2::str_eq;
+                if (str_eq(h.first, "host", header_cmp) || str_eq(h.first, "content-length", header_cmp)) {
+                    return false;
+                }
+                if (h.first.find(":") != ~0 || h.first.find("\r") != ~0 || h.first.find("\n") != ~0 ||
+                    h.second.find("\r") != ~0 || h.second.find("\n") != ~0) {
+                    return false;
+                }
+                return true;
+            }
 
             static bool open(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr, int prev_version = 0) {
                 if (!urlparser_t::parse_request(req, "http", "https")) {

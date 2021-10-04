@@ -47,6 +47,102 @@ namespace socklib {
                 return true;
             }
         };
+
+        H2TYPE_PARAMS
+        struct StreamManager {
+            using h1request_t = RequestContext<String, Header, Body>;
+            using h2request_t = Http2RequestContext TEMPLATE_PARAM;
+            using stream_t = H2Stream TEMPLATE_PARAM;
+            using settings_t = typename h2request_t::settings_t;
+            using frame_t = H2Frame TEMPLATE_PARAM;
+
+            static void set_default_settings_value(settings_t& s) {
+                s[key(H2PredefinedSetting::header_table_size)] = 4096;
+                s[key(H2PredefinedSetting::enable_push)] = 1;
+                s[key(H2PredefinedSetting::max_concurrent_streams)] = ~0;
+                s[key(H2PredefinedSetting::initial_window_size)] = 65535;
+                s[key(H2PredefinedSetting::max_frame_size)] = 16384;
+                s[key(H2PredefinedSetting::max_header_list_size)] = ~0;
+            }
+
+            static void set_initial_window_size(stream_t& stream, h2request_t& ctx) {
+                stream.local_window = ctx.local_settings[key(H2PredefinedSetting::initial_window_size)];
+                stream.remote_window = ctx.remote_settings[key(H2PredefinedSetting::initial_window_size)];
+            }
+
+            static void init_streams(h2request_t& ctx, bool server = false) {
+                ctx = h2request_t{};
+                ctx.server = server;
+                set_default_settings_value(ctx.local_settings);
+                set_default_settings_value(ctx.remote_settings);
+                set_initial_window_size(ctx.streams[0]);
+            }
+
+            static bool verify_id(std::int32_t id, bool server = false) {
+                if (server) {
+                    return ((id) % 2 == 0);
+                }
+                else {
+                    return ((id) % 2 == 1);
+                }
+            }
+
+            static bool enable_push(h2request_t& ctx) {
+                if (!ctx.remote_settings[key(H2PredefinedSetting::enable_push)]) {
+                    ctx.err = H2Error::protocol;
+                    return false;
+                }
+                return true;
+            }
+
+            static H2Err make_new_stream(std::int32_t& save, h2request_t& ctx) {
+                std::int32_t id = 0;
+                if (ctx.server && !enable_push(ctx)) {
+                    return ctx.err;
+                }
+                id = verify_id(ctx.max_stream + 1, ctx.server) ? ctx.max_stream + 1 : ctx.max_stream + 2;
+                set_initial_window_size(ctx.streams[id]);
+                save = id;
+                ctx.max_stream = id;
+                return true;
+            }
+
+            static H2Err accept_frame(std::shared_ptr<frame_t>& frame, h2request_t& ctx) {
+                if (!frame) return false;
+                frame_t& f = *frame;
+                std::int32_t id = f.get_id();
+                if (auto found = ctx.streams.find(id); found == ctx.streams.end()) {
+                    if (ctx.max_stream < id) {
+                        ctx.err = H2Error::protocol;
+                        return ctx.err;
+                    }
+                    set_initial_window_size(ctx.streams[id]);
+                }
+                return true;
+            }
+        };
+
+        H2TYPE_PARAMS
+        struct H2FrmaeWriter {
+#define F(TYPE) TYPE TEMPLATE_PARAM
+            using conn_t = std::shared_ptr<InetConn>;
+            using h1request_t = RequestContext<String, Header, Body>;
+            using h2request_t = Http2RequestContext TEMPLATE_PARAM;
+            using errorhandle_t = ErrorHandler<String, Header, Body>;
+
+            bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx) {
+                F(H2HeaderFrame)
+                h;
+                if (ctx.server) {
+                    h.header_map() = req.response;
+                }
+                else {
+                    h.header_map() = req.request;
+                }
+            }
+#undef F
+        };
+
 #undef H2TYPE_PARAMS
 #undef TEMPLATE_PARAM
     }  // namespace v2

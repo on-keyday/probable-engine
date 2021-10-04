@@ -141,11 +141,14 @@ namespace socklib {
             using string_t = String;
             //request_t* ctx;
             //std::int32_t id;
-            std::int64_t local_window;
-            std::int64_t remote_window;
-            H2StreamState state;
+            std::int64_t local_window = 0;
+            std::int64_t remote_window = 0;
+            H2StreamState state = H2StreamState::idle;
             H2Weight weight;
-            std::uint32_t errorcode;
+            std::uint32_t errorcode = 0;
+
+            //for data frame
+            size_t data_progress = 0;
         };
 
         H2TYPE_PARAMS
@@ -164,7 +167,8 @@ namespace socklib {
             table_t remote_table;
             table_t local_table;
             streams_t streams;
-            std::uint64_t stream_count;
+            std::uint64_t max_stream = 0;
+            bool server = false;
         };
 
         DEC_FRAME(H2DataFrame);
@@ -563,6 +567,10 @@ namespace socklib {
                 w.depends_id = weight.depends;
                 w.weight = weight.weight;
                 return true;
+            }
+
+            void set_weight(const H2Weight& w) {
+                weight = w;
             }
 
             std::uint8_t padlen() const {
