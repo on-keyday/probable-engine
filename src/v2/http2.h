@@ -138,6 +138,7 @@ namespace socklib {
             using errorhandle_t = ErrorHandler<String, Header, Body>;
             using base_t = HttpBase<String, Header, Body>;
             using string_t = String;
+            using urlparser_t = URLParser<String, Header, Body>;
 
             bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx) {
                 F(H2HeaderFrame)
@@ -162,7 +163,7 @@ namespace socklib {
                     string_t path;
                     base_t::write_path(path, req);
                     towrite.emplace(":method", req.method);
-                    towrite.emplace(":authority");
+                    towrite.emplace(":authority", urlparser_t::host_with_port(req.parsed));
                     towrite.emplace(":path", path);
                     towrite.emplace(":scheme", req.parsed.scheme);
                 }
