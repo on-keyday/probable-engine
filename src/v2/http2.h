@@ -353,10 +353,26 @@ namespace socklib {
                 return res->parse(frame);
             }
 
-            bool read_continuous(rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
+            H2Err read_continuous(rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
                 H2Flag flag = H2Flag(frmae.flag);
                 if (!any(flag & H2Flag::end_headers)) {
+                    while (true) {
+                        rawframe_t cont;
+                        if (auto e = read_a_frame(conn, ctx, cont, cancel); !e) {
+                            ctx.ctx.err = e;
+                            return e;
+                        }
+                        if (frame.id != cont.id) {
+                            ctx.ctx.err = H2Error::protocol;
+                            return ctx.ctx.err;
+                        }
+                        frame.buf.append(cont.buf);
+                        if (any(H2Flag(cont.flag) & H2Flag::end_headers)) {
+                            break;
+                        }
+                    }
                 }
+                return true;
             }
 
             H2Err make_frame(std::shared_ptr<H2FRAME> & res, rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
@@ -365,6 +381,9 @@ namespace socklib {
                     case 0:
                         return get_frame<F(H2DataFrame)>(frame, res);
                     case 1:
+                        if (auto e = read_continuous(frame, conn, ctx, cancel); !e) {
+                            return e;
+                        }
                         return get_frame<F(H2HeaderFrame)>(frame, res);
                     case 2:
                         return get_frame<F(H2PriorityFrame)>(frame, res);
@@ -373,6 +392,9 @@ namespace socklib {
                     case 4:
                         return get_frame<F(H2SettingsFrame)>(frame, res);
                     case 5:
+                        if (auto e = read_continuous(frame, conn, ctx, cancel); !e) {
+                            return e;
+                        }
                         return get_frame<F(H2PushPromiseFrame)>(frame, res);
                     case 6:
                         return get_frame<F(H2PingFrame)>(frame, res);
@@ -783,6 +805,12 @@ namespace socklib {
                 this->flag = flagcpy;
                 return true;
             }
+
+            THISTYPE(H2PushPromiseFrame, push_promise)
+        };
+
+        DEF_FRAME(H2PingFrame){
+
         };
 
 #undef H2FRAME
