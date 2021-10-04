@@ -488,7 +488,6 @@ namespace socklib {
                     }
                 }
                 /*if (!any(this->flag & H2Flag::end_headers)) {
-
                 }*/
                 if (auto e = hpack_t::decode(header_, v.buf, t.remote_table, t.remote_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
                     t.hpackerr = e;
