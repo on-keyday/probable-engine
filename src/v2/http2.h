@@ -604,7 +604,7 @@ namespace socklib {
                 return true;
             }
 
-            H2Err serialize(std::uint32_t fsize, commonlib2::Serializer<std::string> & se, h2request_t & t) override {
+            H2Err serialize(std::uint32_t fsize, writer_t & se, h2request_t & t) override {
                 if (auto e = H2Frame::serialize(4, se, t)) {
                     t.err = e;
                     return e;
@@ -627,7 +627,7 @@ namespace socklib {
             settings_t newset;
 
            public:
-            H2Err parse(commonlib2::HTTP2Frame<std::string> & v, Http2Conn * t) override {
+            H2Err parse(rawframe_t & v, h2request_t & t) override {
                 H2Frame::parse(v, t);
                 if (this->streamid != 0) {
                     return H2Error::protocol;
@@ -661,7 +661,7 @@ namespace socklib {
                 return true;
             }
 
-            H2Err serialize(std::uint32_t fsize, writer_t & se, Http2Conn * t) override {
+            H2Err serialize(std::uint32_t fsize, writer_t & se, h2request_t & t) override {
                 if (any(this->flag & H2Flag::ack)) {
                     H2FRAME::serialize(0, se, t);
                     return true;
