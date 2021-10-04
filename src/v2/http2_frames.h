@@ -55,6 +55,7 @@ namespace socklib {
 
             unimplemented = ~0,
             need_window_update = unimplemented - 1,
+            http1_semantics_error = unimplemented - 2
         };
 
         BEGIN_ENUM_ERROR_MSG(H2Error)
@@ -72,6 +73,9 @@ namespace socklib {
         ENUM_ERROR_MSG(H2Error::inadequate_security, "inadequate security")
         ENUM_ERROR_MSG(H2Error::http_1_1_required, "HTTP/1.1 required")
         ENUM_ERROR_MSG(H2Error::connect, "CONNECT method error")
+        ENUM_ERROR_MSG(H2Error::unimplemented, "unimplemented")
+        ENUM_ERROR_MSG(H2Error::need_window_update, "need to receive WINDOW_UPDATE")
+        ENUM_ERROR_MSG(H2Error::http1_semantics_error, "HTTP/1.1 semantics error")
         END_ENUM_ERROR_MSG
 
         enum class H2PredefinedSetting : unsigned short {

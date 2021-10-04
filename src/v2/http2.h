@@ -136,10 +136,21 @@ namespace socklib {
                 hframe;
                 auto set_header = [&](auto& header) {
                     for (auto& h : header) {
-                        if (!base_t::is_valid_field(h)) {
+                        if (auto e = base_t::is_valid_field(h, req); e < 0) {
+                            return false;
                         }
+                        else if (e == 0) {
+                            continue;
+                        }
+                        hframe.header_map().emplace(h.first, h.second);
                     }
+                    return false;
                 };
+                if (ctx.server) {
+                    if (!set_header(req.response)) {
+                        return false;
+                    }
+                }
             }
 #undef F
         };
