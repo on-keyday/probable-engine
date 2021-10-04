@@ -366,7 +366,7 @@ namespace socklib {
                             ctx.ctx.err = H2Error::protocol;
                             return ctx.ctx.err;
                         }
-                        frame.buf.append(cont.buf);
+                        frame.buf += cont.buf;
                         if (any(H2Flag(cont.flag) & H2Flag::end_headers)) {
                             break;
                         }
