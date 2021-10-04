@@ -117,6 +117,28 @@ namespace socklib {
 #define DETECTTYPE(TYPE, FUNC) DETECTTYPE_RET(TYPE, FUNC, nullptr)
 #define THISTYPE(TYPE, FUNC) DETECTTYPE_RET(TYPE, FUNC, this, override)
 
+        enum class H2StreamState {
+            idle,
+            open,
+            reserved_local,
+            reserved_remote,
+            half_closed_local,
+            half_closed_remote,
+            closed
+        };
+
+        constexpr auto h2_connection_preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+
+        H2TYPE_PARAMS
+        struct H2Stream {
+            using request_t = Http2RequestContext TEMPLATE_PARAM;
+            using string_t = String;
+            request_t* ctx;
+            std::int32_t id;
+            std::int32_t window;
+            H2StreamState state;
+        };
+
         H2TYPE_PARAMS
 #ifdef COMMONLIB2_HAS_CONCEPTS
         requires StringType<String>
@@ -124,12 +146,16 @@ namespace socklib {
         struct Http2RequestContext {
             using settings_t = Map<std::uint16_t, std::uint32_t>;
             using table_t = Table;
+            using stream_t = H2Stream TEMPLATE_PARAM;
+            using streams_t = Map<std::int32_t, stream_t>;
             H2Error err = H2Error::none;
             HpackError hpackerr = HpackError::none;
             settings_t remote_settings;
             settings_t local_settings;
             table_t remote_table;
             table_t local_table;
+            streams_t streams;
+            std::uint64_t stream_count;
         };
 
         DEC_FRAME(H2DataFrame);
@@ -144,7 +170,7 @@ namespace socklib {
 
         H2TYPE_PARAMS
         struct H2Frame {
-            using h2request_t = Http2RequestContext<String, Map, Header, Body, Table>;
+            using h2request_t = Http2RequestContext TEMPLATE_PARAM;
             using string_t = String;
             using header_t = Header;
             using hpack_t = Hpack<String, Table, Header>;

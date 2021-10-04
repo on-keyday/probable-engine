@@ -6,7 +6,7 @@
 */
 
 #pragma once
-
+#include "http2_frames.h"
 namespace socklib {
     namespace v2 {
 

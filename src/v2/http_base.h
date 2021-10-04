@@ -251,6 +251,9 @@ namespace socklib {
             std::uint8_t resolved_version = 0;
             std::uint8_t header_version = 0;
             parsed_t parsed = parsed_t();
+
+            //for http2 or later
+            std::int32_t streamid;
         };
 
         template <class String, class Header, class Body>
