@@ -128,20 +128,24 @@ namespace socklib {
         };
 
         constexpr auto h2_connection_preface = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+        /*
         H2TYPE_PARAMS
 #ifdef COMMONLIB2_HAS_CONCEPTS
         requires StringType<String>
 #endif
         struct Http2RequestContext;
-
+*/
         H2TYPE_PARAMS
         struct H2Stream {
-            using request_t = Http2RequestContext TEMPLATE_PARAM;
+            //using request_t = Http2RequestContext TEMPLATE_PARAM;
             using string_t = String;
             request_t* ctx;
             std::int32_t id;
-            std::int32_t window;
+            std::int64_t local_window;
+            std::int64_t remote_window;
             H2StreamState state;
+            H2Weight weight;
+            std::uint32_t errorcode;
         };
 
         H2TYPE_PARAMS
@@ -161,7 +165,6 @@ namespace socklib {
             table_t local_table;
             streams_t streams;
             std::uint64_t stream_count;
-            std::int32_t window;
         };
 
         DEC_FRAME(H2DataFrame);
@@ -206,6 +209,10 @@ namespace socklib {
                 : type(type) {}
             H2FType get_type() const {
                 return type;
+            }
+
+            std::int32_t get_id() const {
+                return streamid;
             }
 
             virtual H2Err parse(rawframe_t& v, h2request_t&) {
@@ -1018,8 +1025,9 @@ namespace socklib {
 #undef DEC_FRAME
 #undef DETECTTYPE
 #undef USING_H2FRAME
+#undef H2TYPE_PARAMS
+#undef TEMPLATE_PARAM
 
-#undef TRY
     }  // namespace v2
 
 }  // namespace socklib
