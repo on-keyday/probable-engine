@@ -576,7 +576,7 @@ namespace socklib {
                 }
                 else if (F(H2DataFrame)* d = frame->data()) {
                     window_updater_t::update(ctx, d);
-                    if (h->is_set(H2Flag::end_stream)) {
+                    if (d->is_set(H2Flag::end_stream)) {
                         stream.state = checker_t::recv_endstream(stream.state);
                     }
                 }
@@ -720,14 +720,18 @@ namespace socklib {
                     if (read.req.streamid == frame->get_id()) {
                         if (auto header = frame->header()) {
                             read.req.response = std::move(header->header_map());
+                            read.req.phase = RequestPhase::request_recved;
+                            if (frame->is_set(H2Flag::end_stream)) {
+                                break;
+                            }
                         }
                         else if (auto data = frame->data()) {
                             for (auto c : data->payload()) {
                                 read.req.responsebody.push_back(c);
                             }
-                        }
-                        if (frame->is_set(H2Flag::end_stream)) {
-                            break;
+                            if (frame->is_set(H2Flag::end_stream)) {
+                                break;
+                            }
                         }
                     }
                     err = call_callback(conn, frame, read, cancel);
@@ -735,6 +739,7 @@ namespace socklib {
                         return err;
                     }
                 }
+                read.req.phase = RequestPhase::body_recved;
                 return true;
             }
         };
