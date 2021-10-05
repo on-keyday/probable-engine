@@ -455,6 +455,7 @@ namespace socklib {
                         pframe.payload()[i] = data[i];
                     }
                 }
+                return basewriter_t::write(conn, pframe, req, ctx, cancel);
             }
 #undef F
         };
