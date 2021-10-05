@@ -119,7 +119,7 @@ namespace socklib {
 
             template <class Str>
             static bool resolve(TCPOpenContext<Str>& ctx, ::addrinfo*& info) {
-                return resolve_detail(ctx, ctx.host.c_str(), ctx.service.c_str(), ctx.ip_version, info);
+                return resolve_detail(ctx, ctx.host.data(), ctx.service.data(), ctx.ip_version, info);
             }
 
             static bool connect_loop(::addrinfo* info, int& sock, TCPOpenContext<String>& ctx, CancelContext* cancel) {
