@@ -668,6 +668,34 @@ namespace socklib {
                 return true;
             }
 
+            static bool handle_response(readctx_t& read, std::shared_ptr<frame_t>& frame) {
+                if (read.req.streamid == frame->get_id()) {
+                    if (auto header = frame->header()) {
+                        for (auto& h : header->header_map()) {
+                            if (h.first == ":status") {
+                                commonlib2::Reader(h.second) >> read.req.statuscode
+                            }
+                            else {
+                                read.req.response.emplace(h.first, h.second);
+                            }
+                        }
+                        read.req.phase = RequestPhase::request_recved;
+                        if (frame->is_set(H2Flag::end_stream)) {
+                            return true;
+                        }
+                    }
+                    else if (auto data = frame->data()) {
+                        for (auto c : data->payload()) {
+                            read.req.responsebody.push_back(c);
+                        }
+                        if (frame->is_set(H2Flag::end_stream)) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
             static H2Err request(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
                 if (read.req.phase != RequestPhase::open_direct) {
                     return false;
@@ -698,21 +726,8 @@ namespace socklib {
                     if (!err) {
                         return err;
                     }
-                    if (read.req.streamid == frame->get_id()) {
-                        if (auto header = frame->header()) {
-                            for (auto& h : header->header_map()) {
-                                if (h.first == ":status") {
-                                    commonlib2::Reader(h.second) >> read.req.statuscode;
-                                }
-                                else {
-                                    read.req.response.emplace(h.first, h.second);
-                                }
-                            }
-                            read.req.phase = RequestPhase::request_recved;
-                            if (frame->is_set(H2Flag::end_stream)) {
-                                break;
-                            }
-                        }
+                    if (handle_response(read, frame)) {
+                        break;
                     }
                     err = call_callback(conn, frame, read, cancel);
                     if (!err) {
@@ -733,22 +748,8 @@ namespace socklib {
                     if (!err) {
                         return err;
                     }
-                    if (read.req.streamid == frame->get_id()) {
-                        if (auto header = frame->header()) {
-                            read.req.response = std::move(header->header_map());
-                            read.req.phase = RequestPhase::request_recved;
-                            if (frame->is_set(H2Flag::end_stream)) {
-                                break;
-                            }
-                        }
-                        else if (auto data = frame->data()) {
-                            for (auto c : data->payload()) {
-                                read.req.responsebody.push_back(c);
-                            }
-                            if (frame->is_set(H2Flag::end_stream)) {
-                                break;
-                            }
-                        }
+                    if (handle_response(read, frame)) {
+                        break;
                     }
                     err = call_callback(conn, frame, read, cancel);
                     if (!err) {

@@ -84,8 +84,17 @@ namespace socklib {
             addrinfo = 1,
             ssl = 2,
             ssl_ctx = 3,
-            nodel_ctx = 4
+            nodel_ctx = 4,
+            del_flag = 5
         };
+
+        enum class DelFlag {
+            none,
+            not_del_ssl = 0x1,
+            not_del_ctx = 0x2,
+        };
+
+        DEFINE_ENUMOP(DelFlag)
 
         struct IResetContext {
             virtual std::uintptr_t context(size_t index) = 0;
@@ -222,6 +231,7 @@ namespace socklib {
             ::SSL_CTX* ctx = nullptr;
             bool nodelctx = false;
             ::addrinfo* addr = nullptr;
+            DelFlag delflag = DelFlag::none;
             virtual std::uintptr_t context(size_t index) override {
                 switch (index) {
                     case 0:
@@ -234,6 +244,8 @@ namespace socklib {
                         return (std::uintptr_t)ctx;
                     case 4:
                         return nodelctx;
+                    case 5:
+                        return (std::uintptr_t)delflag;
                     default:
                         return 0;
                 }
@@ -318,7 +330,7 @@ namespace socklib {
             }
 
             virtual bool reset(IResetContext& ctx) override {
-                close();
+                StreamConn::close();
                 sock = (int)ctx.context((size_t)ResetIndex::socket);
                 InetConn::reset(ctx);
                 return true;
@@ -415,14 +427,21 @@ namespace socklib {
 
             virtual bool reset(IResetContext& set) override {
                 TimeoutContext timeout(10);
-                close(&timeout);
+                DelFlag flag = (DelFlag)set.context((size_t)ResetIndex::del_flag);
+                close_impl(&timeout, !any(DelFlag::not_del_ssl & flag));
+                if (!any(flag & DelFlag::not_del_ctx) && !nodelctx) {
+                    ::SSL_CTX_free(ctx);
+                    ctx = nullptr;
+                }
                 ssl = (::SSL*)set.context((size_t)ResetIndex::ssl);
                 ctx = (::SSL_CTX*)set.context((size_t)ResetIndex::ssl_ctx);
                 nodelctx = (bool)set.context((size_t)ResetIndex::nodel_ctx);
+                StreamConn::reset(set);
                 return true;
             }
 
-            virtual void close(CancelContext* cancel = nullptr) override {
+           private:
+            void close_impl(CancelContext* cancel, bool del_ssl) {
                 if (ssl) {
                     if (!noshutdown) {
                         SSLErrorContext ctx(ssl, cancel);
@@ -438,10 +457,15 @@ namespace socklib {
                             break;
                         }
                     }
-                    ::SSL_free(ssl);
+                    if (del_ssl) ::SSL_free(ssl);
                     ssl = nullptr;
                 }
                 StreamConn::close(cancel);
+            }
+
+           public:
+            virtual void close(CancelContext* cancel = nullptr) override {
+                close_impl(cancel, true);
             }
 
             virtual bool stat(ConnStat& st) const override {

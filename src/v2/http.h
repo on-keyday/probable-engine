@@ -144,7 +144,7 @@ namespace socklib {
             bool request(const String& method, const String& url, CancelContext* cancel = nullptr) {
                 this->ctx.url = url;
                 this->ctx.method = method;
-                if (!opener_t::open(this->conn, this->ctx, cancel, 1)) {
+                if (!opener_t::open(this->conn, this->ctx, cancel)) {
                     return false;
                 }
                 if (this->ctx.resolved_version == 2) {

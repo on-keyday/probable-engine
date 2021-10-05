@@ -43,7 +43,7 @@ namespace socklib {
             ConnStat stat;  //to set stat
             string_t cacert;
             int ip_version = 0;
-            TCPError err;
+            TCPError err = TCPError::none;
             const char* alpnstr = nullptr;
             size_t len = 0;
             bool forceopen = false;
@@ -250,6 +250,7 @@ namespace socklib {
                 }
                 else {
                     has_ssl = true;
+                    //SSL_set_alpn_protos(ssl, (const unsigned char*)ctx.alpnstr, ctx.len);
                 }
                 SSL_set_fd(ssl, sock);
                 SSL_set_tlsext_host_name(ssl, host);
@@ -344,7 +345,7 @@ namespace socklib {
                     ::SSL* ssl = nullptr;
                     ::SSL_CTX* sslctx = nullptr;
                     if (res) {
-                        ssl = stat.net.ssl;
+                        //ssl = stat.net.ssl;
                         sslctx = stat.net.ssl_ctx;
                     }
                     if (any(ctx.stat.status & ConnStatus::secure)) {
@@ -360,6 +361,7 @@ namespace socklib {
                         reset.sock = sock;
                         reset.ssl = ssl;
                         reset.ctx = sslctx;
+                        reset.delflag = DelFlag::not_del_ctx;
                         res->reset(reset);
                     }
                     else {
