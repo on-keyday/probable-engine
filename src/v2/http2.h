@@ -18,7 +18,7 @@ namespace socklib {
             using h2request_t = Http2RequestContext TEMPLATE_PARAM;
             using updateframe_t = H2WindowUpdateFrame TEMPLATE_PARAM;
             using settingsframe_t = H2SettingsFrame TEMPLATE_PARAM;
-            using stream_t = H2Stream TEMPLATE_PARAM;
+            using stream_t = H2Stream;
 
             static bool update(h2request_t& ctx, updateframe_t* frame) {
                 if (!frame) return false;
@@ -27,6 +27,10 @@ namespace socklib {
                 stream_t& stream = ctx.streams[id];
                 stream.remote_window += up;
                 return true;
+            }
+
+            static void update(h2request_t& ctx, stream_t& stream, std::int32_t up) {
+                stream.local_window += up;
             }
 
             static bool resize(h2request_t& ctx, settingsframe_t* frame) {
@@ -473,14 +477,24 @@ namespace socklib {
 
             using window_updater = WindowUpdater TEMPLATE_PARAM;
 
-            static H2Err write_window_update(conn_t& conn, h1request_t& req, h2request_t& ctx, std::int32_t update) {
+            static H2Err write_window_update(conn_t& conn, h1request_t& req, h2request_t& ctx, std::int32_t update, bool cf = false,
+                                             CancelContext* cancel = nullptr) {
                 if (update < 0) return false;
                 F(H2WindowUpdateFrame)
                 wframe;
+                auto stream = get_stream(wframe, cf ? 0 : req.streamid, ctx);
+                if (!stream) {
+                    return ctx.err;
+                }
                 if (!wframe.set_update(update)) {
                     ctx.err = H2Error::protocol;
                     return ctx.err;
                 }
+                auto e = basewriter_t::write(conn, wframe, req, ctx, cancel);
+                if (e) {
+                    window_updater::update(ctx, *stream, update);
+                }
+                return e;
             }
 #undef F
         };
