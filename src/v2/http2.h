@@ -94,7 +94,7 @@ namespace socklib {
                 ctx.server = server;
                 set_default_settings_value(ctx.local_settings);
                 set_default_settings_value(ctx.remote_settings);
-                set_initial_window_size(ctx.streams[0]);
+                set_initial_window_size(ctx.streams[0], ctx);
             }
 
             static bool verify_id(std::int32_t id, bool server = false) {
@@ -120,7 +120,7 @@ namespace socklib {
                     return ctx.err;
                 }
                 id = verify_id(ctx.max_stream + 1, ctx.server) ? ctx.max_stream + 1 : ctx.max_stream + 2;
-                set_initial_window_size(ctx.streams[id]);
+                set_initial_window_size(ctx.streams[id], ctx);
                 save = id;
                 ctx.max_stream = id;
                 return true;
@@ -134,7 +134,7 @@ namespace socklib {
                     ctx.err = H2Error::protocol;
                     return ctx.err;
                 }
-                set_initial_window_size(ctx.streams[to_make]);
+                set_initial_window_size(ctx.streams[to_make], ctx);
                 ctx.max_stream = to_make;
                 return true;
             }
@@ -148,7 +148,7 @@ namespace socklib {
                         ctx.err = H2Error::protocol;
                         return ctx.err;
                     }
-                    set_initial_window_size(ctx.streams[id]);
+                    set_initial_window_size(ctx.streams[id], ctx);
                 }
                 return true;
             }
@@ -252,14 +252,14 @@ namespace socklib {
 
             static stream_t* get_stream(F(H2Frame) & frame, std::int32_t id, h2request_t& ctx) {
                 auto found = ctx.streams.find(id);
-                if (!hframe.set_id(req.streamid) || found == ctx.streams.end()) {
+                if (!frame.set_id(id) || found == ctx.streams.end()) {
                     ctx.err = H2Error::protocol;
-                    return ctx.err;
+                    return nullptr;
                 }
                 return &found->second;
             }
 
-            H2Err set_http2_header(header_t& towrite, const header_t& header, h1request_t& req) {
+            static H2Err set_http2_header(header_t& towrite, const header_t& header, h1request_t& req, h2request_t& ctx) {
                 for (auto& h : header) {
                     if (auto e = base_t::is_valid_field(h, req); e < 0) {
                         ctx.err = H2Error::http1_semantics_error;
@@ -279,15 +279,15 @@ namespace socklib {
                 return H2Error::none;
             };
 
-            static H2Err set_http2_header(header_t& towrite, h1request_t& req) {
+            static H2Err set_http2_header(header_t& towrite, h1request_t& req, h2request_t& ctx) {
                 if (ctx.server) {
-                    if (auto e = set_http2_header(towrite, req.response, req); !e) {
+                    if (auto e = set_http2_header(towrite, req.response, req, ctx); !e) {
                         return e;
                     }
-                    towrite.emplace(":status", std::to_string(req.statuscode).c_str())
+                    towrite.emplace(":status", std::to_string(req.statuscode).c_str());
                 }
                 else {
-                    if (auto e = set_http2_header(req.request); !e) {
+                    if (auto e = set_http2_header(towrite, req.request, req, ctx); !e) {
                         return e;
                     }
                     string_t path;
@@ -325,7 +325,7 @@ namespace socklib {
                     hframe.add_flag(H2Flag::priority);
                 }
                 auto& towrite = hframe.header_map();
-                if (auto e = set_http2_header(towrite, req); !e) {
+                if (auto e = set_http2_header(towrite, req, ctx); !e) {
                     return e;
                 }
                 if (closable) {
@@ -359,7 +359,7 @@ namespace socklib {
                     dframe.set_padding(*padlen);
                     dframe.add_flag(H2Flag::padded);
                 }
-                if (!cheker_t::data_sendable(stream.state)) {
+                if (!checker_t::data_sendable(stream->state)) {
                     ctx.err = H2Error::protocol;
                     return ctx.err;
                 }
@@ -372,7 +372,7 @@ namespace socklib {
                 if (total < stream->data_progress) {
                     return true;
                 }
-                size_t remainsize = total - stream.data_progress;
+                size_t remainsize = total - stream->data_progress;
                 size_t window = stream0.remote_window < stream->remote_window ? stream0.remote_window : stream->remote_window;
                 size_t opt = 0;
                 if (padlen) {
@@ -382,7 +382,7 @@ namespace socklib {
                     }
                 }
                 size_t towrite = remainsize < window - opt ? remainsize + opt : window;
-                std::string_view view(body.data() + stream.data_progress, towrite - opt);
+                std::string_view view(body.data() + stream->data_progress, towrite - opt);
                 auto check_end = [&] {
                     return stream->data_progress + towrite - opt == body.size();
                 };
@@ -558,7 +558,7 @@ namespace socklib {
             using manager_t = StreamManager TEMPLATE_PARAM;
             using stream_t = H2Stream;
 
-            H2Err accept(std::shared_ptr<frame_t>& frame, h2request_t& ctx) {
+            static H2Err accept(std::shared_ptr<frame_t>& frame, h2request_t& ctx) {
                 if (auto e = manager_t::accept_frame(frame, ctx); !e) {
                     return e;
                 }
@@ -619,7 +619,7 @@ namespace socklib {
             static bool send_connection_preface(conn_t& conn, h1request_t& req, CancelContext* cancel = nullptr) {
                 WriteContext w;
                 w.ptr = h2_connection_preface;
-                w.ptr = 24;
+                w.bufsize = 24;
                 return errorhandler_t::write_to_conn(conn, w, req, cancel);
             }
 
@@ -627,15 +627,15 @@ namespace socklib {
                 return writer_t::write_settings(conn, req, ctx, false, ctx.local_settings, cancel);
             }
 
-            static H2Err read_a_frame(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
+            static H2Err read_a_frame(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t& read, CancelContext* cancel = nullptr) {
                 auto err = reader_t::read(conn, frame, read, cancel);
                 if (!err) {
-                    writer_t::write_goaway(conn, read.req, read.ctx, req.streamid, (std::uint32_t)err.e, cancel);
+                    writer_t::write_goaway(conn, read.req, read.ctx, read.req.streamid, (std::uint32_t)err.e, cancel);
                     return err;
                 }
-                err = accepter_t::accept(frame, req.ctx);
+                err = accepter_t::accept(frame, read.ctx);
                 if (!err) {
-                    writer_t::write_rst_stream(conn, req.req, req.ctx, (std::uint32_t)err.e, cancel);
+                    writer_t::write_rst_stream(conn, read.req, read.ctx, (std::uint32_t)err.e, cancel);
                     return err;
                 }
                 if (auto g = frame->goaway()) {
@@ -645,7 +645,7 @@ namespace socklib {
                     return false;
                 }
                 else if (auto s = frame->settings()) {
-                    err = writer_t::write_settings(conn, req.req, req.ctx, true);
+                    err = writer_t::write_settings(conn, read.req, read.ctx, true);
                     if (!err) {
                         return err;
                     }
@@ -655,10 +655,10 @@ namespace socklib {
             }
 
             static H2Err call_callback(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
-                if (ctx.user_callback) {
-                    auto err = ctx.user_callback(*frame, ctx.userctx, read.ctx, read.req);
+                if (read.ctx.user_callback) {
+                    auto err = read.ctx.user_callback(*frame, read.ctx.userctx, read.ctx, read.req);
                     if (err) {
-                        writer_t::write_goaway(conn, read.req, read.ctx, req.streamid, (std::uint32_t)err.e, cancel);
+                        writer_t::write_goaway(conn, read.req, read.ctx, read.req.streamid, (std::uint32_t)err.e, cancel);
                         return err;
                     }
                 }
@@ -669,7 +669,7 @@ namespace socklib {
                 if (req.phase != RequestPhase::open_direct) {
                     return false;
                 }
-                auto e = emanager_t::make_new_stream(read.req.streamid, read.ctx);
+                auto e = manager_t::make_new_stream(read.req.streamid, read.ctx);
                 if (!e) {
                     return e;
                 }
@@ -699,12 +699,12 @@ namespace socklib {
                         return err;
                     }
                 }
-                req.phase = RequestPhase::request_sent;
+                read.req.phase = RequestPhase::request_sent;
                 return true;
             }
 
             static H2Err response(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
-                if (req.phase != RequestPhase::request_sent) {
+                if (read.req.phase != RequestPhase::request_sent) {
                     return false;
                 }
                 while (true) {
@@ -713,7 +713,7 @@ namespace socklib {
                     if (!err) {
                         return err;
                     }
-                    if (read.req.id == frame->get_id()) {
+                    if (read.req.streamid == frame->get_id()) {
                         if (auto header = frame->header()) {
                             read.req.response = std::move(header->header_map());
                         }

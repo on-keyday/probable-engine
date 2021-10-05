@@ -414,18 +414,18 @@ namespace socklib {
                     }
                     break;
                 }
-                rawdata.erase(0, 9 + frame.buf.size());
+                read.rawdata.erase(0, 9 + frame.buf.size());
                 return true;
             }
 
             template <class Frame>
-            H2Err get_frame(rawframe_t & frame, std::shared_ptr<H2FRAME> & res) {
+            static H2Err get_frame(rawframe_t & frame, std::shared_ptr<H2FRAME> & res, h2readcontext_t & read) {
                 res = std::make_shared<Frame>();
-                return res->parse(frame);
+                return res->parse(frame, read.ctx);
             }
 
-            H2Err read_continuous(rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
-                H2Flag flag = H2Flag(frmae.flag);
+            static H2Err read_continuous(rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
+                H2Flag flag = H2Flag(frame.flag);
                 if (!any(flag & H2Flag::end_headers)) {
                     while (true) {
                         rawframe_t cont;
@@ -446,33 +446,33 @@ namespace socklib {
                 return true;
             }
 
-            H2Err make_frame(std::shared_ptr<H2FRAME> & res, rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
+            static H2Err make_frame(std::shared_ptr<H2FRAME> & res, rawframe_t & frame, std::shared_ptr<InetConn> & conn, h2readcontext_t & ctx, CancelContext* cancel = nullptr) {
 #define F(TYPE) TYPE TEMPLATE_PARAM
                 switch (frame.type) {
                     case 0:
-                        return get_frame<F(H2DataFrame)>(frame, res);
+                        return get_frame<F(H2DataFrame)>(frame, res, ctx);
                     case 1:
                         if (auto e = read_continuous(frame, conn, ctx, cancel); !e) {
                             return e;
                         }
-                        return get_frame<F(H2HeaderFrame)>(frame, res);
+                        return get_frame<F(H2HeaderFrame)>(frame, res, ctx);
                     case 2:
-                        return get_frame<F(H2PriorityFrame)>(frame, res);
+                        return get_frame<F(H2PriorityFrame)>(frame, res, ctx);
                     case 3:
-                        return get_frame<F(H2RstStreamFrame)>(frame, res);
+                        return get_frame<F(H2RstStreamFrame)>(frame, res, ctx);
                     case 4:
-                        return get_frame<F(H2SettingsFrame)>(frame, res);
+                        return get_frame<F(H2SettingsFrame)>(frame, res, ctx);
                     case 5:
                         if (auto e = read_continuous(frame, conn, ctx, cancel); !e) {
                             return e;
                         }
-                        return get_frame<F(H2PushPromiseFrame)>(frame, res);
+                        return get_frame<F(H2PushPromiseFrame)>(frame, res, ctx);
                     case 6:
-                        return get_frame<F(H2PingFrame)>(frame, res);
+                        return get_frame<F(H2PingFrame)>(frame, res, ctx);
                     case 7:
-                        return get_frame<F(H2GoAwayFrame)>(frame, res);
+                        return get_frame<F(H2GoAwayFrame)>(frame, res, ctx);
                     case 8:
-                        return get_frame<F(H2WindowUpdateFrame)>(frame, res, this);
+                        return get_frame<F(H2WindowUpdateFrame)>(frame, res, ctx);
                     case 9:
                         return H2Error::protocol;
                     default:
@@ -504,7 +504,7 @@ namespace socklib {
                 }
                 WriteContext c;
                 c.ptr = w.data().data();
-                c.bufsize = w.data().size();
+                c.bufsize = w.get().size();
                 if (!errorhandle_t::write_to_conn(conn, w, req, cancel)) {
                     ctx.err = H2Error::internal;
                     return ctx.err;
@@ -696,8 +696,8 @@ namespace socklib {
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
-                H2Frame::parse(v, t);
-                if (auto e = read_depends(weight, v.buf); !e) {
+                H2FRAME::parse(v, t);
+                if (auto e = H2FRAME::read_depends(weight, v.buf); !e) {
                     t.err = e;
                     return e;
                 }
@@ -709,7 +709,7 @@ namespace socklib {
                     t.err = e;
                     return e;
                 }
-                return write_depends(weight, se);
+                return H2FRAME::write_depends(weight, se);
             }
 
             THISTYPE(H2PriorityFrame, priority)
@@ -733,7 +733,7 @@ namespace socklib {
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
-                H2Frame::parse(v, t);
+                H2FRAME::parse(v, t);
                 if (v.len != 4) {
                     t.err = H2Error::frame_size;
                     return t.err;
@@ -747,7 +747,7 @@ namespace socklib {
             }
 
             H2Err serialize(std::uint32_t fsize, writer_t & se, h2request_t & t) override {
-                if (auto e = H2Frame::serialize(4, se, t)) {
+                if (auto e = H2FRAME::serialize(4, se, t)) {
                     t.err = e;
                     return e;
                 }
@@ -862,7 +862,7 @@ namespace socklib {
                     t.err = H2Error::protocol;
                     return t.err;
                 }
-                H2Frame::parse(v, t);
+                H2FRAME::parse(v, t);
                 if (any(this->flag & H2Flag::padded)) {
                     if (auto e = H2FRAME::remove_padding(v.buf, v.len, padding); !e) {
                         t.err = e;
@@ -883,7 +883,7 @@ namespace socklib {
                     TRY(t->read_continuous(v.id, v.buf));
                 }*/
                 if (auto e = hpack_t::decode(header_, v.buf, t.remote_table, t.remote_settings[key(H2PredefinedSetting::header_table_size)]); !e) {
-                    t.hapckerr = e;
+                    t.hpackerr = e;
                     t.err = H2Error::compression;
                     return t.err;
                 }
@@ -943,7 +943,7 @@ namespace socklib {
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
-                H2Frame::parse(v, t);
+                H2FRAME::parse(v, t);
                 if (v.len != 8) {
                     t.err = H2Error::frame_size;
                     return t.err;
@@ -994,12 +994,12 @@ namespace socklib {
                 lastid = lid;
             }
 
-            string_t& optdata() const {
+            string_t& optdata() {
                 return additionaldata;
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
-                H2Frame::parse(v, t);
+                H2FRAME::parse(v, t);
                 reader_t se(v.buf);
                 if (v.id != 0) {
                     t.err = H2Error::protocol;
@@ -1061,7 +1061,7 @@ namespace socklib {
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
-                H2Frame::parse(v, t);
+                H2FRAME::parse(v, t);
                 reader_t se(v.buf);
                 if (v.len != 4) {
                     t.err = H2Error::frame_size;
@@ -1083,7 +1083,7 @@ namespace socklib {
                     t.err = H2Error::protocol;
                     return t.err;
                 }
-                if (auto e = H2Frame::serialize(4, se, t)) {
+                if (auto e = H2FRAME::serialize(4, se, t)) {
                     t.err = e;
                     return t.err;
                 }

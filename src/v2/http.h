@@ -10,6 +10,8 @@
 #include "http1.h"
 #include "http2.h"
 
+#include <deque>
+
 namespace socklib {
     namespace v2 {
 
@@ -69,8 +71,8 @@ namespace socklib {
         };
 
         template <class String, class Header, class Body, template <class...> class Map, class Table>
-        struct ClientRequestProxy : RequestProxy<String, Header, Body> {
-            using base_t = RequestProxy<String, Header, Body>;
+        struct ClientRequestProxy : RequestProxy<String, Header, Body, Map, Table> {
+            using base_t = RequestProxy<String, Header, Body, Map, Table>;
             using http1client_t = Http1Client<String, Header, Body>;
             using http2client_t = Http2Client<String, Map, Header, Body, Table>;
             using opener_t = HttpBase<String, Header, Body>;
@@ -175,8 +177,8 @@ namespace socklib {
             }
         };
 
-        template <class String, class Header, class Body>
-        struct ServerRequestProxy : RequestProxy<String, Header, Body> {
+        template <class String, class Header, class Body, template <class...> class Map, class Table>
+        struct ServerRequestProxy : RequestProxy<String, Header, Body, Map, Table> {
             const Header& requestHeader() {
                 return this->ctx.request;
             }
@@ -200,9 +202,10 @@ namespace socklib {
             return std::make_shared<ClientRequestProxy<String, Header, Body, Map, Table>>();
         }
 
-        template <class String = std::string, class Header = std::multimap<String, String>, class Body = String>
-        std::shared_ptr<ServerRequestProxy<String, Header, Body>> accept_request() {
-            return std::make_shared<ServerRequestProxy<String, Header, Body>>();
+        template <class String = std::string, class Header = std::multimap<String, String>, class Body = String,
+                  template <class...> class Map = std::map, class Table = std::deque<std::pair<String, String>>>
+        std::shared_ptr<ServerRequestProxy<String, Header, Body, Map, Table>> accept_request() {
+            return std::make_shared<ServerRequestProxy<String, Header, Body, Map, Table>>();
         }
     }  // namespace v2
 }  // namespace socklib
