@@ -430,6 +430,7 @@ namespace socklib {
                 }
                 req.tcperr = tcpopen.err;
                 if (req.tcperr == TCPError::not_reopened) {
+                    req.phase = RequestPhase::open_direct;
                     return true;
                 }
                 ConnStat stat;

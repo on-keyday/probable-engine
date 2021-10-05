@@ -140,10 +140,19 @@ namespace socklib {
                 return http2client_t::request(this->conn, *h2buf, cancel);
             }
 
+            void reset_ctx() {
+                this->ctx.responsebody.clear();
+                this->ctx.response.clear();
+            }
+
            public:
             bool request(const String& method, const String& url, CancelContext* cancel = nullptr) {
                 this->ctx.url = url;
                 this->ctx.method = method;
+                reset_ctx();
+                if (this->ctx.phase == RequestPhase::body_recved) {
+                    this->ctx.phase = RequestPhase::idle;
+                }
                 if (!opener_t::open(this->conn, this->ctx, cancel)) {
                     return false;
                 }

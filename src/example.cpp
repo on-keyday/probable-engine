@@ -46,9 +46,9 @@ int main() {
     p->set_httpversion(2);
     p->requestHeader() = {{"Accept", "text/html"}};
     p->set_cacert("D:/commonlib/netsoft/cacert.pem");
-    auto res = p->request("GET", "https://google.com", &timeout);
+    auto res = p->request("GET", "https://www.google.com", &timeout);
     res = p->response(&timeout);
 
-    res = p->request("GET", "https://www.google.com", &timeout);
+    res = p->request("GET", "https://www.google.com/teapot", &timeout);
     res = p->response(&timeout);
 }
