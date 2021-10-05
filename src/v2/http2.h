@@ -700,7 +700,14 @@ namespace socklib {
                     }
                     if (read.req.streamid == frame->get_id()) {
                         if (auto header = frame->header()) {
-                            read.req.response = std::move(header->header_map());
+                            for (auto& h : header->header_map()) {
+                                if (h.first == ":status") {
+                                    commonlib2::Reader(h.second) >> read.req.statuscode;
+                                }
+                                else {
+                                    read.req.response.emplace(h.first, h.second);
+                                }
+                            }
                             read.req.phase = RequestPhase::request_recved;
                             if (frame->is_set(H2Flag::end_stream)) {
                                 break;
