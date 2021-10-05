@@ -168,8 +168,9 @@ namespace socklib {
             using stream_t = H2Stream;
             using checker_t = StreamFlowChecker TEMPLATE_PARAM;
             using settings_t = typename h2request_t::settings_t;
+            using manager_t = StreamManager TEMPLATE_PARAM;
 
-            stream_t* get_stream(F(H2Frame) & frame, std::int32_t id, h2request_t& ctx) {
+            static stream_t* get_stream(F(H2Frame) & frame, std::int32_t id, h2request_t& ctx) {
                 auto found = ctx.streams.find(id);
                 if (!hframe.set_id(req.streamid) || found == ctx.streams.end()) {
                     ctx.err = H2Error::protocol;
@@ -178,8 +179,8 @@ namespace socklib {
                 return &found->second;
             }
 
-            H2Err write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, bool closable = false,
-                               CancelContext* cancel = nullptr, H2Weight* weight = nullptr, std::uint8_t* padlen = nullptr) {
+            static H2Err write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, bool closable = false,
+                                      CancelContext* cancel = nullptr, H2Weight* weight = nullptr, std::uint8_t* padlen = nullptr) {
                 F(H2HeaderFrame)
                 hframe;
                 if (req.streamid <= 0) {
@@ -253,8 +254,8 @@ namespace socklib {
                 return e;
             }
 
-            H2Err write_data(conn_t& conn, h1request_t& req, h2request_t& ctx, bool closeable = true,
-                             CancelContext* cancel = nullptr, std::uint8_t* padlen = nullptr) {
+            static H2Err write_data(conn_t& conn, h1request_t& req, h2request_t& ctx, bool closeable = true,
+                                    CancelContext* cancel = nullptr, std::uint8_t* padlen = nullptr) {
                 F(H2DataFrame)
                 dframe;
                 if (req.streamid <= 0) {
@@ -322,8 +323,8 @@ namespace socklib {
                 return e;
             }
 
-            H2Err write_priority(conn_t& conn, h1request_t& req, h2request_t& ctx, const H2Weight& weight,
-                                 CancelContext* cancel = nullptr) {
+            static H2Err write_priority(conn_t& conn, h1request_t& req, h2request_t& ctx, const H2Weight& weight,
+                                        CancelContext* cancel = nullptr) {
                 F(H2PriorityFrame)
                 pframe;
                 if (req.streamid <= 0) {
@@ -337,8 +338,8 @@ namespace socklib {
                 return basewriter_t::write(conn, pframe, req, ctx, cancel);
             }
 
-            H2Err write_rst_stream(conn_t& conn, h1request_t& req, h2request_t& ctx, std::uint32_t errorcode,
-                                   CancelContext* cancel = nullptr) {
+            static H2Err write_rst_stream(conn_t& conn, h1request_t& req, h2request_t& ctx, std::uint32_t errorcode,
+                                          CancelContext* cancel = nullptr) {
                 F(H2RstStreamFrame)
                 rframe;
                 if (req.streamid <= 0) {
@@ -357,7 +358,7 @@ namespace socklib {
                 return e;
             }
 
-            H2Err write_settings(conn_t& conn, h1request_t& req, h2request_t& ctx, bool ack, const settings_t& setting = settings_t(), CancelContext* cancel = nullptr, settings_t* old = nullptr) {
+            static H2Err write_settings(conn_t& conn, h1request_t& req, h2request_t& ctx, bool ack, const settings_t& setting = settings_t(), CancelContext* cancel = nullptr, settings_t* old = nullptr) {
                 F(H2SettingsFrame)
                 sframe;
                 sframe.set_id(0);
@@ -369,8 +370,19 @@ namespace socklib {
                 }
                 auto e = basewriter_t::write(conn, sframe, req, ctx, cancel);
                 if (e) {
+                    if (!ack && old) {
+                        *old = std::move(sframe.old_settings());
+                    }
                 }
                 return e;
+            }
+
+            static H2Err write_push_promise(conn_t& conn, h1request_t& req, h2request_t& ctx) {
+                if (!ctx.server || !manager_t::enable_push(ctx)) {
+                    return ctx.err;
+                }
+                F(H2PushPromiseFrame)
+                pframe;
             }
 #undef F
         };
