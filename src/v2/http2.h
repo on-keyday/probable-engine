@@ -680,6 +680,7 @@ namespace socklib {
                     return e;
                 }
                 if (closable) {
+                    read.req.phase = RequestPhase::request_sent;
                     return true;
                 }
                 while (true) {
