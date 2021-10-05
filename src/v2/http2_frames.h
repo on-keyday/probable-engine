@@ -1043,7 +1043,15 @@ namespace socklib {
            public:
             std::int32_t update() const {
                 return value;
-            }  // namespace v2
+            }
+
+            bool set_update(std::int32_t v) {
+                if (v <= 0) {
+                    return false;
+                }
+                value = v;
+                return true;
+            }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
                 H2Frame::parse(v, t);

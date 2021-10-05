@@ -467,10 +467,20 @@ namespace socklib {
                 gframe.set_lastid(lastid);
                 gframe.set_code(errorcode);
                 gframe.optdata() = additional;
+                ctx.streams[0].state = H2StreamState::closed;
                 return basewriter_t::write(conn, gframe, req, ctx, cancel);
             }
 
+            using window_updater = WindowUpdater TEMPLATE_PARAM;
+
             static H2Err write_window_update(conn_t& conn, h1request_t& req, h2request_t& ctx, std::int32_t update) {
+                if (update < 0) return false;
+                F(H2WindowUpdateFrame)
+                wframe;
+                if (!wframe.set_update(update)) {
+                    ctx.err = H2Error::protocol;
+                    return ctx.err;
+                }
             }
 #undef F
         };
