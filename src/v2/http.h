@@ -80,9 +80,9 @@ namespace socklib {
             using h1readctx_t = Http1ReadContext<String, Header, Body>;
 
            private:
-            std::shared_ptr<IReadContext> readbuf;
-            h1readctx_t* h1buf;
-            h2readctx_t* h2buf;
+            std::shared_ptr<IReadContext> readbuf = nullptr;
+            h1readctx_t* h1buf = nullptr;
+            h2readctx_t* h2buf = nullptr;
 
            public:
             ClientRequestProxy() {

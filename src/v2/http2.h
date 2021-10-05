@@ -271,7 +271,7 @@ namespace socklib {
                     }
                     string_t key, value;
                     auto to_lower = [](auto& base, auto& str) {
-                        std::transform(base.begin(), base.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+                        std::transform(base.begin(), base.end(), std::back_inserter(str), [](unsigned char c) { return std::tolower(c); });
                     };
                     to_lower(h.first, key);
                     to_lower(h.second, value);

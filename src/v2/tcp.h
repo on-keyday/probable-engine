@@ -260,7 +260,7 @@ namespace socklib {
                     ctx.err = TCPError::register_host_verify;
                     return false;
                 }
-                if (connect_loop(sock, ssl, cancel)) {
+                if (!connect_loop(sock, ssl, cancel)) {
                     if (!has_ssl) SSL_free(ssl);
                     if (!has_ctx) SSL_CTX_free(sslctx);
                     ctx.err = TCPError::ssl_connect;
