@@ -105,6 +105,7 @@ namespace socklib {
             tcp_socket,
             tcp_over_ssl,
             file,
+            websocket,
         };
 
         enum class ConnStatus {

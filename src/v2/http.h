@@ -85,8 +85,7 @@ namespace socklib {
             h2readctx_t* h2buf = nullptr;
 
            public:
-            ClientRequestProxy() {
-            }
+            ClientRequestProxy() {}
 
             Header& requestHeader() {
                 return this->ctx.request;
