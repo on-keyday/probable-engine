@@ -197,8 +197,24 @@ namespace socklib {
 
         struct SecureSetter {
            private:
+            static bool connect_loop(int sock, SSL* ssl, CancelContext* cancel) {
+                SSLErrorContext ctx(ssl, cancel);
+                int err = 0;
+                while (true) {
+                    err = SSL_connect(ssl);
+                    if (err < 0) {
+                        if (ctx.on_cancel()) {
+                            return false;
+                        }
+                        continue;
+                    }
+                    break;
+                }
+                return err == 1;
+            }
+
             template <class String>
-            static bool setupssl_detail(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<String>& ctx, const char* host, const char* cacert) {
+            static bool setupssl_detail(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<String>& ctx, const char* host, const char* cacert, CancelContext* cancel) {
                 bool has_ctx = false, has_ssl = false;
                 if (!sslctx) {
                     if (ssl) {
@@ -244,7 +260,7 @@ namespace socklib {
                     ctx.err = TCPError::register_host_verify;
                     return false;
                 }
-                if (SSL_connect(ssl) != 1) {
+                if (connect_loop(sock, ssl, cancel)) {
                     if (!has_ssl) SSL_free(ssl);
                     if (!has_ctx) SSL_CTX_free(sslctx);
                     ctx.err = TCPError::ssl_connect;
