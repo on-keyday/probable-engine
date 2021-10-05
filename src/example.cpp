@@ -43,10 +43,10 @@ struct TestDerived : TestBase<Int> {
 int main() {
     auto p = make_request();
     TimeoutContext timeout(30);
-    p->set_httpversion(1);
+    p->set_httpversion(2);
     p->requestHeader() = {{"Accept", "text/html"}};
     p->set_cacert("D:/commonlib/netsoft/cacert.pem");
-    auto res = p->request("GET", "google.com", &timeout);
+    auto res = p->request("GET", "https://google.com", &timeout);
     res = p->response(&timeout);
 
     TestDerived d;
