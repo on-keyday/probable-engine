@@ -107,6 +107,20 @@ namespace socklib {
                 return true;
             }
 
+            static H2Err make_new_stream(std::int32_t& save, h2request_t& ctx, std::int32_t to_make) {
+                if (ctx.server && !enable_push(ctx)) {
+                    return ctx.err;
+                }
+                if (!verify_id(to_make, ctx.server)) {
+                    ctx.err = H2Error::protocol;
+                    return ctx.err;
+                }
+                set_initial_window_size(ctx.streams[to_make]);
+                save = to_make;
+                ctx.max_stream = to_make;
+                return true;
+            }
+
             static H2Err accept_frame(std::shared_ptr<frame_t>& frame, h2request_t& ctx) {
                 if (!frame) return false;
                 frame_t& f = *frame;
@@ -133,6 +147,10 @@ namespace socklib {
                 return state == H2StreamState::idle;
             }
 
+            static bool push_promise_sendable(H2StreamState state) {
+                return state == H2StreamState::open || state == H2StreamState::half_closed_remote;
+            }
+
             static H2StreamState sent_endstream(H2StreamState state) {
                 if (state == H2StreamState::open) {
                     return H2StreamState::half_closed_local;
@@ -140,6 +158,13 @@ namespace socklib {
                 else {
                     return H2StreamState::closed;
                 }
+            }
+
+            static H2StreamState sent_push_promise(H2StreamState state) {
+                if (state == H2StreamState::idle) {
+                    state = H2StreamState::reserved_local;
+                }
+                return H2StreamState::closed;
             }
 
             static H2StreamState handle_rst_stream() {
@@ -180,34 +205,35 @@ namespace socklib {
                 return &found->second;
             }
 
-            static H2Err set_http2_header(header_t& towrite, h1request_t& req) {
-                auto set_header = [&](auto& header) -> H2Err {
-                    for (auto& h : header) {
-                        if (auto e = base_t::is_valid_field(h, req); e < 0) {
-                            ctx.err = H2Error::http1_semantics_error;
-                            return ctx.err;
-                        }
-                        else if (e == 0) {
-                            continue;
-                        }
-                        string_t key, value;
-                        auto to_lower = [](auto& base, auto& str) {
-                            std::transform(base.begin(), base.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
-                        };
-                        to_lower(h.first, key);
-                        to_lower(h.second, value);
-                        towrite.emplace(key, value);
+            H2Err set_jttp2_header(header_t& towrite, const header_t& header, h1request_t& req) {
+                for (auto& h : header) {
+                    if (auto e = base_t::is_valid_field(h, req); e < 0) {
+                        ctx.err = H2Error::http1_semantics_error;
+                        return ctx.err;
                     }
-                    return H2Error::none;
-                };
+                    else if (e == 0) {
+                        continue;
+                    }
+                    string_t key, value;
+                    auto to_lower = [](auto& base, auto& str) {
+                        std::transform(base.begin(), base.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+                    };
+                    to_lower(h.first, key);
+                    to_lower(h.second, value);
+                    towrite.emplace(key, value);
+                }
+                return H2Error::none;
+            };
+
+            static H2Err set_http2_header(header_t& towrite, h1request_t& req) {
                 if (ctx.server) {
-                    if (auto e = set_header(req.response); !e) {
+                    if (auto e = set_http2_header(towrite, req.response, req); !e) {
                         return e;
                     }
                     towrite.emplace(":status", std::to_string(req.statuscode).c_str())
                 }
                 else {
-                    if (auto e = set_header(req.request); !e) {
+                    if (auto e = set_http2_header(req.request); !e) {
                         return e;
                     }
                     string_t path;
@@ -385,13 +411,35 @@ namespace socklib {
                 return e;
             }
 
-            static H2Err write_push_promise(conn_t& conn, h1request_t& req, h2request_t& ctx) {
+            static H2Err write_push_promise(conn_t& conn, h1request_t& req, h2request_t& ctx, std::int32_t promise,
+                                            const header_t& promiseheader, std::uint8_t* padlen = nullptr,
+                                            CancelContext* cancel = nullptr) {
                 if (!ctx.server || !manager_t::enable_push(ctx)) {
                     return ctx.err;
                 }
                 F(H2PushPromiseFrame)
                 pframe;
-                pframe.header_map()
+                if (auto e = manager_t::make_new_stream(promise, ctx, promise); !e) {
+                    return e;
+                }
+                auto stream = get_stream(pframe, promise, ctx);
+                if (!stream) {
+                    return ctx.err;
+                }
+                if (padlen) {
+                    hframe.set_padding(*padlen);
+                    hframe.add_flag(H2Flag::padded);
+                }
+                auto& towrite = pframe.header_map();
+                if (auto e = set_http2_header(towrite, promiseheader, req); !e) {
+                    return e;
+                }
+                pframe.add_flag(H2Flag::end_headers);
+                auto e = basewriter_t::write(conn, pframe, req, ctx, cancel);
+                if (e) {
+                    stream->state = checker_t::sent_push_promise(stream->state);
+                }
+                return e;
             }
 #undef F
         };
