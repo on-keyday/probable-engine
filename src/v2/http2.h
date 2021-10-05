@@ -18,7 +18,17 @@ namespace socklib {
             using h2request_t = Http2RequestContext TEMPLATE_PARAM;
             using updateframe_t = H2WindowUpdateFrame TEMPLATE_PARAM;
             using settingsframe_t = H2SettingsFrame TEMPLATE_PARAM;
+            using dataframe_t = H2DataFrame TEMPLATE_PARAM;
             using stream_t = H2Stream;
+
+            static bool update(h2request_t& ctx, dataframe_t* frame) {
+                if (!frame) return false;
+                auto down = frame->payload().size();
+                auto id = frame->get_id();
+                stream_t& stream = ctx.streams[id];
+                stream.local_window -= down;
+                ctx.streams[0].local_window -= down;
+            }
 
             static bool update(h2request_t& ctx, updateframe_t* frame) {
                 if (!frame) return false;
@@ -27,6 +37,11 @@ namespace socklib {
                 stream_t& stream = ctx.streams[id];
                 stream.remote_window += up;
                 return true;
+            }
+
+            static bool update(h2request_t& ctx, stream_t& stream, stream_t& stream0, std::int32_t down) {
+                stream.remote_window -= down;
+                stream0.remote_window -= down;
             }
 
             static void update(h2request_t& ctx, stream_t& stream, std::int32_t up) {
@@ -631,7 +646,7 @@ namespace socklib {
                 return true;
             }
 
-            H2Err callback(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
+            H2Err call_callback(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
                 if (ctx.user_callback) {
                     auto err = ctx.user_callback(*frame, ctx.userctx, read.ctx, read.req);
                     if (err) {
@@ -642,11 +657,11 @@ namespace socklib {
                 return true;
             }
 
-            H2Err request(conn_t& conn, readctx_t read, CancelContext* cancel = nullptr) {
+            H2Err request(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
                 if (req.phase != RequestPhase::open_direct) {
                     return false;
                 }
-                bool closable = req.requestbody.size() != 0;
+                bool closable = req.requestbody.size() == 0;
                 auto e = writer_t::write_header(conn, read.req, read.ctx, closable, cancel);
                 if (!e) {
                     return e;
@@ -665,10 +680,28 @@ namespace socklib {
                     std::shared_ptr<frame_t> frame;
                     err = read_a_frame(conn, frame, read, cancel);
                     if (!err) {
-                        return false;
+                        return err;
+                    }
+                    err = call_callback(conn, frame, read, cancel);
+                    if (!err) {
+                        return err;
                     }
                 }
+                req.phase = RequestPhase::request_sent;
                 return true;
+            }
+
+            H2Err response(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
+                if (req.phase != RequestPhase::request_sent) {
+                    return false;
+                }
+                while (true) {
+                    std::shared_ptr<frame_t> frame;
+                    auto err = read_a_frame(conn, frame, read, cancel);
+                    if (!err) {
+                        return err;
+                    }
+                }
             }
         };
 
