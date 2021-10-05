@@ -612,18 +612,22 @@ namespace socklib {
             using accepter_t = H2FrameAccepter TEMPLATE_PARAM;
             using manager_t = StreamManager TEMPLATE_PARAM;
 
-            bool send_connection_preface(conn_t& conn, h1request_t& req, CancelContext* cancel = nullptr) {
+            static void init(h2request_t& ctx) {
+                manager_t::init_streams(ctx);
+            }
+
+            static bool send_connection_preface(conn_t& conn, h1request_t& req, CancelContext* cancel = nullptr) {
                 WriteContext w;
                 w.ptr = h2_connection_preface;
                 w.ptr = 24;
                 return errorhandler_t::write_to_conn(conn, w, req, cancel);
             }
 
-            H2Err send_first_setttings(conn_t& conn, h1request_t& req, h2request_t& ctx, CancelContext* cancel = nullptr) {
+            static H2Err send_first_settings(conn_t& conn, h1request_t& req, h2request_t& ctx, CancelContext* cancel = nullptr) {
                 return writer_t::write_settings(conn, req, ctx, false, ctx.local_settings, cancel);
             }
 
-            H2Err read_a_frame(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
+            static H2Err read_a_frame(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
                 auto err = reader_t::read(conn, frame, read, cancel);
                 if (!err) {
                     writer_t::write_goaway(conn, read.req, read.ctx, req.streamid, (std::uint32_t)err.e, cancel);
@@ -650,7 +654,7 @@ namespace socklib {
                 return true;
             }
 
-            H2Err call_callback(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
+            static H2Err call_callback(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
                 if (ctx.user_callback) {
                     auto err = ctx.user_callback(*frame, ctx.userctx, read.ctx, read.req);
                     if (err) {
@@ -661,7 +665,7 @@ namespace socklib {
                 return true;
             }
 
-            H2Err request(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
+            static H2Err request(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
                 if (req.phase != RequestPhase::open_direct) {
                     return false;
                 }
@@ -699,7 +703,7 @@ namespace socklib {
                 return true;
             }
 
-            H2Err response(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
+            static H2Err response(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
                 if (req.phase != RequestPhase::request_sent) {
                     return false;
                 }

@@ -8,14 +8,16 @@
 #pragma once
 
 #include "http1.h"
+#include "http2.h"
 
 namespace socklib {
     namespace v2 {
 
-        template <class String, class Header, class Body>
+        template <class String, class Header, class Body, template <class...> class Map, class Table>
         struct RequestProxy : INetAppConn {
            protected:
             RequestContext<String, Header, Body> ctx;
+            Http2RequestContext<String, Map, Header, Body, Table> h2ctx;
             std::shared_ptr<InetConn> conn;
 
            public:
@@ -66,18 +68,23 @@ namespace socklib {
             }
         };
 
-        template <class String, class Header, class Body>
+        template <class String, class Header, class Body, template <class...> class Map, class Table>
         struct ClientRequestProxy : RequestProxy<String, Header, Body> {
             using base_t = RequestProxy<String, Header, Body>;
             using http1client_t = Http1Client<String, Header, Body>;
+            using http2client_t = Http2Client<String, Map, Header, Body, Table>;
             using opener_t = HttpBase<String, Header, Body>;
+            using h2readctx_t = Http2ReadContext<String, Map, Header, Body, Table>;
+            using h1readctx_t = Http1ReadContext<String, Header, Body>;
 
            private:
-            Http1ReadContext<String, Header, Body> readbuf;
+            std::shared_ptr<IReadContext> readbuf;
+            h1readctx_t* h1buf;
+            h2readctx_t* h2buf;
 
            public:
-            ClientRequestProxy()
-                : readbuf(this->ctx) {}
+            ClientRequestProxy() {
+            }
 
             Header& requestHeader() {
                 return this->ctx.request;
@@ -111,6 +118,27 @@ namespace socklib {
                 this->ctx.default_scehme = scehme;
             }
 
+           private:
+            bool h2request(CancelContext* cancel = nullptr) {
+                if (!h2buf) {
+                    h1buf = nullptr;
+                    auto tmp = std::make_shared<h2readctx_t>(this->ctx, this->h2ctx);
+                    h2buf = tmp.get();
+                    readbuf = tmp;
+                }
+                if (this->ctx.tcperr != TCPError::not_reopened) {
+                    http2client_t::init(this->h2ctx);
+                    if (!http2client_t::send_connection_preface(this->conn, this->ctx, cancel)) {
+                        return false;
+                    }
+                    if (!http2client_t::send_first_settings(this->conn, this->ctx, this->h2ctx, cancel)) {
+                        return false;
+                    }
+                }
+                return http2client_t::request(this->conn, *h2buf, cancel);
+            }
+
+           public:
             bool request(const String& method, const String& url, CancelContext* cancel = nullptr) {
                 this->ctx.url = url;
                 this->ctx.method = method;
@@ -118,13 +146,19 @@ namespace socklib {
                     return false;
                 }
                 if (this->ctx.resolved_version == 2) {
-                    //unimplemented h2
+                    return h2request(cancel);
                 }
                 else {
                     if (this->ctx.http_version == 2) {
                         //unimplemented h2c
                     }
                     else {
+                        if (!h1buf) {
+                            h2buf = nullptr;
+                            auto tmp = std::make_shared<h1readctx_t>(this->ctx);
+                            h1buf = tmp.get();
+                            readbuf = tmp;
+                        }
                         return http1client_t::request(this->conn, this->ctx, cancel);
                     }
                 }
@@ -132,7 +166,12 @@ namespace socklib {
             }
 
             bool response(CancelContext* cancel) {
-                return http1client_t::response(this->conn, readbuf, cancel);
+                if (this->ctx.resolved_version == 2) {
+                    return http2client_t::response(this->conn, *h2buf, cancel);
+                }
+                else {
+                    return http1client_t::response(this->conn, *h1buf, cancel);
+                }
             }
         };
 
@@ -155,9 +194,10 @@ namespace socklib {
             }
         };
 
-        template <class String = std::string, class Header = std::multimap<String, String>, class Body = String>
-        std::shared_ptr<ClientRequestProxy<String, Header, Body>> make_request() {
-            return std::make_shared<ClientRequestProxy<String, Header, Body>>();
+        template <class String = std::string, class Header = std::multimap<String, String>, class Body = String,
+                  template <class...> class Map = std::map, class Table = std::deque<std::pair<String, String>>>
+        std::shared_ptr<ClientRequestProxy<String, Header, Body, Map, Table>> make_request() {
+            return std::make_shared<ClientRequestProxy<String, Header, Body, Map, Table>>();
         }
 
         template <class String = std::string, class Header = std::multimap<String, String>, class Body = String>
