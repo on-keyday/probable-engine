@@ -56,7 +56,7 @@ namespace socklib {
         struct StreamManager {
             using h1request_t = RequestContext<String, Header, Body>;
             using h2request_t = Http2RequestContext TEMPLATE_PARAM;
-            using stream_t = H2Stream TEMPLATE_PARAM;
+            using stream_t = H2Stream;
             using settings_t = typename h2request_t::settings_t;
             using frame_t = H2Frame TEMPLATE_PARAM;
 
@@ -111,16 +111,15 @@ namespace socklib {
                 return true;
             }
 
-            static H2Err make_new_stream(std::int32_t& save, h2request_t& ctx, std::int32_t to_make) {
+            static H2Err make_new_stream(h2request_t& ctx, std::int32_t to_make, bool server) {
                 if (ctx.server && !enable_push(ctx)) {
                     return ctx.err;
                 }
-                if (!verify_id(to_make, ctx.server)) {
+                if (!verify_id(to_make, server)) {
                     ctx.err = H2Error::protocol;
                     return ctx.err;
                 }
                 set_initial_window_size(ctx.streams[to_make]);
-                save = to_make;
                 ctx.max_stream = to_make;
                 return true;
             }
@@ -147,8 +146,22 @@ namespace socklib {
                 return state == H2StreamState::open || state == H2StreamState::half_closed_remote;
             }
 
-            static bool header_handleable(H2StreamState state) {
-                return state == H2StreamState::idle;
+            static bool header_sendable(H2StreamState state, bool server) {
+                if (server) {
+                    return state == H2StreamState::half_closed_remote;
+                }
+                else {
+                    return state == H2StreamState::idle;
+                }
+            }
+
+            static bool header_recvable(H2StreamState state, bool server) {
+                if (server) {
+                    return state == H2StreamState::idle;
+                }
+                else {
+                    return state == H2StreamState::half_closed_local;
+                }
             }
 
             static bool push_promise_sendable(H2StreamState state) {
@@ -164,9 +177,25 @@ namespace socklib {
                 }
             }
 
+            static H2StreamState recv_endstream(H2StreamState state) {
+                if (state == H2StreamState::open) {
+                    return H2StreamState::half_closed_remote;
+                }
+                else {
+                    return H2StreamState::closed;
+                }
+            }
+
             static H2StreamState sent_push_promise(H2StreamState state) {
                 if (state == H2StreamState::idle) {
                     state = H2StreamState::reserved_local;
+                }
+                return H2StreamState::closed;
+            }
+
+            static H2StreamState recv_push_promise(H2StreamState state) {
+                if (state == H2StreamState::idle) {
+                    state = H2StreamState::reserved_remote;
                 }
                 return H2StreamState::closed;
             }
@@ -178,6 +207,12 @@ namespace socklib {
             static H2StreamState handled_header(H2StreamState state) {
                 if (state == H2StreamState::idle) {
                     return H2StreamState::open;
+                }
+                else if (state == H2StreamState::reserved_local) {
+                    return H2StreamState::half_closed_remote;
+                }
+                else if (state == H2StreamState::reserved_remote) {
+                    return H2StreamState::half_closed_local;
                 }
                 return H2StreamState::closed;
             }
@@ -209,7 +244,7 @@ namespace socklib {
                 return &found->second;
             }
 
-            H2Err set_jttp2_header(header_t& towrite, const header_t& header, h1request_t& req) {
+            H2Err set_http2_header(header_t& towrite, const header_t& header, h1request_t& req) {
                 for (auto& h : header) {
                     if (auto e = base_t::is_valid_field(h, req); e < 0) {
                         ctx.err = H2Error::http1_semantics_error;
@@ -262,7 +297,7 @@ namespace socklib {
                 if (!stream) {
                     return ctx.err;
                 }
-                if (!checker_t::header_handlable(stream->state)) {
+                if (!checker_t::header_sendable(stream->state, ctx.server)) {
                     ctx.err = H2Error::protocol;
                     return false;
                 }
@@ -423,7 +458,7 @@ namespace socklib {
                 }
                 F(H2PushPromiseFrame)
                 pframe;
-                if (auto e = manager_t::make_new_stream(promise, ctx, promise); !e) {
+                if (auto e = manager_t::make_new_stream(ctx, promise, ctx.server); !e) {
                     return e;
                 }
                 auto stream = get_stream(pframe, promise, ctx);
@@ -475,7 +510,7 @@ namespace socklib {
                 return basewriter_t::write(conn, gframe, req, ctx, cancel);
             }
 
-            using window_updater = WindowUpdater TEMPLATE_PARAM;
+            using window_updater_t = WindowUpdater TEMPLATE_PARAM;
 
             static H2Err write_window_update(conn_t& conn, h1request_t& req, h2request_t& ctx, std::int32_t update, bool cf = false,
                                              CancelContext* cancel = nullptr) {
@@ -492,11 +527,90 @@ namespace socklib {
                 }
                 auto e = basewriter_t::write(conn, wframe, req, ctx, cancel);
                 if (e) {
-                    window_updater::update(ctx, *stream, update);
+                    window_updater_t::update(ctx, *stream, update);
                 }
                 return e;
             }
 #undef F
+        };
+
+        H2TYPE_PARAMS
+        struct H2FrameAccepter {
+#define F(TYPE) TYPE TEMPLATE_PARAM
+            using h2request_t = Http2RequestContext TEMPLATE_PARAM;
+            using frame_t = H2Frame TEMPLATE_PARAM;
+            using window_updater_t = WindowUpdater TEMPLATE_PARAM;
+            using checker_t = StreamFlowChecker TEMPLATE_PARAM;
+            using manager_t = StreamManager TEMPLATE_PARAM;
+            using stream_t = H2Stream;
+
+            H2Err accept(std::shared_ptr<frame_t>& frame, h2request_t& ctx) {
+                if (auto e = manager_t::accept_frame(frame, ctx); !e) {
+                    return e;
+                }
+                stream_t& stream = ctx.streams[frame->get_id()];
+                if (F(H2HeaderFrame)* h = frame->header()) {
+                    if (!checker_t::header_recvable(stream.state, ctx.server)) {
+                        ctx.err = H2Error::protocol;
+                        return ctx.err;
+                    }
+                    stream.state = checker_t::handled_header(stream.state);
+                    if (h->is_set(H2Flag::end_stream)) {
+                        stream.state = checker_t::recv_endstream(stream.state);
+                    }
+                }
+                else if (F(H2DataFrame)* d = frame->data()) {
+                    if (h->is_set(H2Flag::end_stream)) {
+                        stream.state = checker_t::recv_endstream(stream.state);
+                    }
+                }
+                else if (F(H2PushPromiseFrame)* p = frame->push_promise()) {
+                    auto promise = p->id();
+                    if (!manager_t::make_new_stream(ctx, promise, true)) {
+                        return ctx.err;
+                    }
+                    stream_t& promised = ctx.streams[promise];
+                    promised.state = checker_t::recv_push_promise(promised.state);
+                }
+                else if (F(H2RstStreamFrame)* r = frame->rst_stream()) {
+                    stream.errorcode = r->code();
+                    stream.state = checker_t::handle_rst_stream();
+                }
+                else if (F(H2WindowUpdateFrame)* f = frame->window_update()) {
+                    window_updater_t::update(ctx, f);
+                }
+                return true;
+            }
+#undef F
+        };
+
+        H2TYPE_PARAMS
+        struct Http2Client {
+            using h1request_t = RequestContext<String, Header, Body>;
+            using h2request_t = Http2RequestContext TEMPLATE_PARAM;
+            using conn_t = std::shared_ptr<InetConn>;
+            using errorhandler_t = ErrorHandler<String, Header, Body>;
+            using writer_t = H2FrmaeWriter TEMPLATE_PARAM;
+            bool send_connection_preface(conn_t& conn, h1request_t& req, CancelContext* cancel = nullptr) {
+                WriteContext w;
+                w.ptr = h2_connection_preface;
+                w.ptr = 24;
+                return errorhandler_t::write_to_conn(conn, w, req, cancel);
+            }
+
+            H2Err send_first_setttings(conn_t& conn, h1request_t& req, h2request_t& ctx, CancelContext* cancel = nullptr) {
+                return writer_t::write_settings(conn, req, ctx, false, ctx.local_settings, cancel);
+            }
+
+            H2Err request(conn_t& conn, h1request_t& req, h2request_t& ctx, CancelContext* cancel = nullptr) {
+                if (req.phase != RequestPhase::open_direct) {
+                    return false;
+                }
+                auto e = writer_t::write_header(conn, req, ctx, false, cancel);
+                if (!e) {
+                    return e;
+                }
+            }
         };
 
 #undef H2TYPE_PARAMS

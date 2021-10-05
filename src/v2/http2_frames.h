@@ -156,6 +156,9 @@ namespace socklib {
         };
 
         H2TYPE_PARAMS
+        struct H2Frame;
+
+        H2TYPE_PARAMS
 #ifdef COMMONLIB2_HAS_CONCEPTS
         requires StringType<String>
 #endif
@@ -164,6 +167,7 @@ namespace socklib {
             using table_t = Table;
             using stream_t = H2Stream;
             using streams_t = Map<std::int32_t, stream_t>;
+            using frame_t = H2FRAME;
             H2Error err = H2Error::none;
             HpackError hpackerr = HpackError::none;
             settings_t remote_settings;
@@ -173,6 +177,9 @@ namespace socklib {
             streams_t streams;
             std::uint64_t max_stream = 0;
             bool server = false;
+
+            H2Err (*user_callback)(frame_t&, void*, const Http2RequestContext*, const RequestContext*);
+            void* userctx = nullptr;
         };
 
         DEC_FRAME(H2DataFrame);
