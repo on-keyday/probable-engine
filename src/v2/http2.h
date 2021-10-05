@@ -169,6 +169,7 @@ namespace socklib {
             using checker_t = StreamFlowChecker TEMPLATE_PARAM;
             using settings_t = typename h2request_t::settings_t;
             using manager_t = StreamManager TEMPLATE_PARAM;
+            using header_t = Header;
 
             static stream_t* get_stream(F(H2Frame) & frame, std::int32_t id, h2request_t& ctx) {
                 auto found = ctx.streams.find(id);
@@ -179,31 +180,7 @@ namespace socklib {
                 return &found->second;
             }
 
-            static H2Err write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, bool closable = false,
-                                      CancelContext* cancel = nullptr, H2Weight* weight = nullptr, std::uint8_t* padlen = nullptr) {
-                F(H2HeaderFrame)
-                hframe;
-                if (req.streamid <= 0) {
-                    ctx.err = H2Error::protocol;
-                    return false;
-                }
-                auto stream = get_stream(hframe, req.streamid, ctx);
-                if (!stream) {
-                    return ctx.err;
-                }
-                if (!checker_t::header_handlable(stream->state)) {
-                    ctx.err = H2Error::protocol;
-                    return false;
-                }
-                if (padlen) {
-                    hframe.set_padding(*padlen);
-                    hframe.add_flag(H2Flag::padded);
-                }
-                if (weight) {
-                    hframe.set_weight(*weight);
-                    hframe.add_flag(H2Flag::priority);
-                }
-                auto& towrite = hframe.header_map();
+            static H2Err set_http2_header(header_t& towrite, h1request_t& req) {
                 auto set_header = [&](auto& header) -> H2Err {
                     for (auto& h : header) {
                         if (auto e = base_t::is_valid_field(h, req); e < 0) {
@@ -239,6 +216,37 @@ namespace socklib {
                     towrite.emplace(":authority", urlparser_t::host_with_port(req.parsed));
                     towrite.emplace(":path", path);
                     towrite.emplace(":scheme", req.parsed.scheme);
+                }
+                return true;
+            }
+
+            static H2Err write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, bool closable = false,
+                                      CancelContext* cancel = nullptr, H2Weight* weight = nullptr, std::uint8_t* padlen = nullptr) {
+                F(H2HeaderFrame)
+                hframe;
+                if (req.streamid <= 0) {
+                    ctx.err = H2Error::protocol;
+                    return false;
+                }
+                auto stream = get_stream(hframe, req.streamid, ctx);
+                if (!stream) {
+                    return ctx.err;
+                }
+                if (!checker_t::header_handlable(stream->state)) {
+                    ctx.err = H2Error::protocol;
+                    return false;
+                }
+                if (padlen) {
+                    hframe.set_padding(*padlen);
+                    hframe.add_flag(H2Flag::padded);
+                }
+                if (weight) {
+                    hframe.set_weight(*weight);
+                    hframe.add_flag(H2Flag::priority);
+                }
+                auto& towrite = hframe.header_map();
+                if (auto e = set_http2_header(towrite, req); !e) {
+                    return e;
                 }
                 if (closable) {
                     hframe.add_flag(H2Flag::end_stream);
@@ -383,6 +391,7 @@ namespace socklib {
                 }
                 F(H2PushPromiseFrame)
                 pframe;
+                pframe.header_map()
             }
 #undef F
         };
