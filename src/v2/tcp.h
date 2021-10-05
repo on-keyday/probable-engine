@@ -286,13 +286,13 @@ namespace socklib {
 
            public:
             template <class C>
-            static bool setupssl(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<C*>& ctx) {
-                return setupssl_detail(sock, sslctx, ssl, ctx, ctx.host, ctx.cacert);
+            static bool setupssl(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<C*>& ctx, CancelContext* cancel) {
+                return setupssl_detail(sock, sslctx, ssl, ctx, ctx.host, ctx.cacert, cancel);
             }
 
             template <class Str>
-            static bool setupssl(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<Str>& ctx) {
-                return setupssl_detail(sock, sslctx, ssl, ctx, ctx.host.c_str(), ctx.cacert.c_str());
+            static bool setupssl(int sock, SSL_CTX*& sslctx, SSL*& ssl, TCPOpenContext<Str>& ctx, CancelContext* cancel) {
+                return setupssl_detail(sock, sslctx, ssl, ctx, ctx.host.c_str(), ctx.cacert.c_str(), cancel);
             }
         };
 
@@ -348,7 +348,7 @@ namespace socklib {
                         sslctx = stat.net.ssl_ctx;
                     }
                     if (any(ctx.stat.status & ConnStatus::secure)) {
-                        if (!SecureSetter::setupssl(sock, sslctx, ssl, ctx)) {
+                        if (!SecureSetter::setupssl(sock, sslctx, ssl, ctx, cancel)) {
                             ::freeaddrinfo(info);
                             ::closesocket(sock);
                             return false;
