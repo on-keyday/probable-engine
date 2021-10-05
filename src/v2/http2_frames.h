@@ -490,6 +490,7 @@ namespace socklib {
                     ctx.ctx.err = e;
                     return e;
                 }
+                return true;
             }
         };
 
@@ -503,9 +504,9 @@ namespace socklib {
                     return e;
                 }
                 WriteContext c;
-                c.ptr = w.data().data();
+                c.ptr = w.get().data();
                 c.bufsize = w.get().size();
-                if (!errorhandle_t::write_to_conn(conn, w, req, cancel)) {
+                if (!errorhandle_t::write_to_conn(conn, c, req, cancel)) {
                     ctx.err = H2Error::internal;
                     return ctx.err;
                 }
@@ -778,7 +779,7 @@ namespace socklib {
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
-                H2Frame::parse(v, t);
+                H2FRAME::parse(v, t);
                 if (this->streamid != 0) {
                     return H2Error::protocol;
                 }
@@ -820,7 +821,7 @@ namespace socklib {
                 if (fsize < ressize) {
                     return H2Error::frame_size;
                 }
-                H2Frame::serialize((std::uint32_t)ressize, se, t);
+                H2FRAME::serialize((std::uint32_t)ressize, se, t);
                 for (auto& s : newset) {
                     auto& tmp = t.local_settings[s.first];
                     oldset[s.first] = tmp;

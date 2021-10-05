@@ -28,6 +28,7 @@ namespace socklib {
                 stream_t& stream = ctx.streams[id];
                 stream.local_window -= down;
                 ctx.streams[0].local_window -= down;
+                return true;
             }
 
             static bool update(h2request_t& ctx, updateframe_t* frame) {
@@ -39,7 +40,7 @@ namespace socklib {
                 return true;
             }
 
-            static bool update(h2request_t& ctx, stream_t& stream, stream_t& stream0, std::int32_t down) {
+            static void update(h2request_t& ctx, stream_t& stream, stream_t& stream0, std::int32_t down) {
                 stream.remote_window -= down;
                 stream0.remote_window -= down;
             }
@@ -394,7 +395,7 @@ namespace socklib {
                 }
                 auto e = basewriter_t::write(conn, dframe, req, ctx, cancel);
                 if (e) {
-                    window_updater_t::update(ctx, stream, stream0, towrite);
+                    window_updater_t::update(ctx, *stream, stream0, (std::int32_t)towrite);
                     if (check_end()) {
                         ctx.err = H2Error::none;
                         if (closeable) {
@@ -666,14 +667,14 @@ namespace socklib {
             }
 
             static H2Err request(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
-                if (req.phase != RequestPhase::open_direct) {
+                if (read.req.phase != RequestPhase::open_direct) {
                     return false;
                 }
                 auto e = manager_t::make_new_stream(read.req.streamid, read.ctx);
                 if (!e) {
                     return e;
                 }
-                bool closable = req.requestbody.size() == 0;
+                bool closable = read.req.requestbody.size() == 0;
                 e = writer_t::write_header(conn, read.req, read.ctx, closable, cancel);
                 if (!e) {
                     return e;
