@@ -48,4 +48,7 @@ int main() {
     p->set_cacert("D:/commonlib/netsoft/cacert.pem");
     auto res = p->request("GET", "https://google.com", &timeout);
     res = p->response(&timeout);
+
+    res = p->request("GET", "https://www.google.com", &timeout);
+    res = p->response(&timeout);
 }

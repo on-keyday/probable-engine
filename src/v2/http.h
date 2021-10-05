@@ -168,6 +168,8 @@ namespace socklib {
             }
 
             bool response(CancelContext* cancel) {
+                this->ctx.response.clear();
+                this->ctx.responsebody.clear();
                 if (this->ctx.resolved_version == 2) {
                     return http2client_t::response(this->conn, *h2buf, cancel);
                 }
