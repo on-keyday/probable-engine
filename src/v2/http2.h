@@ -698,6 +698,15 @@ namespace socklib {
                     if (!err) {
                         return err;
                     }
+                    if (read.req.streamid == frame->get_id()) {
+                        if (auto header = frame->header()) {
+                            read.req.response = std::move(header->header_map());
+                            read.req.phase = RequestPhase::request_recved;
+                            if (frame->is_set(H2Flag::end_stream)) {
+                                break;
+                            }
+                        }
+                    }
                     err = call_callback(conn, frame, read, cancel);
                     if (!err) {
                         return err;

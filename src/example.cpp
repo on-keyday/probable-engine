@@ -48,15 +48,4 @@ int main() {
     p->set_cacert("D:/commonlib/netsoft/cacert.pem");
     auto res = p->request("GET", "https://google.com", &timeout);
     res = p->response(&timeout);
-
-    TestDerived d;
-    using table = std::deque<std::pair<std::string, std::string>>;
-    using header = std::multimap<std::string, std::string>;
-    using dataframe = H2DataFrame<std::string, std::map, header, std::string, table>;
-    using headerframe = H2HeaderFrame<std::string, std::map, header, std::string, table>;
-    dataframe data;
-    headerframe head;
-    commonlib2::Serializer<std::string> se;
-    dataframe::h2request_t req;
-    data.serialize(100000, se, req);
 }

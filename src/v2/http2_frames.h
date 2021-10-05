@@ -674,6 +674,8 @@ namespace socklib {
                 }
                 return true;
             }
+
+            THISTYPE(H2HeaderFrame, header)
         };
 
         DEF_FRAME(H2PriorityFrame) {
@@ -1091,6 +1093,8 @@ namespace socklib {
                 se.write_hton(value);
                 return true;
             }
+
+            THISTYPE(H2WindowUpdateFrame, window_update)
         };  // namespace socklib
 
 #undef H2FRAME
