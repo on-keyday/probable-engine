@@ -628,7 +628,7 @@ namespace socklib {
                 return writer_t::write_settings(conn, req, ctx, false, ctx.local_settings, cancel);
             }
 
-            static H2Err read_a_frame(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t& read, CancelContext* cancel = nullptr) {
+            static H2Err read_a_frame(conn_t& conn, std::shared_ptr<frame_t>& frame, readctx_t& read, CancelContext* cancel = nullptr) {
                 auto err = reader_t::read(conn, frame, read, cancel);
                 if (!err) {
                     writer_t::write_goaway(conn, read.req, read.ctx, read.req.streamid, (std::uint32_t)err.e, cancel);
@@ -646,9 +646,11 @@ namespace socklib {
                     return false;
                 }
                 else if (auto s = frame->settings()) {
-                    err = writer_t::write_settings(conn, read.req, read.ctx, true);
-                    if (!err) {
-                        return err;
+                    if (!s->is_set(H2Flag::ack)) {
+                        err = writer_t::write_settings(conn, read.req, read.ctx, true);
+                        if (!err) {
+                            return err;
+                        }
                     }
                 }
 

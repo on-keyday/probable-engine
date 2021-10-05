@@ -418,6 +418,7 @@ namespace socklib {
                 tcpopen.host = req.parsed.host;
                 tcpopen.service = req.parsed.scheme;
                 tcpopen.cacert = req.cacert;
+                tcpopen.non_block = true;
                 if (req.parsed.port.size()) {
                     commonlib2::Reader(req.parsed.port) >> tcpopen.port;
                 }

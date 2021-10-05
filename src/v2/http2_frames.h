@@ -500,7 +500,7 @@ namespace socklib {
             static H2Err write(std::shared_ptr<InetConn> & conn, H2FRAME & frame, h1request_t & req, h2request_t & ctx, CancelContext * cancel) {
                 if (!conn) return false;
                 writer_t w;
-                if (auto e = frame.serialize(ctx.remote_settings[key(H2PredefinedSetting::max_frame_size)], w, ctx)) {
+                if (auto e = frame.serialize(ctx.remote_settings[key(H2PredefinedSetting::max_frame_size)], w, ctx); !e) {
                     return e;
                 }
                 WriteContext c;
