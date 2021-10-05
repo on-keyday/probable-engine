@@ -673,7 +673,7 @@ namespace socklib {
                     if (auto header = frame->header()) {
                         for (auto& h : header->header_map()) {
                             if (h.first == ":status") {
-                                commonlib2::Reader(h.second) >> read.req.statuscode
+                                commonlib2::Reader(h.second) >> read.req.statuscode;
                             }
                             else {
                                 read.req.response.emplace(h.first, h.second);
