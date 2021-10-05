@@ -394,8 +394,7 @@ namespace socklib {
                 }
                 auto e = basewriter_t::write(conn, dframe, req, ctx, cancel);
                 if (e) {
-                    stream0.remote_window -= towrite;
-                    stream->remote_window -= towrite;
+                    window_updater_t::update(ctx, stream, stream0, towrite);
                     if (check_end()) {
                         ctx.err = H2Error::none;
                         if (closeable) {
@@ -575,6 +574,7 @@ namespace socklib {
                     }
                 }
                 else if (F(H2DataFrame)* d = frame->data()) {
+                    window_updater_t::update(ctx, d);
                     if (h->is_set(H2Flag::end_stream)) {
                         stream.state = checker_t::recv_endstream(stream.state);
                     }
@@ -610,6 +610,7 @@ namespace socklib {
             using readctx_t = Http2ReadContext TEMPLATE_PARAM;
             using frame_t = H2Frame TEMPLATE_PARAM;
             using accepter_t = H2FrameAccepter TEMPLATE_PARAM;
+            using manager_t = StreamManager TEMPLATE_PARAM;
 
             bool send_connection_preface(conn_t& conn, h1request_t& req, CancelContext* cancel = nullptr) {
                 WriteContext w;
@@ -634,7 +635,10 @@ namespace socklib {
                     return err;
                 }
                 if (auto g = frame->goaway()) {
-                    return (H2Error)g->code();
+                    return false;
+                }
+                else if (auto r = frame->rst_stream()) {
+                    return false;
                 }
                 else if (auto s = frame->settings()) {
                     err = writer_t::write_settings(conn, req.req, req.ctx, true);
@@ -661,8 +665,12 @@ namespace socklib {
                 if (req.phase != RequestPhase::open_direct) {
                     return false;
                 }
+                auto e = emanager_t::make_new_stream(read.req.streamid, read.ctx);
+                if (!e) {
+                    return e;
+                }
                 bool closable = req.requestbody.size() == 0;
-                auto e = writer_t::write_header(conn, read.req, read.ctx, closable, cancel);
+                e = writer_t::write_header(conn, read.req, read.ctx, closable, cancel);
                 if (!e) {
                     return e;
                 }
@@ -701,7 +709,25 @@ namespace socklib {
                     if (!err) {
                         return err;
                     }
+                    if (read.req.id == frame->get_id()) {
+                        if (auto header = frame->header()) {
+                            read.req.response = std::move(header->header_map());
+                        }
+                        else if (auto data = frame->data()) {
+                            for (auto c : data->payload()) {
+                                read.req.responsebody.push_back(c);
+                            }
+                        }
+                        if (frame->is_set(H2Flag::end_stream)) {
+                            break;
+                        }
+                    }
+                    err = call_callback(conn, frame, read, cancel);
+                    if (!err) {
+                        return err;
+                    }
                 }
+                return true;
             }
         };
 
