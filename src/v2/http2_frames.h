@@ -139,10 +139,10 @@ namespace socklib {
 #endif
         struct Http2RequestContext;
 */
-        H2TYPE_PARAMS
+
         struct H2Stream {
             //using request_t = Http2RequestContext TEMPLATE_PARAM;
-            using string_t = String;
+            //using string_t = String;
             //request_t* ctx;
             //std::int32_t id;
             std::int64_t local_window = 0;
@@ -162,7 +162,7 @@ namespace socklib {
         struct Http2RequestContext {
             using settings_t = Map<std::uint16_t, std::uint32_t>;
             using table_t = Table;
-            using stream_t = H2Stream TEMPLATE_PARAM;
+            using stream_t = H2Stream;
             using streams_t = Map<std::int32_t, stream_t>;
             H2Error err = H2Error::none;
             HpackError hpackerr = HpackError::none;
@@ -392,6 +392,8 @@ namespace socklib {
                         return false;
                     }
                 }
+                commonlib2::HTTP2Frame<string_t> f;
+                f.maxlen = read.ctx.local_settings[key(H2PredefinedSetting::max_frame_size)];
                 for (;;) {
                     r.readwhile(commonlib2::http2frame_reader, frame);
                     if (frame.continues) {
@@ -490,7 +492,7 @@ namespace socklib {
             static H2Err write(std::shared_ptr<InetConn> & conn, H2FRAME & frame, h1request_t & req, h2request_t & ctx, CancelContext * cancel) {
                 if (!conn) return false;
                 writer_t w;
-                if (auto e = frame.serialize(ctx, w, req)) {
+                if (auto e = frame.serialize(ctx.remote_settings[key(H2PredefinedSetting::max_frame_size)], w, ctx)) {
                     return e;
                 }
                 WriteContext c;
@@ -521,6 +523,11 @@ namespace socklib {
             std::uint8_t padlen() const {
                 return padding;
             }
+
+            void set_padding(std::uint8_t pad) {
+                padding = pad;
+            }
+
             H2Err parse(rawframe_t & v, h2request_t & t) override {
                 H2FRAME::parse(v, t);
                 if (any(this->flag & H2Flag::padded)) {
@@ -677,6 +684,10 @@ namespace socklib {
                 w.weight = weight.weight;
             }
 
+            void set_weight(const H2Weight& w) {
+                weight = w;
+            }
+
             H2Err parse(rawframe_t & v, h2request_t & t) override {
                 H2Frame::parse(v, t);
                 if (auto e = read_depends(weight, v.buf); !e) {
@@ -708,6 +719,10 @@ namespace socklib {
            public:
             std::uint32_t code() const {
                 return errcode;
+            }
+
+            void set_code(std::uint32_t code) {
+                errcode = code;
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {

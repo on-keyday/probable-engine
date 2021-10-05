@@ -123,9 +123,34 @@ namespace socklib {
         };
 
         H2TYPE_PARAMS
-        struct StreamFlowUpdater {
+        struct StreamFlowChecker {
             using h2request_t = Http2RequestContext TEMPLATE_PARAM;
-            static bool update() {
+            static bool data_sendable(H2StreamState state) {
+                return state == H2StreamState::open || state == H2StreamState::half_closed_remote;
+            }
+
+            static bool header_handleable(H2StreamState state) {
+                return state == H2StreamState::idle;
+            }
+
+            static H2StreamState sent_endstream(H2StreamState state) {
+                if (state == H2StreamState::open) {
+                    return H2StreamState::half_closed_local;
+                }
+                else {
+                    return H2StreamState::closed;
+                }
+            }
+
+            static H2StreamState handle_rst_stream() {
+                return H2StreamState::closed;
+            }
+
+            static H2StreamState handled_header(H2StreamState state) {
+                if (state == H2StreamState::idle) {
+                    return H2StreamState::open;
+                }
+                return H2StreamState::closed;
             }
         };
 
@@ -139,11 +164,33 @@ namespace socklib {
             using base_t = HttpBase<String, Header, Body>;
             using string_t = String;
             using urlparser_t = URLParser<String, Header, Body>;
+            using basewriter_t = H2Writer TEMPLATE_PARAM;
+            using stream_t = H2Stream;
+            using checker_t = StreamFlowChecker TEMPLATE_PARAM;
+            using settings_t = typename h2request_t::settings_t;
 
-            bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, H2Weight* weight = nullptr, std::uint8_t* padlen = nullptr) {
+            stream_t* get_stream(F(H2Frame) & frame, std::int32_t id, h2request_t& ctx) {
+                auto found = ctx.streams.find(id);
+                if (!hframe.set_id(req.streamid) || found == ctx.streams.end()) {
+                    ctx.err = H2Error::protocol;
+                    return ctx.err;
+                }
+                return &found->second;
+            }
+
+            H2Err write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, bool closable = false,
+                               CancelContext* cancel = nullptr, H2Weight* weight = nullptr, std::uint8_t* padlen = nullptr) {
                 F(H2HeaderFrame)
                 hframe;
-                if (!hframe.set_id()) {
+                if (req.streamid <= 0) {
+                    ctx.err = H2Error::protocol;
+                    return false;
+                }
+                auto stream = get_stream(hframe, req.streamid, ctx);
+                if (!stream) {
+                    return ctx.err;
+                }
+                if (!checker_t::header_handlable(stream->state)) {
                     ctx.err = H2Error::protocol;
                     return false;
                 }
@@ -156,11 +203,11 @@ namespace socklib {
                     hframe.add_flag(H2Flag::priority);
                 }
                 auto& towrite = hframe.header_map();
-                auto set_header = [&](auto& header) {
+                auto set_header = [&](auto& header) -> H2Err {
                     for (auto& h : header) {
                         if (auto e = base_t::is_valid_field(h, req); e < 0) {
                             ctx.err = H2Error::http1_semantics_error;
-                            return false;
+                            return ctx.err;
                         }
                         else if (e == 0) {
                             continue;
@@ -173,17 +220,17 @@ namespace socklib {
                         to_lower(h.second, value);
                         towrite.emplace(key, value);
                     }
-                    return false;
+                    return H2Error::none;
                 };
                 if (ctx.server) {
-                    if (!set_header(req.response)) {
-                        return false;
+                    if (auto e = set_header(req.response); !e) {
+                        return e;
                     }
                     towrite.emplace(":status", std::to_string(req.statuscode).c_str())
                 }
                 else {
-                    if (!set_header(req.request)) {
-                        return false;
+                    if (auto e = set_header(req.request); !e) {
+                        return e;
                     }
                     string_t path;
                     base_t::write_path(path, req);
@@ -192,6 +239,138 @@ namespace socklib {
                     towrite.emplace(":path", path);
                     towrite.emplace(":scheme", req.parsed.scheme);
                 }
+                if (closable) {
+                    hframe.add_flag(H2Flag::end_stream);
+                }
+                hframe.add_flag(H2Flag::end_headers);
+                auto e = basewriter_t::write(conn, hframe, req, ctx, cancel);
+                if (e) {
+                    stream->state = checker_t::handled_header(stream->state);
+                    if (closable) {
+                        stream->state = checker_t::sent_endstream(stream->state);
+                    }
+                }
+                return e;
+            }
+
+            H2Err write_data(conn_t& conn, h1request_t& req, h2request_t& ctx, bool closeable = true,
+                             CancelContext* cancel = nullptr, std::uint8_t* padlen = nullptr) {
+                F(H2DataFrame)
+                dframe;
+                if (req.streamid <= 0) {
+                    ctx.err = H2Error::protocol;
+                    return ctx.err;
+                }
+                auto stream = get_stream(dframe, req.streamid, ctx);
+                if (!stream) {
+                    return ctx.err;
+                }
+                stream_t& stream0 = ctx.streams[0];
+                if (padlen) {
+                    dframe.set_padding(*padlen);
+                    dframe.add_flag(H2Flag::padded);
+                }
+                if (!cheker_t::data_sendable(stream.state)) {
+                    ctx.err = H2Error::protocol;
+                    return ctx.err;
+                }
+                if (stream->remote_window <= 0 || stream0.remote_window <= 0) {
+                    ctx.err = H2Error::need_window_update;
+                    return ctx.err;
+                }
+                auto& body = ctx.server ? req.responsebody : req.requestbody;
+                size_t total = body.size();
+                if (total < stream->data_progress) {
+                    return true;
+                }
+                size_t remainsize = total - stream.data_progress;
+                size_t window = stream0.remote_window < stream->remote_window ? stream0.remote_window : stream->remote_window;
+                size_t opt = 0;
+                if (padlen) {
+                    opt = (*padlen) + 1;
+                    if (window < opt) {
+                        return H2Error::need_window_update;
+                    }
+                }
+                size_t towrite = remainsize < window - opt ? remainsize + opt : window;
+                std::string_view view(body.data() + stream.data_progress, towrite - opt);
+                auto check_end = [&] {
+                    return stream->data_progress + towrite - opt == body.size();
+                };
+                if (check_end() && closeable) {
+                    dframe.add_flag(H2Flag::end_stream);
+                }
+                for (auto c : view) {
+                    dframe.payload().push_back(c);
+                }
+                auto e = basewriter_t::write(conn, dframe, req, ctx, cancel);
+                if (e) {
+                    stream0.remote_window -= towrite;
+                    stream->remote_window -= towrite;
+                    if (check_end()) {
+                        ctx.err = H2Error::none;
+                        if (closeable) {
+                            stream->state = checker_t::sent_endstream(stream->state);
+                        }
+                    }
+                    else {
+                        ctx.err = H2Error::need_window_update;
+                    }
+                    stream->data_progress += towrite - opt;
+                    return ctx.err;
+                }
+                return e;
+            }
+
+            H2Err write_priority(conn_t& conn, h1request_t& req, h2request_t& ctx, const H2Weight& weight,
+                                 CancelContext* cancel = nullptr) {
+                F(H2PriorityFrame)
+                pframe;
+                if (req.streamid <= 0) {
+                    ctx.err = H2Error::protocol;
+                    return ctx.err;
+                }
+                if (!get_stream(pframe, req.streamid, ctx)) {
+                    return ctx.err;
+                }
+                pframe.set_weight(weight);
+                return basewriter_t::write(conn, pframe, req, ctx, cancel);
+            }
+
+            H2Err write_rst_stream(conn_t& conn, h1request_t& req, h2request_t& ctx, std::uint32_t errorcode,
+                                   CancelContext* cancel = nullptr) {
+                F(H2RstStreamFrame)
+                rframe;
+                if (req.streamid <= 0) {
+                    ctx.err = H2Error::protocol;
+                    return ctx.err;
+                }
+                auto stream = get_stream(rframe, req.streamid, ctx);
+                if (!stream) {
+                    return ctx.err;
+                }
+                rframe.set_code(errorcode);
+                auto e = basewriter_t::write(conn, rframe, req, ctx, cancel);
+                if (e) {
+                    stream->state = checker_t::handle_rst_stream();
+                }
+                return e;
+            }
+
+            H2Err write_settings(conn_t& conn, h1request_t& req, h2request_t& ctx, bool ack, const settings_t& setting = settings_t(), CancelContext* cancel = nullptr, settings_t* old = nullptr) {
+                F(H2SettingsFrame)
+                sframe;
+                sframe.set_id(0);
+                if (ack) {
+                    sframe.add_flag(H2Flag::ack);
+                }
+                else {
+                    sframe.new_settings() = setting;
+                }
+                auto e = basewriter_t::write(conn, sframe, req, ctx, cancel);
+                if (e) {
+                }
+                return e;
             }
 #undef F
         };
