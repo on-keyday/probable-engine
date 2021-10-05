@@ -140,19 +140,33 @@ namespace socklib {
             using string_t = String;
             using urlparser_t = URLParser<String, Header, Body>;
 
-            bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx) {
+            bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, H2Weight* weight = nullptr) {
                 F(H2HeaderFrame)
                 hframe;
+                if (weight) {
+                    hframe.set_weight(*weight);
+                }
+                if (!hframe.set_id()) {
+                    ctx.err = H2Error::protocol;
+                    return false;
+                }
                 auto& towrite = hframe.header_map();
                 auto set_header = [&](auto& header) {
                     for (auto& h : header) {
                         if (auto e = base_t::is_valid_field(h, req); e < 0) {
+                            ctx.err = H2Error::http1_semantics_error;
                             return false;
                         }
                         else if (e == 0) {
                             continue;
                         }
-                        towrite.emplace(h.first, h.second);
+                        string_t key, value;
+                        auto to_lower = [](auto& base, auto& str) {
+                            std::transform(base.begin(), base.end(), str.begin(), [](unsigned char c) { return std::tolower(c); });
+                        };
+                        to_lower(h.first, key);
+                        to_lower(h.second, value);
+                        towrite.emplace(key, value);
                     }
                     return false;
                 };

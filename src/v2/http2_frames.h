@@ -223,6 +223,12 @@ namespace socklib {
                 return streamid;
             }
 
+            bool set_id(std::int32_t id) {
+                if (id < 0) return false;
+                streamid = id;
+                return true;
+            }
+
             virtual H2Err parse(rawframe_t& v, h2request_t&) {
                 type = (H2FType)v.type;
                 flag = (H2Flag)v.flag;
