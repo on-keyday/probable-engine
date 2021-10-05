@@ -591,6 +591,11 @@ namespace socklib {
             using conn_t = std::shared_ptr<InetConn>;
             using errorhandler_t = ErrorHandler<String, Header, Body>;
             using writer_t = H2FrmaeWriter TEMPLATE_PARAM;
+            using reader_t = Http2Reader TEMPLATE_PARAM;
+            using readctx_t = Http2ReadContext TEMPLATE_PARAM;
+            using frame_t = H2Frame TEMPLATE_PARAM;
+            using accepter_t = H2FrameAccepter TEMPLATE_PARAM;
+
             bool send_connection_preface(conn_t& conn, h1request_t& req, CancelContext* cancel = nullptr) {
                 WriteContext w;
                 w.ptr = h2_connection_preface;
@@ -602,14 +607,68 @@ namespace socklib {
                 return writer_t::write_settings(conn, req, ctx, false, ctx.local_settings, cancel);
             }
 
-            H2Err request(conn_t& conn, h1request_t& req, h2request_t& ctx, CancelContext* cancel = nullptr) {
+            H2Err read_a_frame(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
+                auto err = reader_t::read(conn, frame, read, cancel);
+                if (!err) {
+                    writer_t::write_goaway(conn, read.req, read.ctx, req.streamid, (std::uint32_t)err.e, cancel);
+                    return err;
+                }
+                err = accepter_t::accept(frame, req.ctx);
+                if (!err) {
+                    writer_t::write_rst_stream(conn, req.req, req.ctx, (std::uint32_t)err.e, cancel);
+                    return err;
+                }
+                if (auto g = frame->goaway()) {
+                    return (H2Error)g->code();
+                }
+                else if (auto s = frame->settings()) {
+                    err = writer_t::write_settings(conn, req.req, req.ctx, true);
+                    if (!err) {
+                        return err;
+                    }
+                }
+
+                return true;
+            }
+
+            H2Err callback(conn_t& conn, std::shared_ptr<frame_t> frame, readctx_t read, CancelContext* cancel = nullptr) {
+                if (ctx.user_callback) {
+                    auto err = ctx.user_callback(*frame, ctx.userctx, read.ctx, read.req);
+                    if (err) {
+                        writer_t::write_goaway(conn, read.req, read.ctx, req.streamid, (std::uint32_t)err.e, cancel);
+                        return err;
+                    }
+                }
+                return true;
+            }
+
+            H2Err request(conn_t& conn, readctx_t read, CancelContext* cancel = nullptr) {
                 if (req.phase != RequestPhase::open_direct) {
                     return false;
                 }
-                auto e = writer_t::write_header(conn, req, ctx, false, cancel);
+                bool closable = req.requestbody.size() != 0;
+                auto e = writer_t::write_header(conn, read.req, read.ctx, closable, cancel);
                 if (!e) {
                     return e;
                 }
+                if (closable) {
+                    return true;
+                }
+                while (true) {
+                    auto err = writer_t::write_data(conn, read.req, read.ctx, true, cancel);
+                    if (!err && err != H2Error::need_window_update) {
+                        return err;
+                    }
+                    else if (err) {
+                        break;
+                    }
+                    std::shared_ptr<frame_t> frame;
+                    err = read_a_frame(conn, frame, read, cancel);
+                    if (!err) {
+                        return false;
+                    }
+                }
+                return true;
             }
         };
 

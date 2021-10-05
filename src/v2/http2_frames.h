@@ -178,7 +178,7 @@ namespace socklib {
             std::uint64_t max_stream = 0;
             bool server = false;
 
-            H2Err (*user_callback)(frame_t&, void*, const Http2RequestContext*, const RequestContext*);
+            H2Err (*user_callback)(frame_t&, void*, const Http2RequestContext&, const RequestContext<String, Header, Body>&);
             void* userctx = nullptr;
         };
 
