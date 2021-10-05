@@ -979,7 +979,15 @@ namespace socklib {
                 return lastid;
             }
 
-            const string_t& optdata() const {
+            void set_code(std::uint32_t code) {
+                errcode = code;
+            }
+
+            void set_lastid(std::int32_t lid) {
+                lastid = lid;
+            }
+
+            string_t& optdata() const {
                 return additionaldata;
             }
 

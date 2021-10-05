@@ -457,6 +457,21 @@ namespace socklib {
                 }
                 return basewriter_t::write(conn, pframe, req, ctx, cancel);
             }
+
+            static H2Err write_goaway(conn_t& conn, h1request_t& req, h2request_t& ctx,
+                                      std::int32_t lastid, std::uint32_t errorcode, CancelContext* cancel = nullptr,
+                                      const string_t& additional = string_t()) {
+                F(H2GoAwayFrame)
+                gframe;
+                gframe.set_id(0);
+                gframe.set_lastid(lastid);
+                gframe.set_code(errorcode);
+                gframe.optdata() = additional;
+                return basewriter_t::write(conn, gframe, req, ctx, cancel);
+            }
+
+            static H2Err write_window_update(conn_t& conn, h1request_t& req, h2request_t& ctx, std::int32_t update) {
+            }
 #undef F
         };
 
