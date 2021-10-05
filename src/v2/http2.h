@@ -441,6 +441,21 @@ namespace socklib {
                 }
                 return e;
             }
+
+            static H2Err write_ping(conn_t& conn, h1request_t& req, h2request_t& ctx, bool ack,
+                                    CancelContext* cancel = nullptr, std::uint8_t* data = nullptr) {
+                F(H2PingFrame)
+                pframe;
+                pframe.set_id(0);
+                if (ack) {
+                    pframe.add_flag(H2Flag::ack);
+                }
+                if (data) {
+                    for (auto i = 0; i < 8; i++) {
+                        pframe.payload()[i] = data[i];
+                    }
+                }
+            }
 #undef F
         };
 
