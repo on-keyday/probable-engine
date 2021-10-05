@@ -140,15 +140,20 @@ namespace socklib {
             using string_t = String;
             using urlparser_t = URLParser<String, Header, Body>;
 
-            bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, H2Weight* weight = nullptr) {
+            bool write_header(conn_t& conn, h1request_t& req, h2request_t& ctx, H2Weight* weight = nullptr, std::uint8_t* padlen = nullptr) {
                 F(H2HeaderFrame)
                 hframe;
-                if (weight) {
-                    hframe.set_weight(*weight);
-                }
                 if (!hframe.set_id()) {
                     ctx.err = H2Error::protocol;
                     return false;
+                }
+                if (padlen) {
+                    hframe.set_padding(*padlen);
+                    hframe.add_flag(H2Flag::padded);
+                }
+                if (weight) {
+                    hframe.set_weight(*weight);
+                    hframe.add_flag(H2Flag::priority);
                 }
                 auto& towrite = hframe.header_map();
                 auto set_header = [&](auto& header) {

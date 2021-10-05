@@ -229,6 +229,14 @@ namespace socklib {
                 return true;
             }
 
+            void set_flag(H2Flag f) {
+                flag = f;
+            }
+
+            void add_flag(H2Flag f) {
+                flag |= f;
+            }
+
             virtual H2Err parse(rawframe_t& v, h2request_t&) {
                 type = (H2FType)v.type;
                 flag = (H2Flag)v.flag;
@@ -585,6 +593,10 @@ namespace socklib {
 
             std::uint8_t padlen() const {
                 return padding;
+            }
+
+            void set_padding(std::uint8_t pad) {
+                padding = pad;
             }
 
             H2Err parse(rawframe_t & v, h2request_t & t) override {
