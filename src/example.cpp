@@ -57,8 +57,8 @@ int main() {
     ctx.url = "localhost:8090/ws";
     std::shared_ptr<DefWebSocketConn> conn;
     DefWebSocket::open(conn, ctx, &timeout);
-    conn->write("client hello");
-
+    conn->write("cast client hello");
+    Sleep(1000);
     conn->write("close");
     ReadContext<String> read;
     conn->read(read, &timeout);
