@@ -213,15 +213,15 @@ namespace socklib {
         struct WebSocketConn : InetConn {
             std::shared_ptr<InetConn> conn;
             ReadContext<String> buf;
-            using frame_t = WsFrame<string_t>;
-            using writer_t = commonlib2::Serializer<string_t>;
+            using frame_t = WsFrame<String>;
+            using writer_t = commonlib2::Serializer<String>;
             using io_t = WebsocketIO<String>;
             bool binary = false;
             bool client = false;
             void (*cb)(void* ctx, frame_t& frame) = nullptr;
             void* ctx = nullptr;
 
-            WebSocketConn(std::shared_ptr<InecConn>&& base)
+            WebSocketConn(std::shared_ptr<InetConn>&& base)
                 : conn(std::move(base)) {}
 
             void set_mode(bool is_binary) {
@@ -296,7 +296,7 @@ namespace socklib {
                 return true;
             }
 
-            static bool stat(ConnStat st) const {
+            bool stat(ConnStat st) const {
                 conn->stat(st);
                 st.type = ConnType::websocket;
                 return true;
@@ -340,7 +340,6 @@ namespace socklib {
         struct WebSocket {
             using string_t = String;
             using baseclient_t = Http1Client<String, Header, String>;
-            using urlparser_t = URLParser<String, Header, Body>;
             using base_t = HttpBase<String, Header, String>;
             using request_t = WebSocektRequestContext<String, Header>;
 
