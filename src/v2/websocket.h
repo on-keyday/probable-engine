@@ -444,7 +444,7 @@ namespace socklib {
                         }
                         sec_websock = true;
                     }
-                    else if (!upgrade && str_eq(h.first, "upgrade"), base_t::header_cmp) {
+                    else if (!upgrade && str_eq(h.first, "upgrade", base_t::header_cmp)) {
                         if (!str_eq(h.second, "websocket", base_t::header_cmp)) {
                             req.err = HttpError::invalid_header;
                             return false;
