@@ -179,6 +179,7 @@ namespace socklib {
             transport_not_opened,
             invalid_phase,
             invalid_header,
+            invalid_status,
         };
 
         enum class RequestFlag : std::uint8_t {
@@ -189,6 +190,7 @@ namespace socklib {
             allow_http09 = 0x8,
             host_is_small = 0x10,
             invalid_header_is_error = 0x20,
+            no_read_body = 0x40,
         };
 
         DEFINE_ENUMOP(RequestFlag)
@@ -213,10 +215,14 @@ namespace socklib {
         enum class HttpDefaultScheme : std::uint8_t {
             http,
             https,
+            ws,
+            wss,
         };
 
         BEGIN_ENUM_STRING_MSG(HttpDefaultScheme, default_scheme)
         ENUM_STRING_MSG(HttpDefaultScheme::https, "https")
+        ENUM_STRING_MSG(HttpDefaultScheme::ws, "ws")
+        ENUM_STRING_MSG(HttpDefaultScheme::wss, "wss")
         END_ENUM_STRING_MSG("http")
 
         BEGIN_ENUM_STRING_MSG(HttpDefaultScheme, default_port)
@@ -386,8 +392,9 @@ namespace socklib {
                 return 1;
             }
 
-            static bool open(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr, int prev_version = 0) {
-                if (!urlparser_t::parse_request(req, "http", "https")) {
+            static bool open(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr,
+                             const string_t& expect1 = "http", const string_t& expect2 = "https", int prev_version = 0) {
+                if (!urlparser_t::parse_request(req, expect1, expect2)) {
                     return false;
                 }
                 TCPOpenContext<String> tcpopen;
@@ -411,7 +418,7 @@ namespace socklib {
                         break;
                 }
                 tcpopen.stat.type = ConnType::tcp_over_ssl;
-                if (req.parsed.scheme == "https") {
+                if (req.parsed.scheme == "https" || req.parsed.scheme == "wss") {
                     tcpopen.stat.status = ConnStatus::secure;
                 }
                 tcpopen.ip_version = req.ip_version;

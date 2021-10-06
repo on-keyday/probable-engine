@@ -1,5 +1,4 @@
-#include "v2/http.h"
-#include "v2/http2.h"
+#include "v2/socklib.h"
 
 #include <map>
 #include <deque>
@@ -51,4 +50,6 @@ int main() {
 
     res = p->request("GET", "https://www.google.com/teapot", &timeout);
     res = p->response(&timeout);
+
+    p->close(&timeout);
 }

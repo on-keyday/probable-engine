@@ -206,14 +206,12 @@ namespace socklib {
             }
         };
 
-        template <class String = std::string, class Header = std::multimap<String, String>, class Body = String,
-                  template <class...> class Map = std::map, class Table = std::deque<std::pair<String, String>>>
+        template <class String, class Header, class Body, template <class...> class Map, class Table>
         std::shared_ptr<ClientRequestProxy<String, Header, Body, Map, Table>> make_request() {
             return std::make_shared<ClientRequestProxy<String, Header, Body, Map, Table>>();
         }
 
-        template <class String = std::string, class Header = std::multimap<String, String>, class Body = String,
-                  template <class...> class Map = std::map, class Table = std::deque<std::pair<String, String>>>
+        template <class String, class Header, class Body, template <class...> class Map, class Table>
         std::shared_ptr<ServerRequestProxy<String, Header, Body, Map, Table>> accept_request() {
             return std::make_shared<ServerRequestProxy<String, Header, Body, Map, Table>>();
         }

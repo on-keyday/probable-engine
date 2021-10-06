@@ -214,11 +214,15 @@ namespace socklib {
             std::shared_ptr<InetConn> conn;
             ReadContext<String> buf;
             using frame_t = WsFrame<string_t>;
+            using writer_t = commonlib2::Serializer<string_t>;
+            using io_t = WebsocketIO<String>;
             bool binary = false;
             bool client = false;
             void (*cb)(void* ctx, frame_t& frame) = nullptr;
             void* ctx = nullptr;
-            using io_t = WebsocketIO<String>;
+
+            WebSocketConn(std::shared_ptr<InecConn>&& base)
+                : conn(std::move(base)) {}
 
             void set_mode(bool is_binary) {
                 binary = is_binary;
@@ -233,16 +237,17 @@ namespace socklib {
                 this->ctx = ctx;
             }
 
-            virtual bool write(IWriteContext& w, CancelContext* cancel) override {
+            bool write(IWriteContext& w, WsFType frame, std::uint32_t* maskkey, CancelContext* cancel) {
+                std::uint32_t msksub = 0;
+                if (client && !maskkey) {
+                    msksub = std::random_device()();
+                    maskkey = &msksub;
+                }
                 while (true) {
                     auto ptr = w.bufptr();
                     auto size = w.size();
                     if (!ptr || !size) break;
-                    std::uint32_t mask = 0;
-                    if (client) {
-                        mask = std::random_device()();
-                    }
-                    if (!io_t::write(conn, ptr, size, (binary ? WsFType::binary : WsFType::text) | WsFType::mask_fin, client ? &mask : nullptr, cancel)) {
+                    if (!io_t::write(conn, ptr, size, frame | WsFType::mask_fin, maskkey, cancel)) {
                         return false;
                     }
                     if (!w.done()) {
@@ -251,6 +256,10 @@ namespace socklib {
                     break;
                 }
                 return true;
+            }
+
+            virtual bool write(IWriteContext& w, CancelContext* cancel) override {
+                return write(w, binary ? WsFType::binary : WsFType::text, nullptr, cancel);
             }
 
             virtual bool read(IReadContext& read, CancelContext* cancel) override {
@@ -293,23 +302,127 @@ namespace socklib {
                 return true;
             }
 
-            virtual void close(CancelContext* cancel = nullptr) {
+            void close_code(std::uint16_t code, CancelContext* cancel = nullptr) {
+                writer_t write;
+                write.write_hton(code);
                 std::uint32_t mask = 0;
                 if (client) {
                     mask = std::random_device()();
                 }
-                io_t::write(conn, "\x00\x00\x03\xe8", 4, WsFType::closing | WsFType::mask_fin, client ? &mask : nullptr, cancel);
+                io_t::write(conn, write.get().data(), write.get().size(), WsFType::closing | WsFType::mask_fin, client ? &mask : nullptr, cancel);
                 conn->close();
             }
+
+            virtual void close(CancelContext* cancel = nullptr) {
+                close_code(1000);
+            }
+
+            virtual bool reset(IResetContext& set) override {
+                return conn->reset(set);
+            }
+        };
+
+        template <class String, class Header>
+        struct WebSocektRequestContext {
+            using string_t = String;
+            using header_t = Header;
+            string_t url;
+            HttpError err = HttpError::none;
+            TCPError tcperr = TCPError::none;
+            string_t cacert;
+            header_t request;
+            std::uint16_t statuscode;
+            header_t response;
+            string_t responsebody;
         };
 
         template <class String, class Header>
         struct WebSocket {
             using string_t = String;
             using baseclient_t = Http1Client<String, Header, String>;
+            using urlparser_t = URLParser<String, Header, Body>;
+            using base_t = HttpBase<String, Header, String>;
+            using request_t = WebSocektRequestContext<String, Header>;
 
-            static bool open(const string_t& url) {
+            static bool open(std::shared_ptr<WebSocketConn<string_t>>& conn, request_t& req, CancelContext* cancel = nullptr) {
                 RequestContext<String, Header, String> ctx;
+                ctx.http_version = 1;
+                ctx.method = "GET";
+                ctx.default_scheme = HttpDefaultScheme::ws;
+                ctx.flag = RequestFlag::no_read_body;
+                std::shared_ptr<InetConn> baseconn;
+                if (!base_t::open(baseconn, ctx, cancel, "ws", "wss")) {
+                    req.err = ctx.err;
+                    req.tcperr = ctx.tcperr;
+                }
+                std::random_device device;
+                std::uniform_int_distribution<unsigned short> uni(0, 0xff);
+                unsigned char bytes[16];
+                for (auto i = 0; i < 16; i++) {
+                    bytes[i] = uni(device);
+                }
+                commonlib2::Base64Context b64;
+                std::string token;
+                commonlib2::Reader(commonlib2::Sized(bytes)).readwhile(token, commonlib2::base64_encode, &b64);
+                ctx.request = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version", "13"}};
+                ctx.emplace("Sec-WebSocket-Key", token);
+                for (auto& h : req.request) {
+                    ctx.request.emplace(h.first, h.second);
+                }
+                commonlib2::SHA1Context hash;
+                std::string result;
+                commonlib2::Reader(token + ws_magic_guid).readwhile(commonlib2::sha1, hash);
+                commonlib2::Reader(commonlib2::Sized(hash.result)).readwhile(result, commonlib2::base64_encode, &b64);
+                if (!baseclient_t::request(conn, ctx, cancel)) {
+                    req.err = ctx.err;
+                    req.tcperr = ctx.tcperr;
+                    return false;
+                }
+                Http1ReadContext<String, Header, String> read(ctx);
+                if (!baseclient_t::response(conn, read, cancel)) {
+                    req.err = ctx.err;
+                    req.tcperr = ctx.tcperr;
+                    return false;
+                }
+                req.statuscode = ctx.statuscode;
+                req.response = std::move(ctx.response);
+                req.responsebody = std::move(ctx.responsebody);
+                if (req.statuscode != 101) {
+                    req.err = HttpError::invalid_status;
+                    return false;
+                }
+                bool sec_websock = false;
+                bool upgrade = false;
+                bool connection_upgrade = false;
+                for (auto& h : req.response) {
+                    using commonlib2::str_eq, base_t::header_cmp;
+                    if (!sec_websock && str_eq(h.first, "sec-websocket-accept", header_cmp)) {
+                        if (h.second != result) {
+                            req.err = HttpError::invalid_header;
+                            return false;
+                        }
+                        sec_websock = true;
+                    }
+                    else if (!upgrade && str_eq(h.first, "upgrade"), header_cmp) {
+                        if (!str_eq(h.second, "websocket", header_cmp)) {
+                            req.err = HttpError::invalid_header;
+                            return false;
+                        }
+                        upgrade = true;
+                    }
+                    else if (!connection_upgrade && str_eq(h.first, "connection"), header_cmp) {
+                        if (!str_eq(h.second, "upgrade", header_cmp)) {
+                            req.err = HttpError::invalid_header;
+                            return false;
+                        }
+                        connection_upgrade = true;
+                    }
+                }
+                if (!upgrade || !connection_upgrade || !sec_websock) {
+                    break;
+                }
+                conn = std::make_shared<WebSocketConn>(std::move(baseconn));
+                return true;
             }
         };
     }  // namespace v2

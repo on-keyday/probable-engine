@@ -236,6 +236,10 @@ namespace socklib {
                     }
                 }
                 else {
+                    if (any(RequestFlag::no_read_body & req.flag)) {
+                        req.phase = RequestPhase::body_recved;
+                        return false;
+                    }
                     if (rawdata.size() == 0) {
                         req.phase = RequestPhase::body_recved;
                         return false;
