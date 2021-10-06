@@ -33,8 +33,32 @@ namespace socklib {
             string_t data;
 
            public:
+            void set_type(WsFType t) {
+                type = t & WsFType::mask_opcode;
+            }
+
+            void set_continuous(bool f) {
+                continuous = f;
+            }
+
+            void set_masked(bool f) {
+                masked = f;
+            }
+
+            void set_maskkey(std::uint32_t key) {
+                maskkey = key;
+            }
+
+            bool is_masked() {
+                return masked;
+            }
+
             string_t& get_data() {
                 return data;
+            }
+
+            std::uint32_t get_maskkey() const {
+                return maskkey;
             }
 
             bool is_(WsFType f) const {
@@ -87,7 +111,7 @@ namespace socklib {
             }
 
             static bool write(conn_t& conn, const char* data, size_t size, WsFType frame,
-                              std::int32_t* maskkey = nullptr, CancelContext* cancel = nullptr) {
+                              std::uint32_t* maskkey = nullptr, CancelContext* cancel = nullptr) {
                 if (!conn) return false;
                 if (any(frame & WsFType::mask_reserved)) {
                     return false;
@@ -102,20 +126,20 @@ namespace socklib {
                     mmask = 0x80;
                 }
                 if (size <= 125) {
-                    s.template write_as<std::uint8_t>(size | mmask);
+                    w.template write_as<std::uint8_t>(size | mmask);
                 }
                 else if (size <= 0xffff) {
-                    s.template write_as<std::uint8_t>(126 | mmask);
-                    s.write_hton((std::uint16_t)size);
+                    w.template write_as<std::uint8_t>(126 | mmask);
+                    w.write_hton((std::uint16_t)size);
                 }
                 else {
-                    s.template write_as<std::uint8_t>(127 | mmask);
-                    s.write_hton((std::uint8_t)size);
+                    w.template write_as<std::uint8_t>(127 | mmask);
+                    w.write_hton((std::uint8_t)size);
                 }
                 if (maskkey) {
                     std::uint8_t key = commonlib2::translate_byte_net_and_host<std::uint8_t>(&maskkey);
                     char* k = reinterpret_cast<char*>(&key);
-                    s.write_byte(k, 4);
+                    w.write_byte(k, 4);
                     if (size) {
                         string_t masked(data, size);
                         mask(masked, *maskkey);
@@ -138,31 +162,28 @@ namespace socklib {
                             return false;
                         }
                     }
+                    return true;
                 };
                 if (!read_if(2)) {
                     return false;
                 }
                 reader_t read(buf.buf);
-                read.template read_as<std::uint8_t>(frame.type);
-                if (any(frame.type & WsFType::mask_reserved)) {
+                WsFType type;
+                read.template read_as<std::uint8_t>(type);
+                if (any(type & WsFType::mask_reserved)) {
                     return false;
                 }
-                if (any(frame.type & WsFType::mask_fin)) {
-                    frame.continuous = false;
-                    frame.type &= WsFType::mask_opcode;
-                }
-                else {
-                    frame.continuous = true;
-                }
+                frame.set_continuous(!any(type & WsFType::mask_fin));
+                frame.set_type(type);
                 std::uint8_t sz = 0;
                 size_t size = 0, total = 2;
-                dec.template read(sz);
+                read.template read(sz);
                 if (sz & 0x80) {
-                    frame.masked = true;
+                    frame.set_masked(true);
                     sz &= 0x7f;
                 }
                 else {
-                    frame.masked = false;
+                    frame.set_masked(false);
                 }
                 if (sz <= 125) {
                     size = sz;
@@ -172,7 +193,7 @@ namespace socklib {
                         return false;
                     }
                     std::uint16_t sh;
-                    dec.read_ntoh(sh);
+                    read.read_ntoh(sh);
                     size = sh;
                     total = 4;
                 }
@@ -180,27 +201,29 @@ namespace socklib {
                     if (!read_if(10)) {
                         return false;
                     }
-                    dec.read_ntoh(size);
+                    read.read_ntoh(size);
                     total = 10;
                 }
                 else {
                     return false;
                 }
-                if (frame.masked) {
+                if (frame.is_masked()) {
                     if (!read_if(total + 4)) {
                         return false;
                     }
-                    dec.read_ntoh(frame.maskkey);
+                    std::uint32_t key;
+                    read.read_ntoh(key);
+                    frame.set_maskkey(key);
                     total += 4;
                 }
                 total += size;
                 if (!read_if(total)) {
                     return false;
                 }
-                frame.data.clear();
-                dec.read_byte(frame.data, size);
-                if (frame.masked) {
-                    mask(frame.data, frame.maskkey);
+                frame.get_data().clear();
+                read.read_byte(frame.get_data(), size);
+                if (frame.is_masked()) {
+                    mask(frame.get_data(), frame.get_maskkey());
                 }
                 buf.buf.erase(0, total);
                 return true;
@@ -210,19 +233,22 @@ namespace socklib {
         constexpr const char* ws_magic_guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
         template <class String>
-        struct WebSocketConn : InetConn {
+        struct WebSocketConn : public InetConn {
             std::shared_ptr<InetConn> conn;
             ReadContext<String> buf;
             using frame_t = WsFrame<String>;
             using writer_t = commonlib2::Serializer<String>;
             using io_t = WebsocketIO<String>;
+
+           private:
             bool binary = false;
             bool client = false;
             void (*cb)(void* ctx, frame_t& frame) = nullptr;
             void* ctx = nullptr;
 
+           public:
             WebSocketConn(std::shared_ptr<InetConn>&& base)
-                : conn(std::move(base)) {}
+                : conn(std::move(base)), InetConn(nullptr) {}
 
             void set_mode(bool is_binary) {
                 binary = is_binary;
@@ -258,8 +284,20 @@ namespace socklib {
                 return true;
             }
 
-            virtual bool write(IWriteContext& w, CancelContext* cancel) override {
+            virtual bool write(IWriteContext& w, CancelContext* cancel = nullptr) override {
                 return write(w, binary ? WsFType::binary : WsFType::text, nullptr, cancel);
+            }
+
+            virtual bool write(const char* data, size_t size, CancelContext* cancel = nullptr) override {
+                WriteContext w;
+                w.ptr = data;
+                w.bufsize = size;
+                return write(w, cancel);
+            }
+
+            virtual bool write(const char* str, CancelContext* cancel = nullptr) override {
+                if (!str) return true;
+                return write(str, ::strlen(str), cancel);
             }
 
             virtual bool read(IReadContext& read, CancelContext* cancel) override {
@@ -313,7 +351,7 @@ namespace socklib {
                 conn->close();
             }
 
-            virtual void close(CancelContext* cancel = nullptr) {
+            virtual void close(CancelContext* cancel = nullptr) override {
                 close_code(1000);
             }
 
@@ -342,13 +380,15 @@ namespace socklib {
             using baseclient_t = Http1Client<String, Header, String>;
             using base_t = HttpBase<String, Header, String>;
             using request_t = WebSocektRequestContext<String, Header>;
+            using websocketconn_t = WebSocketConn<string_t>;
 
-            static bool open(std::shared_ptr<WebSocketConn<string_t>>& conn, request_t& req, CancelContext* cancel = nullptr) {
+            static bool open(std::shared_ptr<websocketconn_t>& conn, request_t& req, CancelContext* cancel = nullptr) {
                 RequestContext<String, Header, String> ctx;
                 ctx.http_version = 1;
                 ctx.method = "GET";
                 ctx.default_scheme = HttpDefaultScheme::ws;
                 ctx.flag = RequestFlag::no_read_body;
+                ctx.url = req.url;
                 std::shared_ptr<InetConn> baseconn;
                 if (!base_t::open(baseconn, ctx, cancel, "ws", "wss")) {
                     req.err = ctx.err;
@@ -364,7 +404,7 @@ namespace socklib {
                 std::string token;
                 commonlib2::Reader(commonlib2::Sized(bytes)).readwhile(token, commonlib2::base64_encode, &b64);
                 ctx.request = {{"Upgrade", "websocket"}, {"Connection", "Upgrade"}, {"Sec-WebSocket-Version", "13"}};
-                ctx.emplace("Sec-WebSocket-Key", token);
+                ctx.request.emplace("Sec-WebSocket-Key", token);
                 for (auto& h : req.request) {
                     ctx.request.emplace(h.first, h.second);
                 }
@@ -372,13 +412,13 @@ namespace socklib {
                 std::string result;
                 commonlib2::Reader(token + ws_magic_guid).readwhile(commonlib2::sha1, hash);
                 commonlib2::Reader(commonlib2::Sized(hash.result)).readwhile(result, commonlib2::base64_encode, &b64);
-                if (!baseclient_t::request(conn, ctx, cancel)) {
+                if (!baseclient_t::request(baseconn, ctx, cancel)) {
                     req.err = ctx.err;
                     req.tcperr = ctx.tcperr;
                     return false;
                 }
                 Http1ReadContext<String, Header, String> read(ctx);
-                if (!baseclient_t::response(conn, read, cancel)) {
+                if (!baseclient_t::response(baseconn, read, cancel)) {
                     req.err = ctx.err;
                     req.tcperr = ctx.tcperr;
                     return false;
@@ -394,33 +434,37 @@ namespace socklib {
                 bool upgrade = false;
                 bool connection_upgrade = false;
                 for (auto& h : req.response) {
-                    using commonlib2::str_eq, base_t::header_cmp;
-                    if (!sec_websock && str_eq(h.first, "sec-websocket-accept", header_cmp)) {
+                    using commonlib2::str_eq;
+                    if (!sec_websock && str_eq(h.first, "sec-websocket-accept", base_t::header_cmp)) {
                         if (h.second != result) {
                             req.err = HttpError::invalid_header;
                             return false;
                         }
                         sec_websock = true;
                     }
-                    else if (!upgrade && str_eq(h.first, "upgrade"), header_cmp) {
-                        if (!str_eq(h.second, "websocket", header_cmp)) {
+                    else if (!upgrade && str_eq(h.first, "upgrade"), base_t::header_cmp) {
+                        if (!str_eq(h.second, "websocket", base_t::header_cmp)) {
                             req.err = HttpError::invalid_header;
                             return false;
                         }
                         upgrade = true;
                     }
-                    else if (!connection_upgrade && str_eq(h.first, "connection"), header_cmp) {
-                        if (!str_eq(h.second, "upgrade", header_cmp)) {
+                    else if (!connection_upgrade && str_eq(h.first, "connection"), base_t::header_cmp) {
+                        if (!str_eq(h.second, "upgrade", base_t::header_cmp)) {
                             req.err = HttpError::invalid_header;
                             return false;
                         }
                         connection_upgrade = true;
                     }
+                    if (upgrade && connection_upgrade && sec_websock) {
+                        break;
+                    }
                 }
                 if (!upgrade || !connection_upgrade || !sec_websock) {
-                    break;
+                    req.err = HttpError::invalid_header;
+                    return false;
                 }
-                conn = std::make_shared<WebSocketConn>(std::move(baseconn));
+                conn = std::make_shared<websocketconn_t>(std::move(baseconn));
                 return true;
             }
         };

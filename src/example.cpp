@@ -52,4 +52,14 @@ int main() {
     res = p->response(&timeout);
 
     p->close(&timeout);
+
+    DefWebSocketRequestContext ctx;
+    ctx.url = "localhost:8090/ws";
+    std::shared_ptr<DefWebSocketConn> conn;
+    DefWebSocket::open(conn, ctx, &timeout);
+    conn->write("client hello");
+
+    conn->write("close");
+    ReadContext<String> read;
+    conn->read(read, &timeout);
 }

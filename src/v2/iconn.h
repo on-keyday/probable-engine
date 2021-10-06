@@ -133,6 +133,18 @@ namespace socklib {
         //IConn Interface - all connection base
         struct IConn {
             virtual bool write(IWriteContext& towrite, CancelContext* cancel = nullptr) = 0;
+            virtual bool write(const char* data, size_t size, CancelContext* cancel = nullptr) {
+                WriteContext w;
+                w.ptr = data;
+                w.bufsize = size;
+                return write(w, cancel);
+            }
+            virtual bool write(const char* str, CancelContext* cancel = nullptr) {
+                if (!str) {
+                    return true;
+                }
+                return write(str, ::strlen(str), cancel);
+            }
             virtual bool read(IReadContext& toread, CancelContext* cancel = nullptr) = 0;
             virtual void close(CancelContext* cancel = nullptr) = 0;
             virtual bool reset(IResetContext& set) = 0;
