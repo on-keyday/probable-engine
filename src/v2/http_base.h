@@ -363,6 +363,16 @@ namespace socklib {
             using request_t = RequestContext<String, Header, Body>;
             using parsed_t = typename request_t::parsed_t;
 
+            static string_t translate_to_service(const string_t& scheme) {
+                if (scheme == "ws") {
+                    return "http";
+                }
+                else if (scheme == "wss") {
+                    return "https";
+                }
+                return scheme;
+            }
+
             static bool header_cmp(unsigned char c1, unsigned char c2) {
                 return std::toupper(c1) == std::toupper(c2);
             };
@@ -423,7 +433,7 @@ namespace socklib {
                 }
                 tcpopen.ip_version = req.ip_version;
                 tcpopen.host = req.parsed.host;
-                tcpopen.service = req.parsed.scheme;
+                tcpopen.service = translate_to_service(req.parsed.scheme);
                 tcpopen.cacert = req.cacert;
                 tcpopen.non_block = true;
                 if (req.parsed.port.size()) {

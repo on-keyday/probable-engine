@@ -372,6 +372,7 @@ namespace socklib {
             std::uint16_t statuscode;
             header_t response;
             string_t responsebody;
+            std::uint8_t ip_version = 0;
         };
 
         template <class String, class Header>
@@ -385,6 +386,7 @@ namespace socklib {
             static bool open(std::shared_ptr<websocketconn_t>& conn, request_t& req, CancelContext* cancel = nullptr) {
                 RequestContext<String, Header, String> ctx;
                 ctx.http_version = 1;
+                ctx.ip_version = req.ip_version;
                 ctx.method = "GET";
                 ctx.default_scheme = HttpDefaultScheme::ws;
                 ctx.flag = RequestFlag::no_read_body;
@@ -449,7 +451,7 @@ namespace socklib {
                         }
                         upgrade = true;
                     }
-                    else if (!connection_upgrade && str_eq(h.first, "connection"), base_t::header_cmp) {
+                    else if (!connection_upgrade && str_eq(h.first, "connection", base_t::header_cmp), base_t::header_cmp) {
                         if (!str_eq(h.second, "upgrade", base_t::header_cmp)) {
                             req.err = HttpError::invalid_header;
                             return false;
