@@ -36,6 +36,7 @@ namespace socklib {
             listen,
             no_socket,
             wait_accept,
+            accept,
         };
 
         template <class String>
@@ -546,13 +547,32 @@ namespace socklib {
                 return true;
             }
 
-            static bool accept(std::shared_ptr<InetConn>& res, TCPAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
+            static std::shared_ptr<InetConn> accept(TCPAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
                 if (!ServerHandler<String>::init_server(ctx)) {
-                    return false;
+                    return nullptr;
                 }
                 if (!ServerHandler<String>::wait_signal(ctx, cancel)) {
-                    return false;
+                    return nullptr;
                 }
+                ::addrinfo remote_info = {0};
+                remote_info.ai_family = ctx.ip_version == 4 ? AF_INET : AF_INET6;
+                remote_info.ai_socktype = SOCK_STREAM;
+                remote_info.ai_protocol = IPPROTO_TCP;
+                ::sockaddr_storage st = {0};
+                ::socklen_t addrlen = sizeof(st);
+                auto sock = ::accept(ctx.acsock, &st, &addrlen);
+                if (sock < 0) {
+                    ctx.err = TCPError::accept;
+                    return nullptr;
+                }
+                remote_info.ai_family = st.ss_family;
+                remote_info.ai_addrlen = addrlen;
+                remote_info.ai_addr = (::sockaddr*)&st;
+                if (ctx.non_block) {
+                    u_long l = 1;
+                    ::ioctlsocket(sock, FIONBIO, &l);
+                }
+                return std::make_shared<StreamConn>(sock, &remote_info);
             }
         };
     }  // namespace v2

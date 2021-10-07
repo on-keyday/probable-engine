@@ -20,8 +20,8 @@ namespace socklib {
             return make_request<String, HttpHeader, String, Http2MapType, HpackTable>();
         }
 
-        std::shared_ptr<ServerRequestProxy<String, HttpHeader, String, Http2MapType, HpackTable>> accept_request() {
-            return accept_request<String, HttpHeader, String, Http2MapType, HpackTable>();
+        std::shared_ptr<ServerRequestProxy<String, HttpHeader, String, Http2MapType, HpackTable>> accept_request(std::shared_ptr<InetConn>&& conn) {
+            return accept_request<String, HttpHeader, String, Http2MapType, HpackTable>(std::move(conn));
         }
 
         using DefWebSocket = WebSocket<String, HttpHeader>;

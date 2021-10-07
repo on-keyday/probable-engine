@@ -269,6 +269,13 @@ namespace socklib {
             std::int32_t streamid;
         };
 
+        template <class String>
+        struct HttpAcceptContext {
+            int http_version = 0;
+            HttpDefaultScheme scheme = HttpDefaultScheme::http;
+            TCPAcceptContext<String> tcplayer;
+        };
+
         template <class String, class Header, class Body>
         struct URLParser {
             using string_t = String;
@@ -510,6 +517,12 @@ namespace socklib {
                     towrite += req.parsed.path;
                     towrite += req.parsed.query;
                 }
+            }
+
+            static std::shared_ptr<InetConn> accept(HttpAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
+                ctx.tcplayer.service = translate_to_service(ctx.scheme);
+                auto accepted = TCP<String>::accept(ctx.tcplayer, cancel);
+                return accepted;
             }
         };
 

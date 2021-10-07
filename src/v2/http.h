@@ -196,6 +196,11 @@ namespace socklib {
         template <class String, class Header, class Body, template <class...> class Map, class Table>
         struct ServerRequestProxy : RequestProxy<String, Header, Body, Map, Table> {
             using http1server_t = Http1Server<String, Header, Body>;
+
+            ServerRequestProxy(std::shared_ptr<InetConn>&& con) {
+                this->conn = std::move(con);
+            }
+
             const Header& requestHeader() {
                 return this->ctx.request;
             }
@@ -222,8 +227,8 @@ namespace socklib {
         }
 
         template <class String, class Header, class Body, template <class...> class Map, class Table>
-        std::shared_ptr<ServerRequestProxy<String, Header, Body, Map, Table>> accept_request() {
-            return std::make_shared<ServerRequestProxy<String, Header, Body, Map, Table>>();
+        std::shared_ptr<ServerRequestProxy<String, Header, Body, Map, Table>> accept_request(std::shared_ptr<InetConn>&& conn) {
+            return std::make_shared<ServerRequestProxy<String, Header, Body, Map, Table>>(std::move(conn));
         }
     }  // namespace v2
 }  // namespace socklib
