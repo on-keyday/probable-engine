@@ -17,9 +17,8 @@ MIT License
    - ninja(https://github.com/ninja-build/ninja)
    -  clang++(https://github.com/llvm/llvm-project)
 2. edit CMakeLists.txt if you need (see below **Info**) 
-3. run ```build.bat```(windows) or ```. build``` (linux). After built, you can find built executable at root directory.
+3. run ```build.bat```(windows) or ```. build``` (linux). After built, you can find built example code executable at root directory.
 
-**warning:** now, example codes are not works.
 
 ## Info
 This library is denpended on OpenSSL(https://github.com/openssl/openssl).
