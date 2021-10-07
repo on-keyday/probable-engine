@@ -249,7 +249,11 @@ namespace socklib {
 
            public:
             WebSocketConn(std::shared_ptr<InetConn>&& base)
-                : conn(std::move(base)), InetConn(nullptr) {}
+                : conn(std::move(base)) {
+                ConnStat stat;
+                conn->stat(stat);
+                InetConn::copy_addrinfo(this->info, stat.net.addrinfo);
+            }
 
             void set_mode(bool is_binary) {
                 binary = is_binary;
