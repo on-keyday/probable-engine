@@ -62,4 +62,10 @@ int main() {
     conn->write("close");
     ReadContext<String> read;
     conn->read(read, &timeout);
+    HttpAcceptContext<String> accept;
+    accept.tcplayer.port = 8090;
+    auto rec = accept_request(accept);
+    rec->request();
+    rec->responseBody();
+    rec->response(503);
 }

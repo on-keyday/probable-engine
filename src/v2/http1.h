@@ -33,7 +33,12 @@ namespace socklib {
                     towrite += "\r\n";
                 }
                 if (req.requestbody.size()) {
-                    towrite += "Content-Length: ";
+                    if (any(req.flag & RequestFlag::header_is_small)) {
+                        towrite += "content-length: ";
+                    }
+                    else {
+                        towrite += "Content-Length: ";
+                    }
                     towrite += std::to_string(req.requestbody.size()).c_str();
                     towrite += "\r\n\r\n";
                     towrite.append(req.requestbody.data(), req.requestbody.size());
@@ -53,7 +58,7 @@ namespace socklib {
                 base_t::write_path(towrite, req);
                 towrite += ' ';
                 towrite += "HTTP/1.1\r\n";
-                if (any(req.flag & RequestFlag::host_is_small)) {
+                if (any(req.flag & RequestFlag::header_is_small)) {
                     towrite += "host: ";
                 }
                 else {
