@@ -105,6 +105,7 @@ namespace socklib {
             bool has_len = false;
             size_t size = 0;
             bool chunked = false;
+            bool close_conn = false;
         };
 
         template <class String, class Header, class Body>
@@ -132,6 +133,9 @@ namespace socklib {
                         if (h.size() == 2) {
                             req.parsed.port = h[1];
                         }
+                    }
+                    else if (str_eq(f[0], "connection", base_t::header_cmp) && f[1].find("close") != ~0) {
+                        body.close_conn = true;
                     }
                     else if (!body.chunked && str_eq(f[0], "transfer-encoding", base_t::header_cmp) && f[1].find("chunked") != ~0) {
                         body.chunked = true;
@@ -399,7 +403,10 @@ namespace socklib {
 
             static bool response(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr) {
                 if (!conn) return false;
-                if (req.phase != RequestPhase::response_body_recved) {
+                if (req.statuscode < 100 || req.statuscode > 599) {
+                    req.statuscode = 500;
+                }
+                if (req.phase != RequestPhase::body_recved) {
                     req.err = HttpError::invalid_phase;
                     return false;
                 }

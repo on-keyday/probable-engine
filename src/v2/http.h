@@ -182,7 +182,13 @@ namespace socklib {
                     return http2client_t::response(this->conn, *h2buf, cancel);
                 }
                 else {
-                    return http1client_t::response(this->conn, *h1buf, cancel);
+                    auto e = http1client_t::response(this->conn, *h1buf, cancel);
+                    if (e) {
+                        if (this->ctx.header_version < 11 || h1buf->bodyinfo.close_conn) {
+                            this->conn->close(cancel);
+                        }
+                    }
+                    return e;
                 }
             }
         };
