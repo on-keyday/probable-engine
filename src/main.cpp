@@ -1,8 +1,8 @@
 
 #include <iostream>
 
-#include "application/http1.h"
-#include "application/websocket.h"
+#include "v1/application/http1.h"
+#include "v1/application/websocket.h"
 
 #include <reader.h>
 #include <net_helper.h>
@@ -420,7 +420,7 @@ void server_proc() {
     }
 }
 
-#include "application/http2.h"
+#include "v1/application/http2.h"
 
 void testhttp2() {
     /*std::string str, dec;
@@ -532,7 +532,7 @@ void testhttp2() {
     }
 }
 
-#include "application/http.h"
+#include "v1/application/http.h"
 
 int main(int, char**) {
     socklib::HttpClient client;

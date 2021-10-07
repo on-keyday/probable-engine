@@ -57,7 +57,7 @@ int main() {
     HttpAcceptContext<String> accept;
     accept.tcp.port = 8090;
     SleeperContext sleeper;
-    bool e;
+    bool e = false;
     InterruptContext it(e, &sleeper);
     auto rec = accept_request(accept, &it);
     auto ac = DefWebSocket::accept(rec);

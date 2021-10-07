@@ -80,12 +80,14 @@ namespace socklib {
             }
 
            private:
+#ifdef _WIN32
+            WSADATA data{0};
+#endif
             NetWorkInit() {
                 Init();
             }
             bool Init_impl() {
 #ifdef _WIN32
-                WSADATA data{0};
                 if (WSAStartup(MAKEWORD(2, 2), &data)) {
                     return false;
                 }
