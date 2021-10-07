@@ -80,8 +80,20 @@ namespace socklib {
                 return ctx.err;
             }
 
+            H2Error http2_error() const {
+                return h2ctx.err;
+            }
+
+            HpackError hpack_error() const {
+                return h2ctx.hpackerr;
+            }
+
             RequestPhase state() const {
                 return ctx.phase;
+            }
+
+            std::int32_t get_streamid() const {
+                return ctx.streamid;
             }
 
             void set_httpversion(int version) {
@@ -90,6 +102,13 @@ namespace socklib {
 
             void set_ipversion(int version) {
                 ctx.ip_version = version;
+            }
+
+            String get_ipaddress() {
+                if (!conn) return String();
+                ReadContext<String> to;
+                conn->ipaddress(to);
+                return to.buf;
             }
         };
 

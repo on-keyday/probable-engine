@@ -266,7 +266,7 @@ namespace socklib {
             parsed_t parsed = parsed_t();
 
             //for http2 or later
-            std::int32_t streamid;
+            std::int32_t streamid = 0;
         };
 
         template <class String>

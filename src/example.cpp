@@ -67,7 +67,7 @@ int main() {
     }
     else {
         rec->request();
-        rec->responseHeader() = {{"connection", "close"}};
+        rec->responseHeader() = {{"Connection", "close"}};
         rec->responseBody() = "<html><h1>Service Unavailable</h1></html>";
         rec->response(503);
     }
