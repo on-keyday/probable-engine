@@ -21,6 +21,27 @@ namespace socklib {
             RequestContext<String, Header, Body> ctx;
             Http2RequestContext<String, Map, Header, Body, Table> h2ctx;
             std::shared_ptr<InetConn> conn;
+            std::shared_ptr<IReadContext> readbuf = nullptr;
+            h1readctx_t* h1buf = nullptr;
+            h2readctx_t* h2buf = nullptr;
+
+            void make_h2buf() {
+                if (!h2buf) {
+                    h1buf = nullptr;
+                    auto tmp = std::make_shared<h2readctx_t>(this->ctx, this->h2ctx);
+                    h2buf = tmp.get();
+                    readbuf = tmp;
+                }
+            }
+
+            void make_h1buf() {
+                if (!h1buf) {
+                    h2buf = nullptr;
+                    auto tmp = std::make_shared<h1readctx_t>(this->ctx);
+                    h1buf = tmp.get();
+                    readbuf = tmp;
+                }
+            }
 
            public:
             virtual std::shared_ptr<InetConn>& borrow() override {
@@ -80,10 +101,6 @@ namespace socklib {
             using h1readctx_t = Http1ReadContext<String, Header, Body>;
 
            private:
-            std::shared_ptr<IReadContext> readbuf = nullptr;
-            h1readctx_t* h1buf = nullptr;
-            h2readctx_t* h2buf = nullptr;
-
            public:
             ClientRequestProxy() {}
 
@@ -121,12 +138,7 @@ namespace socklib {
 
            private:
             bool h2request(CancelContext* cancel = nullptr) {
-                if (!h2buf) {
-                    h1buf = nullptr;
-                    auto tmp = std::make_shared<h2readctx_t>(this->ctx, this->h2ctx);
-                    h2buf = tmp.get();
-                    readbuf = tmp;
-                }
+                this->make_h2buf();
                 if (this->ctx.tcperr != TCPError::not_reopened) {
                     http2client_t::init(this->h2ctx);
                     if (!http2client_t::send_connection_preface(this->conn, this->ctx, cancel)) {
@@ -136,7 +148,7 @@ namespace socklib {
                         return false;
                     }
                 }
-                return http2client_t::request(this->conn, *h2buf, cancel);
+                return http2client_t::request(this->conn, *this->h2buf, cancel);
             }
 
             void reset_ctx() {
@@ -163,12 +175,7 @@ namespace socklib {
                         //unimplemented h2c
                     }
                     else {
-                        if (!h1buf) {
-                            h2buf = nullptr;
-                            auto tmp = std::make_shared<h1readctx_t>(this->ctx);
-                            h1buf = tmp.get();
-                            readbuf = tmp;
-                        }
+                        make_h1buf();
                         return http1client_t::request(this->conn, this->ctx, cancel);
                     }
                 }
@@ -179,10 +186,10 @@ namespace socklib {
                 this->ctx.response.clear();
                 this->ctx.responsebody.clear();
                 if (this->ctx.resolved_version == 2) {
-                    return http2client_t::response(this->conn, *h2buf, cancel);
+                    return http2client_t::response(this->conn, *this->h2buf, cancel);
                 }
                 else {
-                    auto e = http1client_t::response(this->conn, *h1buf, cancel);
+                    auto e = http1client_t::response(this->conn, *this->h1buf, cancel);
                     if (e) {
                         if (this->ctx.header_version < 11 || h1buf->bodyinfo.close_conn) {
                             this->conn->close(cancel);
@@ -214,10 +221,22 @@ namespace socklib {
             }
 
             Body& responseBody() {
-                return ctx.responsebody;
+                return this->ctx.responsebody;
             }
 
-            bool request(CancelContext* cancel) {
+            bool request(CancelContext* cancel = nullptr) {
+                if (this->ctx.phase == RequestPhase::body_recved) {
+                    this->ctx.phase = RequestPhase::idle;
+                }
+                this->ctx.request.clear();
+                this->ctx.requestbody.clear();
+                make_h1buf();
+                return http1server_t::request(this->conn, *this->h1buf, cancel);
+            }
+
+            bool response(std::uint16_t status, CancelContext* cancel = nullptr) {
+                this->ctx.statuscode = status;
+                return http1server_t::response(this->conn, this->ctx, cancel);
             }
         };
 
