@@ -61,6 +61,7 @@ namespace socklib {
                         upgrade = true;
                     }
                     if (connection && upgrade) {
+                        req.phase = RequestPhase::request_sent;
                         return true;
                     }
                 }
