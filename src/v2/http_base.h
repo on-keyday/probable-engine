@@ -190,7 +190,7 @@ namespace socklib {
             allow_http09 = 0x8,
             header_is_small = 0x10,
             invalid_header_is_error = 0x20,
-            no_read_body = 0x40,
+            no_read_body = 0x40
         };
 
         DEFINE_ENUMOP(RequestFlag)

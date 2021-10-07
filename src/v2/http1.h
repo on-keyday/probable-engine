@@ -19,7 +19,7 @@ namespace socklib {
             using request_t = typename base_t::request_t;
             using errorhandle_t = ErrorHandler<String, Header, Body>;
 
-            static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, Header& header, Body& body, request_t& req, CancelContext* cancel) {
+            static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, Header& header, Body& body, request_t& req, bool need_len, CancelContext* cancel) {
                 for (auto& h : header) {
                     if (auto e = base_t::is_valid_field(h, req); e < 0) {
                         return false;
@@ -32,7 +32,7 @@ namespace socklib {
                     towrite += h.second;
                     towrite += "\r\n";
                 }
-                if (body.size()) {
+                if (body.size() || need_len) {
                     if (any(req.flag & RequestFlag::header_is_small)) {
                         towrite += "content-length: ";
                     }
@@ -66,7 +66,7 @@ namespace socklib {
                 }
                 towrite += urlparser_t::host_with_port(req.parsed);
                 towrite += "\r\n";
-                if (write_header_common(conn, towrite, req.request, req.requestbody, req, cancel)) {
+                if (write_header_common(conn, towrite, req.request, req.requestbody, req, false, cancel)) {
                     req.phase = RequestPhase::request_sent;
                     return true;
                 }
@@ -97,7 +97,7 @@ namespace socklib {
                 towrite += ' ';
                 towrite += reason_phrase(req.statuscode);
                 towrite += "\r\n";
-                if (write_header_common(conn, towrite, req.response, req.responsebody, req, cancel)) {
+                if (write_header_common(conn, towrite, req.response, req.responsebody, req, true, cancel)) {
                     req.phase = RequestPhase::response_sent;
                     return true;
                 }
