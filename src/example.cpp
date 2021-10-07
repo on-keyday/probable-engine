@@ -65,7 +65,9 @@ int main() {
     HttpAcceptContext<String> accept;
     accept.tcplayer.port = 8090;
     SleeperContext sleeper;
-    auto rec = accept_request(accept, &sleeper);
+    bool e;
+    InterruptContext it(e, &sleeper);
+    auto rec = accept_request(accept, &it);
     rec->request();
     rec->responseHeader() = {{"connection", "close"}};
     rec->responseBody() = "<html><h1>Service Unavailable</h1></html>";
