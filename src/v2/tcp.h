@@ -361,7 +361,7 @@ namespace socklib {
 
             static bool get_socket(int& sock, TCPAcceptContext<String>& ctx, ::addrinfo*& selected) {
                 auto port_net = commonlib2::translate_byte_net_and_host<std::uint16_t>(&ctx.port);
-                for (auto p = sv.copy; p; p = p->ai_next) {
+                for (auto p = ctx.info; p; p = p->ai_next) {
                     sockaddr_in* addr = (sockaddr_in*)p->ai_addr;
                     if (port_net) {
                         addr->sin_port = port_net;
@@ -424,22 +424,22 @@ namespace socklib {
                 if (!get_socket(ctx.acsock, ctx, selected)) {
                     return false;
                 }
-                if (::bind(sv.acsock, selected->ai_addr, selected->ai_addrlen) < 0) {
+                if (::bind(ctx.acsock, selected->ai_addr, selected->ai_addrlen) < 0) {
                     ctx.err = TCPError::bind;
-                    ::closesocket(sv.acsock);
-                    sv.acsock = invalid_socket;
+                    ::closesocket(ctx.acsock);
+                    ctx.acsock = invalid_socket;
                     return false;
                 }
-                if (::listen(sv.sock, 10000) < 0) {
+                if (::listen(ctx.acsock, 10000) < 0) {
                     ctx.err = TCPError::listen;
-                    ::closesocket(sv.acsock);
-                    sv.acsock = invalid_socket;
+                    ::closesocket(ctx.acsock);
+                    ctx.acsock = invalid_socket;
                     return false;
                 }
                 return true;
             }
 
-            bool wait_signal(TCPAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
+            static bool wait_signal(TCPAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
                 if (ctx.acsock == invalid_socket) {
                     ctx.err = TCPError::no_socket;
                     return false;
@@ -560,7 +560,7 @@ namespace socklib {
                 remote_info.ai_protocol = IPPROTO_TCP;
                 ::sockaddr_storage st = {0};
                 ::socklen_t addrlen = sizeof(st);
-                auto sock = ::accept(ctx.acsock, &st, &addrlen);
+                auto sock = ::accept(ctx.acsock, (::sockaddr*)&st, &addrlen);
                 if (sock < 0) {
                     ctx.err = TCPError::accept;
                     return nullptr;

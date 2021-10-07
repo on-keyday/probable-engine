@@ -520,7 +520,7 @@ namespace socklib {
             }
 
             static std::shared_ptr<InetConn> accept(HttpAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
-                ctx.tcplayer.service = translate_to_service(ctx.scheme);
+                ctx.tcplayer.service = translate_to_service(default_scheme(ctx.scheme));
                 auto accepted = TCP<String>::accept(ctx.tcplayer, cancel);
                 return accepted;
             }

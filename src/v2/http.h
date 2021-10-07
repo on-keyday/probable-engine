@@ -18,6 +18,8 @@ namespace socklib {
         template <class String, class Header, class Body, template <class...> class Map, class Table>
         struct RequestProxy : INetAppConn {
            protected:
+            using h2readctx_t = Http2ReadContext<String, Map, Header, Body, Table>;
+            using h1readctx_t = Http1ReadContext<String, Header, Body>;
             RequestContext<String, Header, Body> ctx;
             Http2RequestContext<String, Map, Header, Body, Table> h2ctx;
             std::shared_ptr<InetConn> conn;
@@ -97,8 +99,6 @@ namespace socklib {
             using http1client_t = Http1Client<String, Header, Body>;
             using http2client_t = Http2Client<String, Map, Header, Body, Table>;
             using opener_t = HttpBase<String, Header, Body>;
-            using h2readctx_t = Http2ReadContext<String, Map, Header, Body, Table>;
-            using h1readctx_t = Http1ReadContext<String, Header, Body>;
 
            private:
            public:
@@ -175,7 +175,7 @@ namespace socklib {
                         //unimplemented h2c
                     }
                     else {
-                        make_h1buf();
+                        this->make_h1buf();
                         return http1client_t::request(this->conn, this->ctx, cancel);
                     }
                 }
@@ -191,7 +191,7 @@ namespace socklib {
                 else {
                     auto e = http1client_t::response(this->conn, *this->h1buf, cancel);
                     if (e) {
-                        if (this->ctx.header_version < 11 || h1buf->bodyinfo.close_conn) {
+                        if (this->ctx.header_version < 11 || this->h1buf->bodyinfo.close_conn) {
                             this->conn->close(cancel);
                         }
                     }
@@ -230,7 +230,7 @@ namespace socklib {
                 }
                 this->ctx.request.clear();
                 this->ctx.requestbody.clear();
-                make_h1buf();
+                this->make_h1buf();
                 return http1server_t::request(this->conn, *this->h1buf, cancel);
             }
 

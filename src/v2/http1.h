@@ -19,8 +19,8 @@ namespace socklib {
             using request_t = typename base_t::request_t;
             using errorhandle_t = ErrorHandler<String, Header, Body>;
 
-            static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, request_t& req, CancelContext* cancel) {
-                for (auto& h : req.request) {
+            static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, Header& header, Body& body, request_t& req, CancelContext* cancel) {
+                for (auto& h : header) {
                     if (auto e = base_t::is_valid_field(h, req); e < 0) {
                         return false;
                     }
@@ -32,16 +32,16 @@ namespace socklib {
                     towrite += h.second;
                     towrite += "\r\n";
                 }
-                if (req.requestbody.size()) {
+                if (body.size()) {
                     if (any(req.flag & RequestFlag::header_is_small)) {
                         towrite += "content-length: ";
                     }
                     else {
                         towrite += "Content-Length: ";
                     }
-                    towrite += std::to_string(req.requestbody.size()).c_str();
+                    towrite += std::to_string(body.size()).c_str();
                     towrite += "\r\n\r\n";
-                    towrite.append(req.requestbody.data(), req.requestbody.size());
+                    towrite.append(body.data(), body.size());
                 }
                 else {
                     towrite += "\r\n";
@@ -66,7 +66,7 @@ namespace socklib {
                 }
                 towrite += urlparser_t::host_with_port(req.parsed);
                 towrite += "\r\n";
-                if (write_header_common(conn, towrite, req, cancel)) {
+                if (write_header_common(conn, towrite, req.request, req.requestbody, req, cancel)) {
                     req.phase = RequestPhase::request_sent;
                     return true;
                 }
@@ -97,7 +97,7 @@ namespace socklib {
                 towrite += ' ';
                 towrite += reason_phrase(req.statuscode);
                 towrite += "\r\n";
-                if (write_header_common(conn, towrite, req, cancel)) {
+                if (write_header_common(conn, towrite, req.response, req.responsebody, req, cancel)) {
                     req.phase = RequestPhase::response_sent;
                     return true;
                 }
@@ -401,7 +401,7 @@ namespace socklib {
                 read.nolen = false;
                 read.server = true;
                 if (!conn->read(read, cancel)) {
-                    return read.nolen
+                    return read.nolen;
                 }
                 return true;
             }

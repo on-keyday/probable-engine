@@ -52,7 +52,7 @@ int main() {
     res = p->response(&timeout);
 
     p->close(&timeout);
-
+    /*
     DefWebSocketRequestContext ctx;
     ctx.url = "localhost:8090/ws";
     std::shared_ptr<DefWebSocketConn> conn;
@@ -61,11 +61,13 @@ int main() {
     Sleep(1000);
     conn->write("close");
     ReadContext<String> read;
-    conn->read(read, &timeout);
+    conn->read(read, &timeout);*/
     HttpAcceptContext<String> accept;
     accept.tcplayer.port = 8090;
-    auto rec = accept_request(accept);
+    SleeperContext sleeper;
+    auto rec = accept_request(accept, &sleeper);
     rec->request();
-    rec->responseBody();
+    rec->responseHeader() = {{"connection", "close"}};
+    rec->responseBody() = "<html><h1>Service Unavailable</h1></html>";
     rec->response(503);
 }
