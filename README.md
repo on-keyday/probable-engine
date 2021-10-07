@@ -3,6 +3,16 @@ simple socket library(c++)
 
 **warning:**  this library is still in development and not released, so destructive changes will be able to occur.also, no documentation and no support exists.
 
+## Before Download
+If you want to download this libary for **practical purpose**, I don't recommend this now.
+
+This library is made only to satisfy my hobby. 
+
+So not tested completely, maybe many bugs not fixed, and maybe insecure.
+
+If you want practical library right now, see other.
+
+
 ## Version
 now avaliable version is version 1 (on src/v1) and version 2 (on src/v2). 
 
