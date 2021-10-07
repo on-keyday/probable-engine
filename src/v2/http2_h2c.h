@@ -15,6 +15,7 @@ namespace socklib {
             using h2request_t = Http2RequestContext TEMPLATE_PARAM;
             using http1client_t = Http1Client<String, Header, Body>;
             using settingsframe_t = H2SettingsFrame TEMPLATE_PARAM;
+            using base_t = HttpBase<String, Header, Body>;
 
             bool open(conn_t& conn, h1request_t& req, h2request_t& ctx, CancelContext* cancel = nullptr) {
                 req.request.emplace("Connection", "Upgrade, HTTP2-Settings");
@@ -43,6 +44,28 @@ namespace socklib {
                     req.err = HttpError::invalid_status;
                     return false;
                 }
+                bool connection = false, upgrade = false;
+                for (auto& h : req.response) {
+                    if (!connection && str_eq(h.first, "connection", base_t::header_cmp)) {
+                        if (!str_eq(h.second, "upgrade", base_t::header_cmp)) {
+                            req.err = HttpError::invalid_header;
+                            return false;
+                        }
+                        connection = true;
+                    }
+                    else if (!upgrade && str_eq(h.first, "upgrade", base_t::header_cmp)) {
+                        if (!str_eq(h.second, "h2c", base_t::header_cmp)) {
+                            req.err = HttpError::invalid_header;
+                            return false;
+                        }
+                        upgrade = true;
+                    }
+                    if (connection && upgrade) {
+                        return true;
+                    }
+                }
+                req.err = HttpError::invalid_header;
+                return false;
             }
         };
 
