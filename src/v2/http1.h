@@ -410,7 +410,7 @@ namespace socklib {
                     req.err = HttpError::invalid_phase;
                     return false;
                 }
-                if (httpwriter_t::write_response(req, cancel)) {
+                if (httpwriter_t::write_response(conn, req, cancel)) {
                     req.phase = RequestPhase::idle;
                 }
                 req.phase = RequestPhase::error;
