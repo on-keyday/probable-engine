@@ -62,6 +62,8 @@ struct task {
 */
 using namespace commonlib2;
 
+auto cacert = "D:/CommonLib/netsoft/cacert.pem";
+
 void httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const char* cacert, void (*callback)(decltype(conn))) {
     if (!res) {
         std::cout << "failed to recv\n";
@@ -74,7 +76,11 @@ void httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const ch
     std::cout << statuscode << " " << conn->response().find(":phrase")->second << "\n";
     if (statuscode >= 301 && statuscode <= 308) {
         if (auto found = conn->response().find("location"); found != conn->response().end()) {
-            if (socklib::Http1::reopen(conn, found->second.c_str(), true, cacert)) {
+            socklib::HttpOpenContext ctx;
+            ctx.url = found->second.c_str();
+            ctx.cacert = cacert;
+            ctx.urlencoded = true;
+            if (socklib::Http1::reopen(conn, ctx)) {
                 std::cout << "redirect\n";
                 conn->send(conn->method().c_str());
                 conn->recv(httprecv, false, cacert, callback);
@@ -85,10 +91,11 @@ void httprecv(std::shared_ptr<socklib::HttpClientConn>& conn, bool res, const ch
     callback(conn);
 }
 
-auto cacert = "D:/CommonLib/netsoft/cacert.pem";
-
 void client_test(const char* url) {
-    auto conn = socklib::Http1::open(url, false, cacert);
+    socklib::HttpOpenContext ctx;
+    ctx.url = url;
+    ctx.cacert = cacert;
+    auto conn = socklib::Http1::open(ctx);
     if (!conn) {
         std::cout << "connection failed\n";
 #ifdef _WIN32
@@ -238,7 +245,10 @@ void parse_proc(std::shared_ptr<socklib::HttpServerConn>& conn, const std::threa
 }
 
 void websocket_client(const char* url) {
-    auto conn = socklib::WebSocket::open(url, false, cacert, [](auto& h, bool, const char* event) {
+    socklib::HttpOpenContext ctx;
+    ctx.url = url;
+    ctx.cacert = cacert;
+    auto conn = socklib::WebSocket::open(ctx, [](auto& h, bool, const char* event) {
         return true;
     });
     if (!conn) {
@@ -457,8 +467,10 @@ void testhttp2() {
                                    {":scheme", "https"},
                                    {":method", "GET"},
                                    {":path", "/"}};
-
-    auto conn = socklib::Http2::open("https://www.google.com", false, cacert);
+    socklib::HttpOpenContext ctx;
+    ctx.url = "https://www.google.com";
+    ctx.cacert = cacert;
+    auto conn = socklib::Http2::open(ctx);
     if (!conn) return;
     socklib::H2Stream *st, *c1;
     conn->get_stream(0, st);
