@@ -403,6 +403,14 @@ namespace socklib {
                 if (!conn->read(read, cancel)) {
                     return read.nolen;
                 }
+                ConnStat stat;
+                conn->stat(stat);
+                if (any(stat.status & ConnStatus::secure)) {
+                    read.req.parsed.scheme = "https";
+                }
+                else {
+                    read.req.parsed.scheme = "http";
+                }
                 return true;
             }
 
