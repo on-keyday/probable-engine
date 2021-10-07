@@ -522,10 +522,11 @@ namespace socklib {
             }
 
             template <template <class...> class Map, class Table>
-            static std::shared_ptr<websocketconn_t> accept(std::shared_ptr<ServerRequestProxy<String, Header, String, Map, Table>>& req, bool verifyed = false) {
+            static std::shared_ptr<websocketconn_t> accept(std::shared_ptr<ServerRequestProxy<String, Header, String, Map, Table>>& req,CancelContext* cancel=nullptr, bool verifyed = false) {
                 if (!verifyed && !verify_accept(req)) {
                     return nullptr;
                 }
+                req->response(101, cancel);
                 return std::make_shared<websocketconn_t>(req->hijack());
             }
         };
