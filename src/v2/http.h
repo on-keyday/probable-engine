@@ -195,6 +195,7 @@ namespace socklib {
 
         template <class String, class Header, class Body, template <class...> class Map, class Table>
         struct ServerRequestProxy : RequestProxy<String, Header, Body, Map, Table> {
+            using http1server_t = Http1Server<String, Header, Body>;
             const Header& requestHeader() {
                 return this->ctx.request;
             }
@@ -209,6 +210,9 @@ namespace socklib {
 
             Body& responseBody() {
                 return ctx.responsebody;
+            }
+
+            bool request(CancelContext* cancel) {
             }
         };
 

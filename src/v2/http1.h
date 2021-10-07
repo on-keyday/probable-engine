@@ -412,6 +412,7 @@ namespace socklib {
                 }
                 if (httpwriter_t::write_response(conn, req, cancel)) {
                     req.phase = RequestPhase::idle;
+                    return true;
                 }
                 req.phase = RequestPhase::error;
                 return false;

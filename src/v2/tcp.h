@@ -32,6 +32,10 @@ namespace socklib {
             ssl_io,
             tcp_io,
             not_reopened,
+            bind,
+            listen,
+            no_socket,
+            wait_accept,
         };
 
         template <class String>
@@ -48,6 +52,24 @@ namespace socklib {
             size_t len = 0;
             bool forceopen = false;
             bool non_block = true;
+        };
+
+        template <class String>
+        struct TCPAcceptContext {
+            using string_t = String;
+            int acsock = invalid_socket;
+            int ip_version = 0;
+            std::uint16_t port = 0;
+            string_t service;
+            string_t servercert;
+            string_t rootcert;
+            ConnStat stat;  //to set stat
+            bool non_block = true;
+            ::SSL* ssl = nullptr;
+            ::SSL_CTX* sslctx = nullptr;
+            TCPError err = TCPError::none;
+            ::addrinfo* info = nullptr;
+            bool reuse_addr = true;
         };
 
         struct NetWorkInit {
@@ -129,13 +151,16 @@ namespace socklib {
                 u_long flag = 1;
                 ::ioctlsocket(tmp, FIONBIO, &flag);
                 auto res = ::connect(tmp, info->ai_addr, info->ai_addrlen);
-                if (res == 0) {
+                auto when_connected = [&] {
                     sock = tmp;
                     if (!ctx.non_block) {
                         flag = 0;
                         ::ioctlsocket(tmp, FIONBIO, &flag);
                     }
                     return true;
+                };
+                if (res == 0) {
+                    return when_connected();
                 }
                 ::timeval timeout = {0};
                 ::fd_set baseset = {0}, sucset = {0}, errset = {0};
@@ -157,13 +182,7 @@ namespace socklib {
                         return false;
                     }
                     if (FD_ISSET(tmp, &sucset)) {
-                        sock = tmp;
-                        //selected = p;
-                        if (!ctx.non_block) {
-                            flag = 0;
-                            ::ioctlsocket(tmp, FIONBIO, &flag);
-                        }
-                        return true;
+                        return when_connected();
                     }
                     if (canceler.on_cancel()) {
                         ::closesocket(tmp);
@@ -298,6 +317,161 @@ namespace socklib {
         };
 
         template <class String>
+        struct ServerHandler {
+            template <class C>
+            static const char* get_data(C* str) {
+                return str;
+            }
+
+            template <class Str>
+            static const char* get_data(Str& str) {
+                return str.data();
+            }
+
+            static void copy_list(::addrinfo*& to, const ::addrinfo* from) {
+                if (!from || to) return;
+                InetConn::copy_addrinfo(to, from);
+                copy_list(to->ai_next, from->ai_next);
+            }
+
+            static void dellist(::addrinfo* del) {
+                if (!del) return;
+                dellist(del->ai_next);
+                InetConn::del_addrinfo(del);
+            }
+
+            static bool get_this_server_address(TCPAcceptContext<String>& ctx) {
+                if (!NetWorkInit::instance().Init()) {
+                    ctx.err = TCPError::initialize_network;
+                    return false;
+                }
+                ::addrinfo hints = {0}, *info = nullptr;
+                hints.ai_family = AF_INET6;
+                hints.ai_flags = AI_PASSIVE;
+                hints.ai_socktype = SOCK_STREAM;
+                if (::getaddrinfo(NULL, get_data(ctx.service), &hints, &info) != 0) {
+                    ctx.err = TCPError::resolve_address;
+                    return false;
+                }
+                copy_list(ctx.info, info);
+                ::freeaddrinfo(info);
+                return true;
+            }
+
+            static bool get_socket(int& sock, TCPAcceptContext<String>& ctx, ::addrinfo*& selected) {
+                auto port_net = commonlib2::translate_byte_net_and_host<std::uint16_t>(&ctx.port);
+                for (auto p = sv.copy; p; p = p->ai_next) {
+                    sockaddr_in* addr = (sockaddr_in*)p->ai_addr;
+                    if (port_net) {
+                        addr->sin_port = port_net;
+                    }
+                    sock = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+                    if (sock < 0) {
+                        sock = invalid_socket;
+                        continue;
+                    }
+                    u_long flag = 0;
+                    switch (ctx.ip_version) {
+                        case 4:
+                            addr->sin_family = AF_INET;
+                            break;
+                        case 6:
+                            addr->sin_family = AF_INET6;
+                            flag = 1;
+                            if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
+                                ::closesocket(sock);
+                                sock = invalid_socket;
+                                continue;
+                            }
+                            break;
+                        default:
+                            addr->sin_family = AF_INET6;
+                            flag = 0;
+                            if (::setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag, sizeof(flag)) < 0) {
+                                ::closesocket(sock);
+                                sock = invalid_socket;
+                                continue;
+                            }
+                            break;
+                    }
+                    if (ctx.reuse_addr) {
+                        if (::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&flag, sizeof(flag)) < 0) {
+                            ::closesocket(sock);
+                            sock = invalid_socket;
+                            continue;
+                        }
+                    }
+                    selected = p;
+                    break;
+                }
+                if (sock < 0) {
+                    ctx.err = TCPError::no_address_to_connect;
+                    return false;
+                }
+                return true;
+            }
+
+            static bool init_server(TCPAcceptContext<String>& ctx) {
+                if (ctx.acsock != invalid_socket) {
+                    return true;
+                }
+                if (!get_this_server_address(ctx)) {
+                    return false;
+                }
+                ctx.acsock = invalid_socket;
+                ::addrinfo* selected = nullptr;
+                if (!get_socket(ctx.acsock, ctx, selected)) {
+                    return false;
+                }
+                if (::bind(sv.acsock, selected->ai_addr, selected->ai_addrlen) < 0) {
+                    ctx.err = TCPError::bind;
+                    ::closesocket(sv.acsock);
+                    sv.acsock = invalid_socket;
+                    return false;
+                }
+                if (::listen(sv.sock, 10000) < 0) {
+                    ctx.err = TCPError::listen;
+                    ::closesocket(sv.acsock);
+                    sv.acsock = invalid_socket;
+                    return false;
+                }
+                return true;
+            }
+
+            bool wait_signal(TCPAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
+                if (ctx.acsock == invalid_socket) {
+                    ctx.err = TCPError::no_socket;
+                    return false;
+                }
+                ::fd_set baseset = {0}, work = {0};
+                FD_ZERO(&baseset);
+                FD_SET(ctx.acsock, &baseset);
+                ::timeval time = {0};
+                while (true) {
+                    memcpy_s(&work, sizeof(work), &baseset, sizeof(baseset));
+                    time.tv_sec = 0;
+                    time.tv_usec = 1;
+                    auto res = ::select(ctx.acsock + 1, &work, nullptr, nullptr, &time);
+                    if (res < 0) {
+                        ctx.err = TCPError::wait_accept;
+                        return false;
+                    }
+                    if (cancel && cancel->on_cancel()) {
+                        ctx.err = TCPError::canceled;
+                        return false;
+                    }
+                    if (res == 0) {
+                        continue;
+                    }
+                    if (FD_ISSET(ctx.acsock, &work)) {
+                        break;
+                    }
+                }
+                return true;
+            }
+        };
+
+        template <class String>
         struct TCP {
             static bool open(std::shared_ptr<InetConn>& res, TCPOpenContext<String>& ctx, CancelContext* cancel = nullptr) {
                 if (ctx.stat.type != ConnType::tcp_over_ssl) {
@@ -370,6 +544,15 @@ namespace socklib {
                 }
                 ::freeaddrinfo(info);
                 return true;
+            }
+
+            static bool accept(std::shared_ptr<InetConn>& res, TCPAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
+                if (!ServerHandler<String>::init_server(ctx)) {
+                    return false;
+                }
+                if (!ServerHandler<String>::wait_signal(ctx, cancel)) {
+                    return false;
+                }
             }
         };
     }  // namespace v2
