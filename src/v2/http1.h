@@ -97,7 +97,8 @@ namespace socklib {
                 towrite += ' ';
                 towrite += reason_phrase(req.statuscode);
                 towrite += "\r\n";
-                if (write_header_common(conn, towrite, req.response, req.responsebody, req, true, cancel)) {
+                bool need_len = any(req.flag & RequestFlag::no_need_len);
+                if (write_header_common(conn, towrite, req.response, req.responsebody, req, need_len, cancel)) {
                     req.phase = RequestPhase::response_sent;
                     return true;
                 }
