@@ -249,5 +249,13 @@ namespace socklib {
         std::shared_ptr<ServerRequestProxy<String, Header, Body, Map, Table>> accept_request(std::shared_ptr<InetConn>&& conn) {
             return std::make_shared<ServerRequestProxy<String, Header, Body, Map, Table>>(std::move(conn));
         }
+
+        template <class String, class Header, class Body, template <class...> class Map, class Table>
+        std::shared_ptr<ServerRequestProxy<String, Header, Body, Map, Table>> accept_request(HttpAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
+            using base_t = HttpBase<String, Header, Body>;
+            auto ac = base_t::accept(ctx, cancel);
+            if (!ac) return nullptr;
+            return accept_request(std::move(ac));
+        }
     }  // namespace v2
 }  // namespace socklib
