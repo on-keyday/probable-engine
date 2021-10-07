@@ -40,11 +40,12 @@ struct TestDerived : TestBase<Int> {
 };
 
 int main() {
+    constexpr auto cacert = "D:/commonlib/netsoft/cacert.pem";
     auto p = make_request();
     TimeoutContext timeout(30);
     p->set_httpversion(2);
     p->requestHeader() = {{"Accept", "text/html"}};
-    p->set_cacert("D:/commonlib/netsoft/cacert.pem");
+    p->set_cacert(cacert);
     auto res = p->request("GET", "https://www.google.com", &timeout);
     res = p->response(&timeout);
 
@@ -52,16 +53,6 @@ int main() {
     res = p->response(&timeout);
 
     p->close(&timeout);
-    /*
-    DefWebSocketRequestContext ctx;
-    ctx.url = "localhost:8090/ws";
-    std::shared_ptr<DefWebSocketConn> conn;
-    DefWebSocket::open(conn, ctx, &timeout);
-    conn->write("cast client hello");
-    Sleep(1000);
-    conn->write("close");
-    ReadContext<String> read;
-    conn->read(read, &timeout);*/
 
     HttpAcceptContext<String> accept;
     accept.tcp.port = 8090;

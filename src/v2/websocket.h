@@ -396,6 +396,7 @@ namespace socklib {
                 ctx.default_scheme = HttpDefaultScheme::ws;
                 ctx.flag = RequestFlag::no_read_body;
                 ctx.url = req.url;
+                ctx.cacert = req.cacert;
                 std::shared_ptr<InetConn> baseconn;
                 if (!base_t::open(baseconn, ctx, cancel, "ws", "wss")) {
                     req.err = ctx.err;
@@ -522,7 +523,7 @@ namespace socklib {
             }
 
             template <template <class...> class Map, class Table>
-            static std::shared_ptr<websocketconn_t> accept(std::shared_ptr<ServerRequestProxy<String, Header, String, Map, Table>>& req,CancelContext* cancel=nullptr, bool verifyed = false) {
+            static std::shared_ptr<websocketconn_t> accept(std::shared_ptr<ServerRequestProxy<String, Header, String, Map, Table>>& req, CancelContext* cancel = nullptr, bool verifyed = false) {
                 if (!verifyed && !verify_accept(req)) {
                     return nullptr;
                 }
