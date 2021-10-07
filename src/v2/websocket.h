@@ -249,11 +249,7 @@ namespace socklib {
 
            public:
             WebSocketConn(std::shared_ptr<InetConn>&& base)
-                : conn(std::move(base)) {
-                ConnStat stat;
-                conn->stat(stat);
-                InetConn::copy_addrinfo(this->info, stat.net.addrinfo);
-            }
+                : conn(std::move(base)), InetConn(nullptr) {}
 
             void set_mode(bool is_binary) {
                 binary = is_binary;
@@ -266,6 +262,10 @@ namespace socklib {
             void set_callback(decltype(cb) cb, void* ctx = nullptr) {
                 this->cb = cb;
                 this->ctx = ctx;
+            }
+
+            virtual bool ipaddress(IReadContext& toread) const override {
+                return conn->ipaddress(toread);
             }
 
             bool write(IWriteContext& w, WsFType frame, std::uint32_t* maskkey, CancelContext* cancel) {
