@@ -1,5 +1,6 @@
 #pragma once
 #include "http1.h"
+#include "http.h"
 #include <serializer.h>
 #include <random>
 
@@ -468,6 +469,60 @@ namespace socklib {
                 }
                 conn = std::make_shared<websocketconn_t>(std::move(baseconn));
                 return true;
+            }
+
+            template <template <class...> class Map, class Table>
+            static bool verify_accept(std::shared_ptr<ServerRequestProxy<String, Header, String, Map, Table>>& req) {
+                if (!req) {
+                    return false;
+                }
+                if (req->get_method() != "GET") {
+                    return false;
+                }
+                Header& response = req->responseHeader();
+                response.emplace("Upgrade", "websocket");
+                response.emplace("Connection", "Upgrade");
+                bool connection = false, upgrade = false, sec_websocket = false;
+                for (auto& h : req->requestHeader()) {
+                    using base_t = HttpBase<String, Header, String>;
+                    using commonlib2::str_eq;
+                    if (!connection && str_eq(h.first, "connection", base_t::header_cmp)) {
+                        if (!str_eq(h.second, "upgrade", base_t::header_cmp)) {
+                            return false;
+                        }
+                        connection = true;
+                    }
+                    else if (!upgrade && str_eq(h.first, "upgrade", base_t::header_cmp)) {
+                        if (!str_eq(h.second, "websocket", base_t::header_cmp)) {
+                            return false;
+                        }
+                        upgrade = true;
+                    }
+                    else if (!sec_websocket && str_eq(h.first, "sec-webSocket-key", base_t::header_cmp)) {
+                        commonlib2::Base64Context b64;
+                        commonlib2::SHA1Context hash;
+                        std::string result;
+                        commonlib2::Reader<String>(h.second + ws_magic_guid).readwhile(commonlib2::sha1, hash);
+                        commonlib2::Reader(commonlib2::Sized(hash.result)).readwhile(result, commonlib2::base64_encode, &b64);
+                        response.emplace("Sec-WebSocket-Accept", result);
+                        sec_websocket = true;
+                    }
+                    if (connection && sec_websocket && upgrade) {
+                        break;
+                    }
+                }
+                if (!connection || !sec_websocket || !upgrade) {
+                    return false;
+                }
+                return true;
+            }
+
+            template <template <class...> class Map, class Table>
+            static std::shared_ptr<websocketconn_t> accept(std::shared_ptr<ServerRequestProxy<String, Header, String, Map, Table>>& req, bool verifyed = false) {
+                if (!verifyed && !verify_accept(req)) {
+                    return nullptr;
+                }
+                return std::make_shared<websocketconn_t>(req->hijack());
             }
         };
     }  // namespace v2

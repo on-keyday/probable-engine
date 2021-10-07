@@ -112,11 +112,11 @@ namespace socklib {
                 return this->ctx.requestbody;
             }
 
-            const Header& responseHeader() {
+            const Header& responseHeader() const {
                 return this->ctx.response;
             }
 
-            const Body& responseBody() {
+            const Body& responseBody() const {
                 return this->ctx.responsebody;
             }
 
@@ -134,6 +134,10 @@ namespace socklib {
 
             void set_default_schme(HttpDefaultScheme scehme) {
                 this->ctx.default_scehme = scehme;
+            }
+
+            std::uint16_t get_statuscode() const {
+                return this->ctx.statuscode;
             }
 
            private:
@@ -208,11 +212,11 @@ namespace socklib {
                 this->conn = std::move(con);
             }
 
-            const Header& requestHeader() {
+            const Header& requestHeader() const {
                 return this->ctx.request;
             }
 
-            const Body& requestBody() {
+            const Body& requestBody() const {
                 return this->ctx.requestbody;
             }
 
@@ -222,6 +226,10 @@ namespace socklib {
 
             Body& responseBody() {
                 return this->ctx.responsebody;
+            }
+
+            const String& get_method() const {
+                return this->ctx.method;
             }
 
             bool request(CancelContext* cancel = nullptr) {
