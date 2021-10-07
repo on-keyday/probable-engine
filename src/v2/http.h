@@ -110,6 +110,14 @@ namespace socklib {
                 conn->ipaddress(to);
                 return to.buf;
             }
+
+            bool set_requestflag(RequestFlag flag) {
+                ctx.flag = flag;
+            }
+
+            bool add_requestflag(RequestFlag flag) {
+                ctx.flag |= flag;
+            }
         };
 
         template <class String, class Header, class Body, template <class...> class Map, class Table>
