@@ -273,7 +273,7 @@ namespace socklib {
         struct HttpAcceptContext {
             int http_version = 0;
             HttpDefaultScheme scheme = HttpDefaultScheme::http;
-            TCPAcceptContext<String> tcplayer;
+            TCPAcceptContext<String> tcp;
         };
 
         template <class String, class Header, class Body>
@@ -520,8 +520,8 @@ namespace socklib {
             }
 
             static std::shared_ptr<InetConn> accept(HttpAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
-                ctx.tcplayer.service = translate_to_service(default_scheme(ctx.scheme));
-                auto accepted = TCP<String>::accept(ctx.tcplayer, cancel);
+                ctx.tcp.service = translate_to_service(default_scheme(ctx.scheme));
+                auto accepted = TCP<String>::accept(ctx.tcp, cancel);
                 return accepted;
             }
         };

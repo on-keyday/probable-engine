@@ -24,6 +24,7 @@ namespace socklib {
             return accept_request<String, HttpHeader, String, Http2MapType, HpackTable>(std::move(conn));
         }
 
+        //You should use SleeperContext for this function
         std::shared_ptr<ServerRequestProxy<String, HttpHeader, String, Http2MapType, HpackTable>> accept_request(HttpAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
             return accept_request<String, HttpHeader, String, Http2MapType, HpackTable>(ctx, cancel);
         }
