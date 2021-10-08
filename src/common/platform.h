@@ -26,6 +26,7 @@
 #define SD_SEND SHUT_WR
 #define SD_RECEIVE SHUT_RD
 #define SD_BOTH SHUT_RDWR
+typedef int SOCKET;
 #endif
 
 #include <string>

@@ -58,7 +58,7 @@ namespace socklib {
         template <class String>
         struct TCPAcceptContext {
             using string_t = String;
-            int acsock = invalid_socket;
+            SOCKET acsock = invalid_socket;
             int ip_version = 0;
             std::uint16_t port = 0;
             string_t service;
@@ -158,10 +158,10 @@ namespace socklib {
                 return resolve_detail(ctx, ctx.host.data(), ctx.service.data(), ctx.ip_version, info);
             }
 
-            static bool connect_loop(::addrinfo* info, int& sock, TCPOpenContext<String>& ctx, CancelContext* cancel) {
+            static bool connect_loop(::addrinfo* info, SOCKET& sock, TCPOpenContext<String>& ctx, CancelContext* cancel) {
                 OsErrorContext canceler(cancel);
                 auto tmp = ::socket(info->ai_family, info->ai_socktype, info->ai_protocol);
-                if (tmp < 0) return false;
+                if (tmp < 0 || tmp == invalid_socket) return false;
                 u_long flag = 1;
                 ::ioctlsocket(tmp, FIONBIO, &flag);
                 auto res = ::connect(tmp, info->ai_addr, info->ai_addrlen);
@@ -207,7 +207,7 @@ namespace socklib {
             }
 
             template <class Check = bool (*)(::addrinfo*, bool*)>
-            static bool connect(TCPOpenContext<String>& ctx, CancelContext* cancel, int& sock, ::addrinfo* info, ::addrinfo*& selected, Check&& check = Check()) {
+            static bool connect(TCPOpenContext<String>& ctx, CancelContext* cancel, SOCKET& sock, ::addrinfo* info, ::addrinfo*& selected, Check&& check = Check()) {
                 std::uint16_t port = commonlib2::translate_byte_net_and_host<std::uint16_t>(&ctx.port);
                 for (auto p = info; p; p = p->ai_next) {
                     ::sockaddr_in* addr = (::sockaddr_in*)p->ai_addr;
@@ -372,7 +372,7 @@ namespace socklib {
                 return true;
             }
 
-            static bool get_socket(int& sock, TCPAcceptContext<String>& ctx, ::addrinfo*& selected) {
+            static bool get_socket(SOCKET& sock, TCPAcceptContext<String>& ctx, ::addrinfo*& selected) {
                 auto port_net = commonlib2::translate_byte_net_and_host<std::uint16_t>(&ctx.port);
                 for (auto p = ctx.info; p; p = p->ai_next) {
                     sockaddr_in* addr = (sockaddr_in*)p->ai_addr;
@@ -500,7 +500,7 @@ namespace socklib {
                     res->stat(stat);
                 }
                 bool not_reopen = false;
-                int sock = invalid_socket;
+                SOCKET sock = invalid_socket;
                 if (!Resolver<String>::connect(
                         ctx, cancel, sock, info, selected,
                         [&](::addrinfo* info, bool* result) {

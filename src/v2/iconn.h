@@ -235,11 +235,11 @@ namespace socklib {
             }
         };
 
-        constexpr auto invalid_socket = -1;
+        constexpr auto invalid_socket = (SOCKET)-1;
         constexpr size_t intmaximum = (std::uint32_t(~0) >> 1);
 
         struct SocketReset : IResetContext {
-            int sock = invalid_socket;
+            SOCKET sock = invalid_socket;
             ::SSL* ssl = nullptr;
             ::SSL_CTX* ctx = nullptr;
             bool nodelctx = false;
@@ -268,7 +268,7 @@ namespace socklib {
         //StreamConn - connection for tcp socket (SOCK_STREAM)
         struct StreamConn : InetConn {
            protected:
-            int sock = invalid_socket;
+            SOCKET sock = invalid_socket;
 
            public:
             StreamConn(int s, ::addrinfo* p)
