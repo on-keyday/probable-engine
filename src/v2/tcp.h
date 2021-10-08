@@ -71,6 +71,17 @@ namespace socklib {
             TCPError err = TCPError::none;
             ::addrinfo* info = nullptr;
             bool reuse_addr = true;
+            ~TCPAcceptContext() {
+                if (ssl) {
+                    ::SSL_free(ssl);
+                }
+                if (sslctx) {
+                    ::SSL_CTX_free(sslctx);
+                }
+                if (acsock != invalid_socket) {
+                    ::closesocket(acsock);
+                }
+            }
         };
 
         struct NetWorkInit {
