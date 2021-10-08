@@ -111,11 +111,11 @@ namespace socklib {
                 return to.buf;
             }
 
-            bool set_requestflag(RequestFlag flag) {
+            void set_requestflag(RequestFlag flag) {
                 ctx.flag = flag;
             }
 
-            bool add_requestflag(RequestFlag flag) {
+            void add_requestflag(RequestFlag flag) {
                 ctx.flag |= flag;
             }
         };
