@@ -118,6 +118,10 @@ namespace socklib {
             void add_requestflag(RequestFlag flag) {
                 ctx.flag |= flag;
             }
+
+            const commonlib2::URLContext<String>& get_parsed() const {
+                return ctx.parsed;
+            }
         };
 
         template <class String, class Header, class Body, template <class...> class Map, class Table>
