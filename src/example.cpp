@@ -1,4 +1,5 @@
 #include "v2/socklib.h"
+#include "v2/http_cookie.h"
 
 #include <map>
 #include <deque>
