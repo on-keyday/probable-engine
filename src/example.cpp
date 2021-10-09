@@ -89,5 +89,5 @@ int main() {
     request->request("GET", "www.google.com");
     request->response();
     auto& header = request->responseHeader();
-    get_header("Date", header);
+    auto d = get_header("date", header);
 }

@@ -547,6 +547,23 @@ namespace socklib {
             return result_t(nullptr);
         }
 
+        template <class String, class Header, class Vec>
+        size_t get_headers(const String& key, const Header& h, Vec& values) {
+            for (auto& kv : h) {
+                if (header_cmp(kv.first, key)) {
+                    values.push_back(kv);
+                }
+            }
+            return values.size();
+        }
+
+        template <class Vec, class String, class Header>
+        Vec get_headers(const String& key, const Header& h) {
+            Vec v;
+            get_headers(key, h, v);
+            return v;
+        }
+
         template <class String, class Header, class Body>
         struct ErrorHandler {
             using base_t = HttpBase<String, Header, Body>;
