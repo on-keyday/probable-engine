@@ -99,6 +99,14 @@ namespace socklib {
             not_month,
             no_year,
             not_year,
+            no_time,
+            no_hour,
+            not_hour,
+            no_minute,
+            not_minute,
+            no_second,
+            not_second,
+            not_GMT,
         };
 
         using DateErr = commonlib2::EnumWrap<DateError, DateError::none, DateError::not_date>;
@@ -134,6 +142,38 @@ namespace socklib {
                 return true;
             };
 
+            static DateErr set_time(Date& date, string_t& src) {
+                auto check_size = [](auto& src) {
+                    return src.size() == 2;
+                };
+                auto time = commonlib2::split<string_t, const char*, strvec_t>(src, ":");
+                if (time.size() != 3) {
+                    return DateError::no_time;
+                }
+                date.hour = 0;
+                date.minute = 0;
+                date.second = 0;
+                if (check_size(time[0])) {
+                    return DateError::no_hour;
+                }
+                if (!set_two(date.hour, time[0]) || date.hour > 23) {
+                    return DateError::not_hour;
+                }
+                if (check_size(time[1])) {
+                    return DateError::no_minute;
+                }
+                if (!set_two(date.minute, time[1]) || date.minute > 59) {
+                    return DateError::not_minute;
+                }
+                if (check_size(time[2])) {
+                    return DateError::no_second;
+                }
+                if (!set_two(date.second, time[2]) || date.second > 59) {
+                    return DateError::not_second;
+                }
+                return true;
+            }
+
            public:
             static DateErr parse(const string_t& raw, Date& date) {
                 auto data = commonlib2::split<string_t, const char*, strvec_t>(raw, " ");
@@ -163,13 +203,20 @@ namespace socklib {
                     return DateError::no_day;
                 }
                 date.year = 0;
-                if (!set_two(date.year)) {
+                if (!set_two(date.year, data[3])) {
                     return DateError::not_year;
                 }
                 date.year *= 100;
-                if (!set_two(date.year, 2)) {
+                if (!set_two(date.year, data[3], 2)) {
                     return DateError::not_year;
                 }
+                if (auto e = set_time(date, data[4]); !e) {
+                    return e;
+                }
+                if (data[5] != "GMT") {
+                    return DateError::not_GMT;
+                }
+                return true;
             }
         };
 
