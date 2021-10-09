@@ -213,7 +213,7 @@ namespace socklib {
                         if (noext) {
                             return true;
                         }
-                        size_t chunksize;
+                        size_t chunksize = 0;
                         commonlib2::Reader(num) >> chunksize;
                         if (chunksize == 0) {
                             req.phase = RequestPhase::body_recved;
@@ -231,6 +231,7 @@ namespace socklib {
                         }
                         r.expect("\r\n");
                         rawdata.erase(0, r.readpos());
+                        r.seek(0);
                     }
                 }
                 else if (bodyinfo.has_len) {
