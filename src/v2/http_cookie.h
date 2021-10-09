@@ -384,31 +384,31 @@ namespace socklib {
 
         using CookieErr = commonlib2::EnumWrap<CookieError, CookieError::none, CookieError::no_cookie>;
 
-        template <class String, class Header, class Body, template <class...> class Vec>
+        template <class String, template <class...> class Vec>
         struct CookieParser {
             using string_t = String;
             using cookie_t = Cookie<String>;
             using cookies_t = Vec<cookie_t>;
-            using base_t = HttpBase<String, Header, Body>;
+            using util_t = HttpUtil<String>;
             using strvec_t = Vec<string_t>;
 
             static void set_by_cookie_prefix(cookie_t& cookie) {
-                if (commonlib2::Reader(cookie.name).ahead("__Secure-")) {
+                if (commonlib2::Reader<string_t&>(cookie.name).ahead("__Secure-")) {
                     cookie.secure = true;
                 }
-                else if (commonlib2::Reader(cookie.name).ahead("__Host-")) {
+                else if (commonlib2::Reader<string_t&>(cookie.name).ahead("__Host-")) {
                     cookie.domain.clear();
                     cookie.path = "/";
                 }
             }
 
             static bool verify_cookie_prefix(cookie_t& cookie) {
-                if (commonlib2::Reader(cookie.name).ahead("__Secure-")) {
+                if (commonlib2::Reader<string_t&>(cookie.name).ahead("__Secure-")) {
                     if (!cookie.secure) {
                         cookie.not_allowed_prefix_rule = true;
                     }
                 }
-                else if (commonlib2::Reader(cookie.name).ahead("__Host-")) {
+                else if (commonlib2::Reader<string_t&>(cookie.name).ahead("__Host-")) {
                     if (cookie.path != "/" || cookie.domain.size()) {
                         cookie.not_allowed_prefix_rule = true;
                     }
@@ -445,7 +445,7 @@ namespace socklib {
                 cookie.value = keyval[1];
                 for (auto& attr : data) {
                     auto cmp = [](auto& a, auto& b) {
-                        return str_eq(a, b, base_t::header_cmp);
+                        return str_eq(a, b, util_t::header_cmp);
                     };
                     if (cmp(attr, "HttpOnly")) {
                         if (cookie.httponly) {

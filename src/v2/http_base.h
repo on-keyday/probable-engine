@@ -551,7 +551,7 @@ namespace socklib {
         size_t get_headers(const String& key, const Header& h, Vec& values) {
             for (auto& kv : h) {
                 if (header_cmp(kv.first, key)) {
-                    values.push_back(kv);
+                    values.push_back(kv.second);
                 }
             }
             return values.size();

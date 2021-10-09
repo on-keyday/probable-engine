@@ -89,5 +89,11 @@ int main() {
     request->request("GET", "www.google.com");
     request->response();
     auto& header = request->responseHeader();
-    auto d = get_header("date", header);
+    if (auto d = get_header("date", header)) {
+        DateParser<String, std::vector>::parse(*d, date);
+    }
+    Cookie<String> c;
+    if (auto cookie = get_headers<std::vector<std::string>>("set-cookie", header); cookie.size()) {
+        CookieParser<String, std::vector>::parse(cookie[0], c);
+    }
 }
