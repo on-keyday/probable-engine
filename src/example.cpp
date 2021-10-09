@@ -78,6 +78,9 @@ void test_http() {
 int main() {
     Date date;
     String str;
+    time_t now = time(nullptr), decode = false;
     DateParser<String, std::vector>::parse("Wed, 21 Oct 2015 07:28:00 GMT", date);
+    DateParser<String, std::vector>::from_time_t(now, date);
     DateWriter<String>::write(str, date);
+    DateWriter<String>::to_time_t(decode, date);
 }

@@ -168,7 +168,7 @@ namespace socklib {
                 if (!check_size(time[2])) {
                     return DateError::no_second;
                 }
-                if (!set_two(date.second, time[2]) || date.second > 60) {
+                if (!set_two(date.second, time[2]) || date.second > 61) {
                     return DateError::not_second;
                 }
                 return true;
@@ -193,7 +193,7 @@ namespace socklib {
                     return DateError::no_day;
                 }
                 date.day = 0;
-                if (!set_two(date.day, data[1]) || date.day > 31) {
+                if (!set_two(date.day, data[1]) || date.day < 1 || date.day > 31) {
                     return DateError::not_day;
                 }
                 if (!get_expected<Month, 12>(date.month, data[2], get_month)) {
@@ -218,6 +218,25 @@ namespace socklib {
                 }
                 return true;
             }
+#ifndef _WIN32
+#define gettime_s(tm, time) (*tm = gmtime(time))
+#endif
+
+            static DateErr from_time_t(time_t time, Date& date) {
+                if (time < 0) {
+                    return DateError::not_date;
+                }
+                ::tm tminfo = {0};
+                gmtime_s(&tminfo, &time);
+                date.dayname = DayName(1 + tminfo.tm_wday);
+                date.day = (std::uint8_t)tminfo.tm_mday;
+                date.month = Month(1 + tminfo.tm_mon);
+                date.year = (std::uint16_t)tminfo.tm_year + 1900;
+                date.hour = (std::uint8_t)tminfo.tm_hour;
+                date.minute = (std::uint8_t)tminfo.tm_min;
+                date.second = (std::uint8_t)tminfo.tm_sec;
+                return true;
+            }
         };
 
         template <class String>
@@ -239,7 +258,7 @@ namespace socklib {
                 }
                 towrite += get_dayname(date.dayname);
                 towrite += ", ";
-                if (date.day > 31) {
+                if (date.day < 1 || date.day > 31) {
                     return DateError::not_day;
                 }
                 set_two(date.day, towrite);
@@ -265,11 +284,44 @@ namespace socklib {
                 }
                 set_two(date.minute, towrite);
                 towrite += ':';
-                if (date.second > 60) {
+                if (date.second > 61) {
                     return DateError::not_minute;
                 }
                 set_two(date.second, towrite);
                 towrite += " GMT";
+                return true;
+            }
+
+            static DateErr to_time_t(time_t& time, const Date& date) {
+                ::tm tminfo = {0};
+                if (date.year < 1900) {
+                    return DateError::not_year;
+                }
+                tminfo.tm_year = date.year - 1900;
+                if (date.month == Month::unset) {
+                    return DateError::not_month;
+                }
+                tminfo.tm_mon = int(date.month) - 1;
+                if (date.day < 1 || date.day > 31) {
+                    return DateError::not_day;
+                }
+                tminfo.tm_mday = date.day;
+                if (date.hour > 23) {
+                    return DateError::not_hour;
+                }
+                tminfo.tm_hour = date.hour;
+                if (date.minute > 59) {
+                    return DateError::not_minute;
+                }
+                tminfo.tm_min = date.minute;
+                if (date.second > 61) {
+                    return DateError::not_second;
+                }
+                tminfo.tm_sec = date.second;
+                time = mktime(&tminfo);
+                if (time == -1) {
+                    return DateError::not_date;
+                }
                 return true;
             }
         };
