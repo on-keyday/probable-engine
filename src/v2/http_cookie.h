@@ -469,7 +469,7 @@ namespace socklib {
                 return any(cookie.flag & CookieFlag::not_allow_prefix_rule);
             }
 
-            static CookieErr parse(const string_t& raw, cookies_t& cookies) {
+            static CookieErr parse_cookie(const string_t& raw, cookies_t& cookies) {
                 auto data = commonlib2::split<string_t, const char*, strvec_t>(raw, "; ");
                 for (auto& v : data) {
                     auto keyval = commonlib2::split<string_t, const char*, strvec_t>(v, "=", 1);
