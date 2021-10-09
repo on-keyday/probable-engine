@@ -216,6 +216,8 @@ namespace socklib {
                         size_t chunksize = 0;
                         commonlib2::Reader(num) >> chunksize;
                         if (chunksize == 0) {
+                            r.expect("\r\n");
+                            rawdata.erase(0, r.readpos());
                             req.phase = RequestPhase::body_recved;
                             return false;
                         }
