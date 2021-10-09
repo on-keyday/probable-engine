@@ -40,7 +40,7 @@ struct TestDerived : TestBase<Int> {
         : TestBase<Int>(1) {}
 };
 
-int main() {
+void test_http() {
     constexpr auto cacert = "D:/commonlib/netsoft/cacert.pem";
     auto p = make_request();
     TimeoutContext timeout(30);
@@ -73,4 +73,9 @@ int main() {
         rec->set_requestflag(RequestFlag::header_is_small);
         rec->response(503);
     }
+}
+
+int main() {
+    Date date;
+    DateParser<String, std::vector>::parse("Wed, 21 Oct 2015 07:28:00 GMT", date);
 }

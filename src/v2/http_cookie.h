@@ -122,7 +122,7 @@ namespace socklib {
                 commonlib2::Reader r(src);
                 for (auto i = 1; i <= max; i++) {
                     if (r.ahead(f(E(i)))) {
-                        toset = DayName(i);
+                        toset = E(i);
                         return true;
                     }
                 }
@@ -186,17 +186,17 @@ namespace socklib {
                 if (!check_size(data[0], 4) || data[0][data[0].size() - 1] != ',') {
                     return DateError::no_dayname;
                 }
-                if (get_expected(date.dayname, data[0], get_dayname)) {
+                if (get_expected<DayName, 7>(date.dayname, data[0], get_dayname)) {
                     return DateError::not_dayname;
                 }
                 if (!check_size(data[1], 2)) {
                     return DateError::no_day;
                 }
                 date.day = 0;
-                if (!set_two(date.day, data[1])) {
+                if (!set_two(date.day, data[1]) || date.day > 31) {
                     return DateError::not_day;
                 }
-                if (get_expected(date.month, data[2], get_month)) {
+                if (get_expected<Month, 12>(date.month, data[2], get_month)) {
                     return DateError::not_month;
                 }
                 if (!check_size(data[3], 4)) {
@@ -207,7 +207,7 @@ namespace socklib {
                     return DateError::not_year;
                 }
                 date.year *= 100;
-                if (!set_two(date.year, data[3], 2)) {
+                if (!set_two(date.year, data[3], 2) || date.year > 9999) {
                     return DateError::not_year;
                 }
                 if (auto e = set_time(date, data[4]); !e) {
@@ -216,6 +216,60 @@ namespace socklib {
                 if (data[5] != "GMT") {
                     return DateError::not_GMT;
                 }
+                return true;
+            }
+        };
+
+        template <class String>
+        struct DateWriter {
+            using string_t = String;
+
+           private:
+            static void set_two(std::uint32_t src, string_t& towrite) {
+                auto high = date.day / 10;
+                auto low = date.day - high * 10;
+                towrite += high + '0';
+                towrite += low + '0';
+            }
+
+           public:
+            static DateErr write(string_t& towrite, const Date& date) {
+                if (date.dayname == DayName::unset) {
+                    return DateError::not_dayname;
+                }
+                towrite += get_dayname(date.dayname);
+                towrite += ", ";
+                if (date.day > 31) {
+                    return DateError::not_day
+                }
+                set_two(date.day, towrite);
+                towrite += ' ';
+                if (date.month == Month::unset) {
+                    return DateError::not_month;
+                }
+                towrite += get_month(date.month);
+                towrite += ' ';
+                if (date.year > 9999) {
+                    return DateError::not_year;
+                }
+                set_two(date.year / 100, towrite);
+                set_two(date.year - (date.year / 100) * 100, towrite);
+                towrite += ' ';
+                if (date.hour > 23) {
+                    return DateError::not_hour;
+                }
+                set_two(date.hour, towrite);
+                towrite += ':';
+                if (date.minute > 59) {
+                    return DateError::not_minute;
+                }
+                set_two(date.minute, towrite);
+                towrite += ':';
+                if (date.second > 59) {
+                    return DateError::not_minute;
+                }
+                set_two(date.second, towrite);
+                towrite += " GMT";
                 return true;
             }
         };
@@ -279,12 +333,6 @@ namespace socklib {
                     }
                 }
                 return !cookie.not_allowed_prefix_rule;
-            }
-
-            static void write_set_cookie(string_t& towrite, cookie_t& cookie) {
-                towrite = cookie.name;
-                towrite += "=";
-                towrite += cookie.value;
             }
 
             static CookieErr parse(const string_t& raw, cookies_t& cookies) {

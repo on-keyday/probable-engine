@@ -321,12 +321,12 @@ namespace PROJECT_NAME {
 #endif
 
         template <class Str, class NotExpect = not_expect_default, class Cmp = cmp_default>
-        size_t ahead(Str& str, NotExpect&& not_expect = NotExpect(), Cmp&& cmp = std::move(default_cmp)) {
+        size_t ahead(Str&& str, NotExpect&& not_expect = NotExpect(), Cmp&& cmp = std::move(default_cmp)) {
             return ahead_check(str, std::forward<NotExpect>(not_expect), std::forward<Cmp>(cmp));
         }
 
         template <class Str, class NotExpect = not_expect_default, class Cmp = cmp_default>
-        bool expect(Str& str, NotExpect&& not_expect = NotExpect(), Cmp&& cmp = std::move(default_cmp)) {
+        bool expect(Str&& str, NotExpect&& not_expect = NotExpect(), Cmp&& cmp = std::move(default_cmp)) {
             auto size = ahead(str, std::forward<NotExpect>(not_expect), std::forward<Cmp>(cmp));
             if (size == 0) return false;
             pos += size;
@@ -335,7 +335,7 @@ namespace PROJECT_NAME {
         }
 
         template <class Str, class Ctx, class NotExpect = not_expect_default, class Cmp = cmp_default>
-        bool expectp(Str& str, Ctx& ctx, NotExpect&& not_expect = NotExpect(), Cmp&& cmp = std::move(default_cmp)) {
+        bool expectp(Str&& str, Ctx& ctx, NotExpect&& not_expect = NotExpect(), Cmp&& cmp = std::move(default_cmp)) {
             if (expect<Str, NotExpect, Cmp>(str, std::forward<NotExpect>(not_expect), std::forward<Cmp>(cmp))) {
                 ctx = str;
                 return true;
