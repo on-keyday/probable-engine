@@ -610,7 +610,7 @@ namespace socklib {
            private:
             static bool check_path_and_domain(cookie_t& info, cookie_t& cookie) {
                 if (any(cookie.flag & CookieFlag::domain_set)) {
-                    if (info.domain.find(cookie.domain) != ~0) {
+                    if (info.domain.find(cookie.domain) == ~0) {
                         return false;
                     }
                 }
@@ -620,7 +620,7 @@ namespace socklib {
                     }
                 }
                 if (any(cookie.flag & CookieFlag::path_set)) {
-                    if (info.path.find(cookie.path) == 0) {
+                    if (info.path.find(cookie.path) != 0) {
                         return false;
                     }
                 }
