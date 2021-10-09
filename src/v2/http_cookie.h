@@ -592,11 +592,65 @@ namespace socklib {
             }
         };
 
+        enum class PathDomainState {
+            none,
+            same_path = 0x01,
+            sub_path = 0x02,
+            same_origin = 0x10,
+            sub_origin = 0x20,
+        };
+
+        DEFINE_ENUMOP(PathDomainState)
+
         template <class String>
         struct CookieWriter {
             using string_t = String;
             using cookie_t = Cookie<string_t>;
 
+           private:
+            PathDomainState check_path_and_domain(cookie_t& info, cookie_t& cookie) {
+                PathDomainState state = PathDomainState::none;
+                if (info.domain == cookie.domain) {
+                    state |= PathDomainState::same_origin;
+                }
+                else if (any(cookie.flag & CookieFlag::domain_set)) {
+                    if (info.domain.find(cookie.domain) != ~0) {
+                        state |= PathDomainState::sub_origin;
+                    }
+                }
+                if (info.path == cookie.domain) {
+                    state |= PathDomainState::same_path;
+                }
+                else if (any(cookie.flag & CookieFlag::path_set)) {
+                    if (info.path.find(cookie.path) == 0) {
+                        state |= PathDomainState::sub_path;
+                    }
+                }
+                return state;
+            }
+
+            bool check_expires(cookie_t& info, cookie_t& cookie) {
+                time_t now = ::time(nullptr), prevtime = 0;
+                Date nowdate;
+                TimeConvert::from_time_t(now, nowdate);
+                TimeConvert::to_time_t(prevtime, info.expires);
+                if (cookie.maxage) {
+                    if (cookie.maxage <= 0) {
+                        return false;
+                    }
+                    if (prevtime + cookie.maxage < now) {
+                        return false;
+                    }
+                }
+                else if (cookie.expires != Date{} && cookie.expires != invalid_date) {
+                    if (nowdate - cookie.expires <= 0) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+           public:
             template <class Cookies>
             CookieErr write(string_t& towrite, cookie_t& info, Cookies& cookies) {
                 if (!info.domain.size() || !info.path.size() || info.expires == Date{} || info.expires == invalid_date) {
@@ -611,26 +665,11 @@ namespace socklib {
                     if (cookie.secure && !info.secure) {
                         continue;
                     }
-                    time_t now = ::time(nullptr), prevtime = 0;
-                    Date nowdate;
-                    TimeConvert::from_time_t(now, nowdate);
-                    TimeConvert::to_time_t(prevtime, info.expires);
-                    if (cookie.maxage) {
-                        if (cookie.maxage <= 0) {
-                            del_cookie();
-                            continue;
-                        }
-                        if (prevtime + cookie.maxage < now) {
-                            del_cookie();
-                            continue;
-                        }
+                    if (!check_expires(info, cookie)) {
+                        del_cookie();
+                        continue;
                     }
-                    else if (cookie.expires != Date{} && cookie.expires != invalid_date) {
-                        if (nowdate - cookie.expires <= 0) {
-                            del_cookie();
-                            continue;
-                        }
-                    }
+                    auto state = check_path_and_domain(info, cookie);
                 }
             }
         };
