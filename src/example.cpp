@@ -85,4 +85,7 @@ int main() {
     DateWriter<String>::write(str, date);
     DateWriter<String>::to_time_t(decode, date);
     time_t diff = now - decode;
+    auto request = make_request();
+    request->request("GET", "www.google.com");
+    request->response();
 }

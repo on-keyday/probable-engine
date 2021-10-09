@@ -217,7 +217,7 @@ namespace socklib {
                 return false;
             }
 
-            bool response(CancelContext* cancel) {
+            bool response(CancelContext* cancel = nullptr) {
                 this->ctx.response.clear();
                 this->ctx.responsebody.clear();
                 if (this->ctx.resolved_version == 2) {
