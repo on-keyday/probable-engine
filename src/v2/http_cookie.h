@@ -679,6 +679,7 @@ namespace socklib {
                         towrite += "; ";
                     }
                     towrite += cookie.name;
+                    towrite += "=";
                     towrite += cookie.value;
                 }
                 return towrite.size() != 0;
