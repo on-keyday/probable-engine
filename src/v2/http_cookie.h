@@ -226,8 +226,8 @@ namespace socklib {
 
            private:
             static void set_two(std::uint32_t src, string_t& towrite) {
-                auto high = date.day / 10;
-                auto low = date.day - high * 10;
+                auto high = src / 10;
+                auto low = src - high * 10;
                 towrite += high + '0';
                 towrite += low + '0';
             }
@@ -240,7 +240,7 @@ namespace socklib {
                 towrite += get_dayname(date.dayname);
                 towrite += ", ";
                 if (date.day > 31) {
-                    return DateError::not_day
+                    return DateError::not_day;
                 }
                 set_two(date.day, towrite);
                 towrite += ' ';
