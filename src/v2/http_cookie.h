@@ -186,7 +186,7 @@ namespace socklib {
                 if (!check_size(data[0], 4) || data[0][data[0].size() - 1] != ',') {
                     return DateError::no_dayname;
                 }
-                if (get_expected<DayName, 7>(date.dayname, data[0], get_dayname)) {
+                if (!get_expected<DayName, 7>(date.dayname, data[0], get_dayname)) {
                     return DateError::not_dayname;
                 }
                 if (!check_size(data[1], 2)) {
@@ -196,7 +196,7 @@ namespace socklib {
                 if (!set_two(date.day, data[1]) || date.day > 31) {
                     return DateError::not_day;
                 }
-                if (get_expected<Month, 12>(date.month, data[2], get_month)) {
+                if (!get_expected<Month, 12>(date.month, data[2], get_month)) {
                     return DateError::not_month;
                 }
                 if (!check_size(data[3], 4)) {
