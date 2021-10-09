@@ -76,22 +76,16 @@ void test_http() {
 }
 
 int main() {
-    Date date;
-    String str;
-
-    DateParser<String, std::vector>::parse("Wed, 21 Oct 2015 07:28:00 GMT", date);
-    time_t now = time(nullptr), decode = false;
-    TimeConvert::from_time_t(now, date);
-    DateWriter<String>::write(str, date);
-    TimeConvert::to_time_t(decode, date);
-    time_t diff = now - decode;
     auto request = make_request();
     request->request("GET", "www.google.com");
     request->response();
     auto& header = request->responseHeader();
-    if (auto d = get_header("date", header)) {
-        DateParser<String, std::vector>::parse(*d, date);
-    }
     std::vector<Cookie<String>> cookies;
     CookieParser<String, std::vector>::parse_set_cookie(header, cookies, request->get_parsed());
+    String str;
+    Cookie<String> info;
+    info.domain = request->get_parsed().host;
+    info.path = request->get_parsed().path;
+    TimeConvert::from_time_t(::time(nullptr), info.expires);
+    CookieWriter<String>::write(str, info, cookies);
 }

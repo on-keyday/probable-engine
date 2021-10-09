@@ -469,19 +469,6 @@ namespace socklib {
                 return any(cookie.flag & CookieFlag::not_allow_prefix_rule);
             }
 
-            template <class Header>
-            static CookieErr parse_set_cookie(Header& header, cookies_t& cookies, const url_t& url) {
-                for (auto& h : header) {
-                    if (header_cmp(h.first, "Set-Cookie")) {
-                        cookie_t cookie;
-                        auto err = parse(h.second, cookie, url);
-                        if (!err) return err;
-                        cookies.push_back(std::move(cookie));
-                    }
-                }
-                return true;
-            }
-
             static CookieErr parse(const string_t& raw, cookies_t& cookies) {
                 auto data = commonlib2::split<string_t, const char*, strvec_t>(raw, "; ");
                 for (auto& v : data) {
@@ -590,6 +577,19 @@ namespace socklib {
                 }
                 return CookieError::none;
             }
+
+            template <class Header>
+            static CookieErr parse_set_cookie(Header& header, cookies_t& cookies, const url_t& url) {
+                for (auto& h : header) {
+                    if (header_cmp(h.first, "Set-Cookie")) {
+                        cookie_t cookie;
+                        auto err = parse(h.second, cookie, url);
+                        if (!err) return err;
+                        cookies.push_back(std::move(cookie));
+                    }
+                }
+                return true;
+            }
         };
 
         enum class PathDomainState {
@@ -608,28 +608,31 @@ namespace socklib {
             using cookie_t = Cookie<string_t>;
 
            private:
-            PathDomainState check_path_and_domain(cookie_t& info, cookie_t& cookie) {
-                PathDomainState state = PathDomainState::none;
-                if (info.domain == cookie.domain) {
-                    state |= PathDomainState::same_origin;
-                }
-                else if (any(cookie.flag & CookieFlag::domain_set)) {
+            static bool check_path_and_domain(cookie_t& info, cookie_t& cookie) {
+                if (any(cookie.flag & CookieFlag::domain_set)) {
                     if (info.domain.find(cookie.domain) != ~0) {
-                        state |= PathDomainState::sub_origin;
+                        return false;
                     }
                 }
-                if (info.path == cookie.domain) {
-                    state |= PathDomainState::same_path;
+                else {
+                    if (info.domain != cookie.domain) {
+                        return false;
+                    }
                 }
-                else if (any(cookie.flag & CookieFlag::path_set)) {
+                if (any(cookie.flag & CookieFlag::path_set)) {
                     if (info.path.find(cookie.path) == 0) {
-                        state |= PathDomainState::sub_path;
+                        return false;
                     }
                 }
-                return state;
+                else {
+                    if (info.path != cookie.path) {
+                        return false;
+                    }
+                }
+                return true;
             }
 
-            bool check_expires(cookie_t& info, cookie_t& cookie) {
+            static bool check_expires(cookie_t& info, cookie_t& cookie) {
                 time_t now = ::time(nullptr), prevtime = 0;
                 Date nowdate;
                 TimeConvert::from_time_t(now, nowdate);
@@ -652,7 +655,7 @@ namespace socklib {
 
            public:
             template <class Cookies>
-            CookieErr write(string_t& towrite, cookie_t& info, Cookies& cookies) {
+            static bool write(string_t& towrite, cookie_t& info, Cookies& cookies) {
                 if (!info.domain.size() || !info.path.size() || info.expires == Date{} || info.expires == invalid_date) {
                     return false;
                 }
@@ -669,8 +672,16 @@ namespace socklib {
                         del_cookie();
                         continue;
                     }
-                    auto state = check_path_and_domain(info, cookie);
+                    if (!check_path_and_domain(info, cookie)) {
+                        continue;
+                    }
+                    if (towrite.size()) {
+                        towrite += "; ";
+                    }
+                    towrite += cookie.name;
+                    towrite += cookie.value;
                 }
+                return towrite.size() != 0;
             }
         };
 
