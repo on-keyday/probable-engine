@@ -81,9 +81,9 @@ int main() {
 
     DateParser<String, std::vector>::parse("Wed, 21 Oct 2015 07:28:00 GMT", date);
     time_t now = time(nullptr), decode = false;
-    DateParser<String, std::vector>::from_time_t(now, date);
+    TimeConvert::from_time_t(now, date);
     DateWriter<String>::write(str, date);
-    DateWriter<String>::to_time_t(decode, date);
+    TimeConvert::to_time_t(decode, date);
     time_t diff = now - decode;
     auto request = make_request();
     request->request("GET", "www.google.com");
@@ -92,8 +92,6 @@ int main() {
     if (auto d = get_header("date", header)) {
         DateParser<String, std::vector>::parse(*d, date);
     }
-    Cookie<String> c;
-    if (auto cookie = get_headers<std::vector<std::string>>("set-cookie", header); cookie.size()) {
-        CookieParser<String, std::vector>::parse(cookie[0], c);
-    }
+    std::vector<Cookie<String>> cookies;
+    CookieParser<String, std::vector>::parse_set_cookie(header, cookies, request->get_parsed());
 }
