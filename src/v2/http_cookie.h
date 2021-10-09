@@ -394,7 +394,7 @@ namespace socklib {
             time_t a_t = 0, b_t = 0;
             TimeConvert::to_time_t(a_t, a);
             TimeConvert::to_time_t(b_t, b);
-            return a - b;
+            return a_t - b_t;
         }
 
         enum class CookieFlag {
@@ -483,7 +483,7 @@ namespace socklib {
                 return true;
             }
 
-            static CookieErr parse(const string_t& raw, cookie_t& cookie, url_t& url) {
+            static CookieErr parse(const string_t& raw, cookie_t& cookie, const url_t& url) {
                 if (!url.host.size() || !url.path.size()) {
                     return CookieError::invalid_url;
                 }
@@ -646,7 +646,7 @@ namespace socklib {
                     }
                 }
                 else if (cookie.expires != Date{} && cookie.expires != invalid_date) {
-                    if (nowdate - cookie.expires <= 0) {
+                    if (cookie.expires - nowdate <= 0) {
                         return false;
                     }
                 }
