@@ -206,7 +206,7 @@ namespace socklib {
                 if (bodyinfo.chunked) {
                     r.expect("\r\n");
                     using commonlib2::getline;
-                    bool noext = true;
+                    bool noext = false;
                     string_t num = "0x";
                     getline(r, num, false, &noext);
                     if (noext) {
