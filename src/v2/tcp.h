@@ -7,7 +7,7 @@
 
 #pragma once
 
-#include "iconn.h"
+#include "streamconn.h"
 #include <reader.h>
 #include <callback_invoker.h>
 #include <memory>
