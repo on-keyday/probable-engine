@@ -168,7 +168,7 @@ namespace socklib {
                 if (!check_size(time[2])) {
                     return DateError::no_second;
                 }
-                if (!set_two(date.second, time[2]) || date.second > 59) {
+                if (!set_two(date.second, time[2]) || date.second > 60) {
                     return DateError::not_second;
                 }
                 return true;
@@ -265,7 +265,7 @@ namespace socklib {
                 }
                 set_two(date.minute, towrite);
                 towrite += ':';
-                if (date.second > 59) {
+                if (date.second > 60) {
                     return DateError::not_minute;
                 }
                 set_two(date.second, towrite);
