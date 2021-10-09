@@ -384,7 +384,7 @@ namespace socklib {
         struct WebSocket {
             using string_t = String;
             using baseclient_t = Http1Client<String, Header, String>;
-            using base_t = HttpBase<String, Header, String>;
+            using util_t = HttpUtil<String>;
             using request_t = WebSocektRequestContext<String, Header>;
             using websocketconn_t = WebSocketConn<string_t>;
 
@@ -443,22 +443,22 @@ namespace socklib {
                 bool connection_upgrade = false;
                 for (auto& h : req.response) {
                     using commonlib2::str_eq;
-                    if (!sec_websock && str_eq(h.first, "sec-websocket-accept", base_t::header_cmp)) {
+                    if (!sec_websock && str_eq(h.first, "sec-websocket-accept", util_t::header_cmp)) {
                         if (h.second != result) {
                             req.err = HttpError::invalid_header;
                             return false;
                         }
                         sec_websock = true;
                     }
-                    else if (!upgrade && str_eq(h.first, "upgrade", base_t::header_cmp)) {
-                        if (!str_eq(h.second, "websocket", base_t::header_cmp)) {
+                    else if (!upgrade && str_eq(h.first, "upgrade", util_t::header_cmp)) {
+                        if (!str_eq(h.second, "websocket", util_t::header_cmp)) {
                             req.err = HttpError::invalid_header;
                             return false;
                         }
                         upgrade = true;
                     }
-                    else if (!connection_upgrade && str_eq(h.first, "connection", base_t::header_cmp), base_t::header_cmp) {
-                        if (!str_eq(h.second, "upgrade", base_t::header_cmp)) {
+                    else if (!connection_upgrade && str_eq(h.first, "connection", util_t::header_cmp), base_t::header_cmp) {
+                        if (!str_eq(h.second, "upgrade", util_t::header_cmp)) {
                             req.err = HttpError::invalid_header;
                             return false;
                         }
@@ -489,21 +489,20 @@ namespace socklib {
                 response.emplace("Connection", "Upgrade");
                 bool connection = false, upgrade = false, sec_websocket = false;
                 for (auto& h : req->requestHeader()) {
-                    using base_t = HttpBase<String, Header, String>;
                     using commonlib2::str_eq;
-                    if (!connection && str_eq(h.first, "connection", base_t::header_cmp)) {
-                        if (!str_eq(h.second, "upgrade", base_t::header_cmp)) {
+                    if (!connection && str_eq(h.first, "connection", util_t::header_cmp)) {
+                        if (!str_eq(h.second, "upgrade", util_t::header_cmp)) {
                             return false;
                         }
                         connection = true;
                     }
-                    else if (!upgrade && str_eq(h.first, "upgrade", base_t::header_cmp)) {
-                        if (!str_eq(h.second, "websocket", base_t::header_cmp)) {
+                    else if (!upgrade && str_eq(h.first, "upgrade", util_t::header_cmp)) {
+                        if (!str_eq(h.second, "websocket", util_t::header_cmp)) {
                             return false;
                         }
                         upgrade = true;
                     }
-                    else if (!sec_websocket && str_eq(h.first, "sec-webSocket-key", base_t::header_cmp)) {
+                    else if (!sec_websocket && str_eq(h.first, "sec-webSocket-key", util_t::header_cmp)) {
                         commonlib2::Base64Context b64;
                         commonlib2::SHA1Context hash;
                         std::string result;

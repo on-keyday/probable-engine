@@ -364,13 +364,9 @@ namespace socklib {
             }
         };
 
-        template <class String, class Header, class Body>
-        struct HttpBase {
+        template <class String>
+        struct HttpUtil {
             using string_t = String;
-            using urlparser_t = URLParser<String, Header, Body>;
-            using request_t = RequestContext<String, Header, Body>;
-            using parsed_t = typename request_t::parsed_t;
-
             static string_t translate_to_service(const string_t& scheme) {
                 if (scheme == "ws") {
                     return "http";
@@ -397,10 +393,19 @@ namespace socklib {
                 }
                 return true;
             }
+        };
+
+        template <class String, class Header, class Body>
+        struct HttpBase {
+            using string_t = String;
+            using urlparser_t = URLParser<String, Header, Body>;
+            using request_t = RequestContext<String, Header, Body>;
+            using parsed_t = typename request_t::parsed_t;
+            using util_t = HttpUtil<String>;
 
             template <class KeyVal>
             static int is_valid_field(KeyVal& h, request_t& req) {
-                if (!is_valid_field(h)) {
+                if (!util_t::is_valid_field(h)) {
                     if (any(req.flag & RequestFlag::invalid_header_is_error)) {
                         req.err = HttpError::invalid_header;
                         return -1;
@@ -441,7 +446,7 @@ namespace socklib {
                 }
                 tcpopen.ip_version = req.ip_version;
                 tcpopen.host = req.parsed.host;
-                tcpopen.service = translate_to_service(req.parsed.scheme);
+                tcpopen.service = util_t::translate_to_service(req.parsed.scheme);
                 tcpopen.cacert = req.cacert;
                 tcpopen.non_block = true;
                 if (req.parsed.port.size()) {
@@ -464,7 +469,7 @@ namespace socklib {
                     const unsigned char* data = nullptr;
                     const char** tmp = (const char**)&data;
                     unsigned int len = 0;
-                    SSL_get0_alpn_selected(stat.net.ssl, &data, &len);
+                    ::SSL_get0_alpn_selected(stat.net.ssl, &data, &len);
                     if (!data) {
                         if (!any(req.flag & RequestFlag::ignore_alpn_failure)) {
                             req.err = HttpError::alpn_failed;
@@ -521,11 +526,26 @@ namespace socklib {
             }
 
             static std::shared_ptr<InetConn> accept(HttpAcceptContext<String>& ctx, CancelContext* cancel = nullptr) {
-                ctx.tcp.service = translate_to_service(default_scheme(ctx.scheme));
+                ctx.tcp.service = util_t::translate_to_service(default_scheme(ctx.scheme));
                 auto accepted = TCP<String>::accept(ctx.tcp, cancel);
                 return accepted;
             }
         };
+
+        template <class String, class Token>
+        bool header_cmp(const String& a, const Token& b) {
+            using util_t = HttpUtil<String>;
+            return commonlib2::str_eq(a, b, util_t::header_cmp);
+        }
+
+        template <class String, class Header>
+        auto get_header(const String& key, const Header& h) {
+            using result_t = decltype(&h.begin()->second);
+            if (auto it = std::find_if(h.begin(), h.end(), [&](auto& kv) { return header_cmp(kv.first, key); }); it != h.end()) {
+                return &it->second;
+            }
+            return result_t(nullptr);
+        }
 
         template <class String, class Header, class Body>
         struct ErrorHandler {

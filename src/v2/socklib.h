@@ -32,5 +32,7 @@ namespace socklib {
         using DefWebSocket = WebSocket<String, HttpHeader>;
         using DefWebSocketConn = WebSocketConn<String>;
         using DefWebSocketRequestContext = WebSocektRequestContext<String, HttpHeader>;
+
+        
     }  // namespace v2
 }  // namespace socklib

@@ -88,4 +88,6 @@ int main() {
     auto request = make_request();
     request->request("GET", "www.google.com");
     request->response();
+    auto& header = request->responseHeader();
+    get_header("Date", header);
 }

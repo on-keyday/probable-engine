@@ -116,9 +116,9 @@ namespace socklib {
 
         template <class String, class Header, class Body>
         struct HttpHeaderReader {
-            using base_t = HttpBase<String, Header, Body>;
-            using request_t = typename base_t::request_t;
-            using string_t = typename base_t::string_t;
+            using util_t = HttpUtil<String>;
+            using request_t = RequestContext<String, Header, Body>;
+            using string_t = String;
             using header_t = Header;
             using body_t = Body;
 
@@ -132,7 +132,7 @@ namespace socklib {
                     if (f.size() < 2) return false;
                     while (f[1].size() && (f[1][0] == ' ' || f[1][0] == '\t')) f[1].erase(0, 1);
                     //std::transform(f[0].begin(), f[0].end(), f[0].begin(), [](char c) { return std::tolower((unsigned char)c); });
-                    if (str_eq(f[0], "host", base_t::header_cmp)) {
+                    if (str_eq(f[0], "host", util_t::header_cmp)) {
                         auto h = split(f[1], ":", 1);
                         if (h.size() == 0) continue;
                         req.parsed.host = h[0];
@@ -140,13 +140,13 @@ namespace socklib {
                             req.parsed.port = h[1];
                         }
                     }
-                    else if (str_eq(f[0], "connection", base_t::header_cmp) && f[1].find("close") != ~0) {
+                    else if (str_eq(f[0], "connection", util_t::header_cmp) && f[1].find("close") != ~0) {
                         body.close_conn = true;
                     }
-                    else if (!body.chunked && str_eq(f[0], "transfer-encoding", base_t::header_cmp) && f[1].find("chunked") != ~0) {
+                    else if (!body.chunked && str_eq(f[0], "transfer-encoding", util_t::header_cmp) && f[1].find("chunked") != ~0) {
                         body.chunked = true;
                     }
-                    else if (!body.has_len && str_eq(f[0], "content-length", base_t::header_cmp)) {
+                    else if (!body.has_len && str_eq(f[0], "content-length", util_t::header_cmp)) {
                         body.has_len = true;
                         commonlib2::Reader(f[1]) >> body.size;
                     }
