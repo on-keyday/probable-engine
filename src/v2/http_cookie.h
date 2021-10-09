@@ -239,6 +239,34 @@ namespace socklib {
             }
         };
 
+        struct UTCLocalDiff {
+           private:
+            static time_t diff_impl() {
+                auto calc_diff = [] {
+                    time_t now_local = time(nullptr), now_utc = 0;
+                    ::tm tminfo = {0};
+                    gmtime_s(&tminfo, &now_local);
+                    now_utc = mktime(&tminfo);
+                    return now_local - now_utc;
+                };
+                /*time_t first = calc_diff(), second = 0;
+                while (true) {
+                    second = calc_diff();
+                    if (first == second) {
+                        return first;
+                    }
+                    first = second;
+                }*/
+                return calc_diff();
+            }
+
+           public:
+            static time_t diff() {
+                static time_t diff_v = diff_impl();
+                return diff_v;
+            }
+        };
+
         template <class String>
         struct DateWriter {
             using string_t = String;
@@ -322,6 +350,7 @@ namespace socklib {
                 if (time == -1) {
                     return DateError::not_date;
                 }
+                time += UTCLocalDiff::diff();
                 return true;
             }
         };
