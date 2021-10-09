@@ -204,32 +204,34 @@ namespace socklib {
             static bool read_body(request_t& req, HttpBodyInfo& bodyinfo, string_t& rawdata, body_t& body) {
                 commonlib2::Reader<string_t&> r(rawdata);
                 if (bodyinfo.chunked) {
-                    r.expect("\r\n");
-                    using commonlib2::getline;
-                    bool noext = false;
-                    string_t num = "0x";
-                    getline(r, num, false, &noext);
-                    if (noext) {
-                        return true;
+                    while (rawdata.size()) {
+                        r.expect("\r\n");
+                        using commonlib2::getline;
+                        bool noext = false;
+                        string_t num = "0x";
+                        getline(r, num, false, &noext);
+                        if (noext) {
+                            return true;
+                        }
+                        size_t chunksize;
+                        commonlib2::Reader(num) >> chunksize;
+                        if (chunksize == 0) {
+                            req.phase = RequestPhase::body_recved;
+                            return false;
+                        }
+                        if (r.readable() < chunksize) {
+                            return true;
+                        }
+                        size_t nowsize = body.size();
+                        body.resize(nowsize + chunksize);
+                        if (r.read_byte(body.data() + nowsize, chunksize, commonlib2::translate_byte_as_is, true) < chunksize) {
+                            req.err = HttpError::read_body;
+                            req.phase = RequestPhase::error;
+                            return false;
+                        }
+                        r.expect("\r\n");
+                        rawdata.erase(0, r.readpos());
                     }
-                    size_t chunksize;
-                    commonlib2::Reader(num) >> chunksize;
-                    if (chunksize == 0) {
-                        req.phase = RequestPhase::body_recved;
-                        return false;
-                    }
-                    if (r.readable() < chunksize) {
-                        return true;
-                    }
-                    size_t nowsize = body.size();
-                    body.resize(nowsize + chunksize);
-                    if (r.read_byte(body.data() + nowsize, chunksize, commonlib2::translate_byte_as_is, true) < chunksize) {
-                        req.err = HttpError::read_body;
-                        req.phase = RequestPhase::error;
-                        return false;
-                    }
-                    r.expect("\r\n");
-                    rawdata.erase(0, r.readpos());
                 }
                 else if (bodyinfo.has_len) {
                     if (rawdata.size() >= bodyinfo.size) {
