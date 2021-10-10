@@ -16,6 +16,6 @@ namespace socklib {
 
             DgramConn(SOCKET s, ::addrinfo* remote)
                 : sock(s), InetConn(remote) {}
-        };
+                };
     }  // namespace v2
 }  // namespace socklib
