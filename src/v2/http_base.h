@@ -155,6 +155,7 @@ namespace socklib {
             idle,
             open_direct,
             open_proxy,
+            request_sending,
             request_sent,
             request_recving,
             request_recved,

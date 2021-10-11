@@ -697,22 +697,22 @@ namespace socklib {
             }
 
             static H2Err request(conn_t& conn, readctx_t& read, CancelContext* cancel = nullptr) {
-                if (read.req.phase != RequestPhase::open_direct) {
-                    return false;
+                if (read.req.phase == RequestPhase::open_direct) {
+                    auto e = manager_t::make_new_stream(read.req.streamid, read.ctx);
+                    if (!e) {
+                        return e;
+                    }
+                    bool closable = read.req.requestbody.size() == 0;
+                    e = writer_t::write_header(conn, read.req, read.ctx, closable, cancel);
+                    if (!e) {
+                        return e;
+                    }
+                    if (closable) {
+                        read.req.phase = RequestPhase::request_sent;
+                        return true;
+                    }
                 }
-                auto e = manager_t::make_new_stream(read.req.streamid, read.ctx);
-                if (!e) {
-                    return e;
-                }
-                bool closable = read.req.requestbody.size() == 0;
-                e = writer_t::write_header(conn, read.req, read.ctx, closable, cancel);
-                if (!e) {
-                    return e;
-                }
-                if (closable) {
-                    read.req.phase = RequestPhase::request_sent;
-                    return true;
-                }
+                read.req.phase = RequestPhase::request_sending;
                 while (true) {
                     auto err = writer_t::write_data(conn, read.req, read.ctx, true, cancel);
                     if (!err && err != H2Error::need_window_update) {
