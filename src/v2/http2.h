@@ -748,7 +748,7 @@ namespace socklib {
                     if (!err) {
                         return err;
                     }
-                    if (handle_response(read, frame)) {
+                    if (handle_response(read, frame, false)) {
                         break;
                     }
                     err = call_callback(conn, frame, read, cancel);
