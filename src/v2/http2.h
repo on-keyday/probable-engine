@@ -668,7 +668,7 @@ namespace socklib {
                 return true;
             }
 
-            static bool handle_response(readctx_t& read, std::shared_ptr<frame_t>& frame) {
+            static bool handle_response(readctx_t& read, std::shared_ptr<frame_t>& frame, bool server) {
                 if (read.req.streamid == frame->get_id()) {
                     if (auto header = frame->header()) {
                         for (auto& h : header->header_map()) {
@@ -679,7 +679,7 @@ namespace socklib {
                                 read.req.response.emplace(h.first, h.second);
                             }
                         }
-                        read.req.phase = RequestPhase::request_recved;
+                        read.req.phase = server ? RequestPhase::request_recved : RequestPhase::response_recved;
                         if (frame->is_set(H2Flag::end_stream)) {
                             return true;
                         }
@@ -726,7 +726,7 @@ namespace socklib {
                     if (!err) {
                         return err;
                     }
-                    if (handle_response(read, frame)) {
+                    if (handle_response(read, frame, false)) {
                         break;
                     }
                     err = call_callback(conn, frame, read, cancel);
