@@ -411,6 +411,7 @@ namespace socklib {
             }
             if (!arg.urlencoded) {
                 commonlib2::URLEncodingContext<std::string> encctx;
+                encctx.no_escape = {':'};  //temporary solusion
                 encctx.path = true;
                 R(ctx.url.path).readwhile(ctx.path, commonlib2::url_encode, &encctx);
                 if (encctx.failed) return false;

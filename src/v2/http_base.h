@@ -344,6 +344,7 @@ namespace socklib {
                 }
                 if (!urlencoded) {
                     commonlib2::URLEncodingContext<std::string> encctx;
+                    encctx.no_escape = {':'};  //temporary solusion
                     string_t path, query;
                     encctx.path = true;
                     commonlib2::Reader<string_t&>(parsed.path).readwhile(path, commonlib2::url_encode, &encctx);
