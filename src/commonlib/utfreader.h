@@ -343,6 +343,7 @@ namespace PROJECT_NAME {
        private:                                                            \
         FromUTF32_impl<Buf, MINBUF> impl;                                  \
         size_t _size = 0;                                                  \
+        using char_type = typename FromUTF32_impl<Buf, MINBUF>::char_type; \
                                                                            \
        public:                                                             \
         NAME() {                                                           \
@@ -369,7 +370,7 @@ namespace PROJECT_NAME {
             in._size = 0;                                                  \
         }                                                                  \
                                                                            \
-        unsigned char operator[](size_t s) const {                         \
+        char_type operator[](size_t s) const {                             \
             if (impl.err) return char();                                   \
             return s >= _size ? char() : impl.get_position(INCR, DECR, s); \
         }                                                                  \
