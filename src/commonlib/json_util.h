@@ -467,7 +467,9 @@ namespace PROJECT_NAME {
                 if (!reader.string(str, true)) return error("unreadable string");
                 str.pop_back();
                 str.erase(0, 1);
-                json_unescape(str, result);
+                if (!json_unescape(str, result)) {
+                    return error("failed to parse escape");
+                }
                 return JSON(result, JSONType::string);
             }
             else if (reader.achar() == '-' || is_digit(reader.achar())) {
