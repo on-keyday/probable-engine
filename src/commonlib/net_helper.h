@@ -458,7 +458,7 @@ namespace PROJECT_NAME {
             const char* err;
             do {
                 err = nullptr;
-                JSON::parse(r, &err);
+                JSON<std::unordered_map, std::vector>::parse(r, &err);
             } while (err);
             size_t last = r.readpos();
             r.seek(first);

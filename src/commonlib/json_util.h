@@ -16,6 +16,7 @@
 
 #include "basic_helper.h"
 #include "reader.h"
+#include "extension_operator.h"
 
 namespace PROJECT_NAME {
     enum class JSONType {
@@ -38,6 +39,7 @@ namespace PROJECT_NAME {
         afterspace = 0x10,
         mustspace = 0x20,
         endline = 0x40,
+        escape = 0x80,
         must = mustline | mustspace,
         defaultf = space | afterspace | endline,
         tabnormal = tab | afterspace | endline,
@@ -121,9 +123,161 @@ namespace PROJECT_NAME {
         }
     };
 
+    template <class String>
+    bool json_escape(const String& base, String& out, bool escape_utf = false) {
+        Reader<ToUTF16<String>> r(base);
+        if (base.size() && !r.ref().size()) {
+            return false;
+        }
+        String& s = out;
+        while (!r.ceof()) {
+            char16_t c = r.achar();
+            if (c == '\\') {
+                s += "\\\\";
+            }
+            else if (c == '"') {
+                s += "\\\"";
+            }
+            else if (c == '\n') {
+                s += "\\n";
+            }
+            else if (c == '\r') {
+                s += "\\r";
+            }
+            else if (c == '\t') {
+                s += "\\t";
+            }
+            else if (c < 0x20 || c > 0x7E) {
+                if (c < 0x20 || c == 0x7F || escape_utf) {
+                    auto encode = translate_byte_net_and_host<std::uint16_t>(&c);
+                    const unsigned char* ptr = (const unsigned char*)&encode;
+                    auto translate = [](unsigned char c) -> unsigned char {
+                        if (c > 15) return 0;
+                        if (c < 10) {
+                            return c + '0';
+                        }
+                        else {
+                            return c - 10 + 'a';
+                        }
+                    };
+                    s += "\\u";
+                    s += translate((ptr[0] & 0xf0) >> 4);
+                    s += translate(ptr[0] & 0xf0);
+                    s += translate((ptr[1] & 0xf0) >> 4);
+                    s += translate(ptr[1] & 0xf0);
+                }
+                else {
+                    U16MiniBuffer buf;
+                    buf.push_back(c);
+                    if (is_utf16_surrogate_high(c)) {
+                        r.increment();
+                        c = r.achar();
+                        if (!is_utf16_surrogate_low(c)) {
+                            return false;
+                        }
+                        buf.push_back(c);
+                    }
+                    Reader(buf) >> s;
+                }
+            }
+            else {
+                s += (char)c;
+            }
+            r.increment();
+        }
+        return true;
+    }
+
+    template <class String>
+    bool json_unescape(const String& base, String& out) {
+        std::string& result = out;
+        commonlib2::Reader<std::string> r(base);
+        while (!r.ceof()) {
+            if (r.achar() == '\\') {
+                if (r.expect("\\n")) {
+                    result += '\n';
+                }
+                else if (r.expect("\\a")) {
+                    result += '\a';
+                }
+                else if (r.expect("\\b")) {
+                    result += '\b';
+                }
+                else if (r.expect("\\t")) {
+                    result += '\t';
+                }
+                else if (r.expect("\\r")) {
+                    result += '\r';
+                }
+                else if (r.expect("\\v")) {
+                    result += '\v';
+                }
+                else if (r.expect("\\e")) {
+                    result += '\e';
+                }
+                else if (r.expect("\\f")) {
+                    result += '\f';
+                }
+                else if (r.expect("\\0")) {
+                    result += "\0";
+                }
+                else if (r.expect("\\u")) {
+                    auto read_four = [&](unsigned short& e) {
+                        char buf[7] = "0x";
+                        if (r.read_byte(buf + 2, 4, translate_byte_as_is, true) < 4) {
+                            return false;
+                        }
+                        for (auto i = 0; i < 4; i++) {
+                            if (!is_hex(buf[2 + i])) {
+                                return false;
+                            }
+                        }
+                        e = 0;
+                        Reader<const char*> tmp(buf);
+                        tmp >> e;
+                        return true;
+                    };
+                    U16MiniBuffer buf;
+                    unsigned short i = 0, k = 0;
+                    if (!read_four(i)) {
+                        return false;
+                    }
+                    if (is_utf16_surrogate_high(i)) {
+                        if (!r.expect("\\u")) {
+                            return false;
+                        }
+                        if (!read_four(k)) {
+                            return false;
+                        }
+                        buf.push_back(i);
+                        buf.push_back(k);
+                    }
+                    else {
+                        buf.push_back(i);
+                    }
+                    Reader(buf) >> result;
+                }
+                else {
+                    r.increment();
+                    if (r.ceof()) {
+                        return false;
+                    }
+                    result += r.achar();
+                    r.increment();
+                }
+            }
+            else {
+                result += r.achar();
+                r.increment();
+            }
+        }
+        return true;
+    }
+
+    template <template <class...> class Map = std::unordered_map, template <class...> class Vec = std::vector>
     struct JSON {
-        using JSONObjectType = std::unordered_map<std::string, JSON>;
-        using JSONArrayType = std::vector<JSON>;
+        using JSONObjectType = Map<std::string, JSON>;
+        using JSONArrayType = Vec<JSON>;
 
        private:
         union {
@@ -309,11 +463,12 @@ namespace PROJECT_NAME {
                 return ret;
             }
             else if (reader.ahead("\"")) {
-                std::string str;
+                std::string str, result;
                 if (!reader.string(str, true)) return error("unreadable string");
                 str.pop_back();
                 str.erase(0, 1);
-                return JSON(str, JSONType::string);
+                json_unescape(str, result);
+                return JSON(result, JSONType::string);
             }
             else if (reader.achar() == '-' || is_digit(reader.achar())) {
                 bool minus = false;
@@ -334,16 +489,12 @@ namespace PROJECT_NAME {
                     }
                     return JSON(minus ? -f : f);
                 };
-
-                //#if (__cplusplus>=201703L)
                 if (any(ctx.flag & NumberFlag::floatf)) {
                     return parse_fl();
                 }
                 else {
                     uint64_t n = 0;
                     if (parse_ull(num, n)) {
-                        /*auto res=std::from_chars(be,en,n);
-                        if(res.ec==std::errc{}){*/
                         if (n & 0x80'00'00'00'00'00'00'00) {
                             if (minus) {
                                 double df = (double)n;
@@ -362,34 +513,6 @@ namespace PROJECT_NAME {
                         return parse_fl();
                     }
                 }
-                /*#else
-                if(ctx.floatf){
-                    return parse_float();
-                }
-                else{
-                    try{
-                        auto n=std::stoull(num);
-                        if(n&0x80'00'00'00'00'00'00'00){
-                            if(minus){
-                                auto f=(double)n;
-                                f=-f;
-                                return JSON(f);
-                            }
-                            else{
-                                return JSON(n);
-                            }
-                        }
-                        auto i=(int64_t)n;
-                        if(minus){
-                            i=-i;
-                        }
-                        return JSON(i);
-                    }
-                    catch(...){
-                        return parse_float();
-                    }
-                }
-#endif*/
             }
             else if (reader.expectp("true", expected, is_c_id_usable) ||
                      reader.expectp("false", expected, is_c_id_usable)) {
@@ -470,7 +593,9 @@ namespace PROJECT_NAME {
             }
             else if (type == JSONType::string) {
                 ret = "\"";
-                ret.append(value.const_str(), value.size());
+                std::string res;
+                json_escape(std::string(value.const_str(), value.size()), res, flag(JSONFormat::escape));
+                ret.append(res);
                 ret += "\"";
             }
             else if (type == JSONType::integer) {
@@ -485,47 +610,6 @@ namespace PROJECT_NAME {
             return ret;
         }
 
-        std::string escape(const std::string& base) {
-            std::string s;
-            for (auto c : base) {
-                if (c == '\\') {
-                    s += "\\\\";
-                }
-                else if (c == '"') {
-                    s += "\\\"";
-                }
-                else if (c == '\n') {
-                    s += "\\n";
-                }
-                else if (c == '\r') {
-                    s += "\\r";
-                }
-                else if (c == '\t') {
-                    s += "\\t";
-                }
-                else if (c < 0x20 || c > 0x7E) {
-                    auto msb = (c & 0xf0) >> 4;
-                    auto lsb = c & 0x0f;
-                    auto translate = [](unsigned char c) -> unsigned char {
-                        if (c > 15) return 0;
-                        if (c < 10) {
-                            return c + '0';
-                        }
-                        else {
-                            return c - 10 + 'a';
-                        }
-                    };
-                    s += "\\u00";
-                    s += translate((unsigned char)msb);
-                    s += translate((unsigned char)lsb);
-                }
-                else {
-                    s += c;
-                }
-            }
-            return s;
-        }
-
         template <class Struct>
         auto to_json_detail(JSON& to, const Struct& in)
             -> decltype(to_json(to, in)) {
@@ -538,8 +622,8 @@ namespace PROJECT_NAME {
             in.to_json(to);
         }
 
-        template <class Vec>
-        auto to_json_detail(JSON& to, const Vec& vec)
+        template <class VecT>
+        auto to_json_detail(JSON& to, const VecT& vec)
             -> decltype(to_json_detail(to, vec[0])) {
             JSON js;
             for (auto& o : vec) {
@@ -548,8 +632,8 @@ namespace PROJECT_NAME {
             to = std::move(js);
         }
 
-        template <class Map>
-        auto to_json_detail(JSON& to, const Map& m)
+        template <class MapT>
+        auto to_json_detail(JSON& to, const MapT& m)
             -> decltype(to_json_detail(to, m[std::string()])) {
             JSON js;
             for (auto& o : m) {
@@ -558,16 +642,24 @@ namespace PROJECT_NAME {
             to = std::move(js);
         }
 
-        void obj_check(bool exist, const std::string& in) const {
-            if (type != JSONType::object) throw "object kind miss match.";
-            if (exist && !obj->count(in)) throw "invalid range";
+        const char* obj_check(bool exist, const std::string& in) const {
+            if (type != JSONType::object) {
+                return "object kind miss match.";
+            }
+            if (exist && !obj->count(in)) {
+                return "invalid range";
+            }
+            return nullptr;
         }
 
-        void array_check(bool check, size_t pos) const {
-            if (type != JSONType::array)
-                throw "object kind miss match.";
-            if (check && array->size() <= pos)
-                throw "invalid index";
+        const char* array_check(bool check, size_t pos) const {
+            if (type != JSONType::array) {
+                return "object kind miss match.";
+            }
+            if (check && array->size() <= pos) {
+                return "invalid index";
+            }
+            return nullptr;
         }
 
         void array_if_unset() {
@@ -739,8 +831,8 @@ namespace PROJECT_NAME {
 
         JSON(const std::string& in) {
             type = JSONType::string;
-            auto str = escape(in);
-            value = EasyStr(str.c_str(), str.size());
+            //auto str = escape(in);
+            value = EasyStr(in.c_str(), in.size());
         }
 
         JSON(const char* in) {
@@ -749,8 +841,8 @@ namespace PROJECT_NAME {
             }
             else {
                 type = JSONType::string;
-                auto str = escape(in);
-                value = EasyStr(str.c_str());
+                //auto str = escape(in);
+                value = EasyStr(in, ::strlen(in));
             }
         }
 
@@ -770,25 +862,29 @@ namespace PROJECT_NAME {
 
         JSON& operator[](const std::string& key) {
             obj_if_unset();
-            obj_check(false, key);
+            if (auto e = obj_check(false, key)) {
+                throw e;
+            }
             return obj->operator[](key);
         }
 
         JSON& at(const std::string& key) const {
-            obj_check(true, key);
+            if (auto e = obj_check(true, key)) {
+                throw e;
+            }
             return obj->at(key);
         }
 
         JSON& at(size_t pos) const {
-            array_check(true, pos);
+            if (auto e = array_check(true, pos)) {
+                throw e;
+            }
             return array->at(pos);
         }
 
         JSON* idx(size_t pos) const {
             //array_if_unset();
-            try {
-                array_check(true, pos);
-            } catch (...) {
+            if (array_check(true, pos)) {
                 return nullptr;
             }
             return std::addressof(array->at(pos));
@@ -796,9 +892,7 @@ namespace PROJECT_NAME {
 
         JSON* idx(const std::string& key) const {
             //obj_if_unset();
-            try {
-                obj_check(true, key);
-            } catch (...) {
+            if (obj_check(true, key)) {
                 return nullptr;
             }
             return std::addressof(obj->at(key));
@@ -806,21 +900,27 @@ namespace PROJECT_NAME {
 
         bool push_back(JSON&& json) {
             array_if_unset();
-            array_check(false, 0);
+            if (auto e = array_check(false, 0)) {
+                throw e;
+            }
             array->push_back(std::move(json));
             return true;
         }
 
         bool push_back(const JSON& json) {
             array_if_unset();
-            array_check(false, 0);
+            if (auto e = array_check(false, 0)) {
+                throw e;
+            }
             array->push_back(json);
             return true;
         }
 
         bool insert(size_t pos, JSON&& json, bool sizecheck = true, bool valid = false) {
             array_if_unset();
-            array_check(false, 0);
+            if (auto e = array_check(false, 0)) {
+                throw e;
+            }
             auto presize = array->size();
             if (sizecheck && presize < pos) return false;
             array->insert(array->begin() + pos, std::move(json));
@@ -835,7 +935,9 @@ namespace PROJECT_NAME {
 
         bool insert(size_t pos, const JSON& json, bool sizecheck = true, bool valid = false) {
             array_if_unset();
-            array_check(false, 0);
+            if (auto e = array_check(false, 0)) {
+                throw e;
+            }
             auto presize = array->size();
             if (sizecheck && presize < pos) return false;
             array->insert(array->begin() + pos, json);
@@ -849,14 +951,18 @@ namespace PROJECT_NAME {
         }
 
         bool erase(size_t pos) {
-            array_check(false, 0);
+            if (auto e = array_check(false, 0)) {
+                throw e;
+            }
             if (array->size() <= pos) return false;
             array->erase(array->begin() + pos);
             return true;
         }
 
         bool erase(const std::string& in) {
-            obj_check(false, in);
+            if (auto e = obj_check(false, 0)) {
+                throw e;
+            }
             return (bool)obj->erase(in);
         }
 
@@ -947,15 +1053,16 @@ namespace PROJECT_NAME {
 
        private:
         template <class T>
-        T signed_num_get() const {
+        const char* signed_num_get(T& res) const {
             if (type != JSONType::integer && type != JSONType::unsignedi) {
-                throw "object type missmatch";
+                return "object type missmatch";
             }
-            auto check = [this](int64_t s, int64_t l) {
+            auto check = [this](int64_t s, int64_t l) -> const char* {
                 if (numi < s || numi > l) {
-                    throw "out of range";
+                    return "out of range";
                 }
-                return (T)numi;
+                res = (T)numi;
+                return nullptr;
             };
             switch (sizeof(T)) {
                 case 1:
@@ -966,28 +1073,30 @@ namespace PROJECT_NAME {
                     return check(msb_on<signed int>(), 0x7fffffff);
                 case 8: {
                     if (type == JSONType::unsignedi && numi < 0) {
-                        throw "out of range";
+                        return "out of range";
                     }
-                    return (T)numi;
+                    res = (T)numi;
+                    return nullptr;
                 }
                 default:
-                    throw "too large number size";
+                    return "too large number size";
             }
-            throw "unreachable";
+            return "unreachable";
         }
         template <class T>
-        T unsigned_num_get() const {
+        const char* unsigned_num_get(T& res) const {
             if (type != JSONType::integer && type != JSONType::unsignedi) {
                 throw "object type missmatch";
             }
             if (type == JSONType::integer && numi < 0) {
                 throw "out of range";
             }
-            auto check = [this](uint64_t c) {
+            auto check = [this](uint64_t c) -> const char* {
                 if (numu > c) {
-                    throw "out of range";
+                    return "out of range";
                 }
-                return (T)numu;
+                res = (T)numu;
+                return nullptr;
             };
             switch (sizeof(T)) {
                 case 1:
@@ -997,11 +1106,12 @@ namespace PROJECT_NAME {
                 case 4:
                     return check(0xffffffff);
                 case 8:
-                    return (T)numu;
+                    res = (T)numu;
+                    return nullptr;
                 default:
-                    throw "too large number size";
+                    return "too large number size";
             }
-            throw "unreachable";
+            return "unreachable";
         }
 
         template <class T>
@@ -1081,11 +1191,15 @@ namespace PROJECT_NAME {
        private:
 #define COMMONLIB_JSON_FROM_JSON_DETAIL_SIG(x)         \
     void from_json_detail(x& s, const JSON& j) const { \
-        s = j.signed_num_get<x>();                     \
+        if (auto e = j.signed_num_get<x>(s)) {         \
+            throw e;                                   \
+        }                                              \
     }
 #define COMMONLIB_JSON_FROM_JSON_DETAIL_UNSIG(x)                \
     void from_json_detail(unsigned x& s, const JSON& j) const { \
-        s = j.unsigned_num_get<unsigned x>();                   \
+        if (auto e = j.unsigned_num_get<unsigned x>(s)) {       \
+            throw e;                                            \
+        }                                                       \
     }
 
         COMMONLIB_JSON_FROM_JSON_DETAIL_SIG(char)
@@ -1144,8 +1258,8 @@ namespace PROJECT_NAME {
             to.from_json(in);
         }
 
-        template <class Vec>
-        auto from_json_detail(Vec& to, const JSON& in) const
+        template <class VecT>
+        auto from_json_detail(VecT& to, const JSON& in) const
             -> decltype(from_json_detail(to[0], in)) {
             if (in.type != JSONType::array) {
                 throw "object kind missmatch";
@@ -1155,8 +1269,8 @@ namespace PROJECT_NAME {
             }
         }
 
-        template <class Map>
-        auto from_json_detail(Map& to, const JSON& in) const
+        template <class MapT>
+        auto from_json_detail(MapT& to, const JSON& in) const
             -> decltype(from_json_detail(to[std::string()], in)) {
             if (in.type != JSONType::object) {
                 throw "object kind missmatch";
@@ -1167,7 +1281,7 @@ namespace PROJECT_NAME {
         }
 
        public:
-        JSON* path(const std::string& p, bool follow_rfc = false) {
+        JSON* path(const std::string& p, bool follow_rfc = false, bool make_if_not = false) {
             if (follow_rfc) {
                 bool ins;
                 std::string s;
@@ -1196,7 +1310,9 @@ namespace PROJECT_NAME {
                 std::string key;
                 auto path_get = [&](auto& key) {
                     hold = ret->idx(key);
-                    if (!hold) return false;
+                    if (!hold) {
+                        return false;
+                    }
                     ret = hold;
                     return true;
                 };
@@ -1213,24 +1329,61 @@ namespace PROJECT_NAME {
                         },
                         true);
                 };
+                if (make_if_not) {
+                    if (ret->type == JSONType::unset) {
+                        if (reader.ahead("\"") || reader.ahead("\'")) {
+                            (*ret).init_as_obj({});
+                        }
+                        else if (arrayf) {
+                            (*ret).init_as_array({});
+                        }
+                        else {
+                            (*ret).init_as_obj({});
+                        }
+                    }
+                }
                 if (ret->type == JSONType::array) {
                     read_until_cut();
                     uint64_t pos = 0;
                     if (!parse_ull(key, pos)) {
                         return nullptr;
                     }
-                    if (!path_get(key)) return nullptr;
+                    if (!path_get(pos)) {
+                        if (make_if_not) {
+                            if (!(*ret).insert(pos, nullptr, false, true)) {
+                                return nullptr;
+                            }
+                            ret = &(*ret)[pos];
+                        }
+                        else {
+                            return nullptr;
+                        }
+                    }
                 }
                 else if (ret->type == JSONType::object) {
                     if (reader.ahead("\"") || reader.ahead("'")) {
                         if (!reader.string(key, true)) return nullptr;
                         key.pop_back();
                         key.erase(0, 1);
-                        if (!path_get(key)) return nullptr;
+                        if (!path_get(key)) {
+                            if (make_if_not) {
+                                ret = &(*ret)[key];
+                            }
+                            else {
+                                return nullptr;
+                            }
+                        }
                     }
                     else if (!arrayf) {
                         read_until_cut();
-                        if (!path_get(key)) return nullptr;
+                        if (!path_get(key)) {
+                            if (make_if_not) {
+                                ret = &(*ret)[key];
+                            }
+                            else {
+                                return nullptr;
+                            }
+                        }
                     }
                     else {
                         return nullptr;
@@ -1349,15 +1502,15 @@ namespace PROJECT_NAME {
         }
     };
 
-    inline JSON operator""_json(const char* in, size_t size) {
-        return JSON::parse(std::string(in, size));
+    inline JSON<std::unordered_map, std::vector> operator""_json(const char* in, size_t size) {
+        return JSON<std::unordered_map, std::vector>::parse(std::string(in, size));
     }
 
-    using JSONObject = JSON::JSONObjectType;
-    using JSONArray = JSON::JSONArrayType;
+    using JSONObject = JSON<std::unordered_map, std::vector>::JSONObjectType;
+    using JSONArray = JSON<std::unordered_map, std::vector>::JSONArrayType;
 
     template <class Vec>
-    JSON atoj(Vec& in) {
+    JSON<std::unordered_map, std::vector> atoj(Vec& in) {
         JSON ret = "[]"_json;
         for (auto& i : in) {
             ret.push_back(i);
