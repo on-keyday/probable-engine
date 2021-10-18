@@ -121,6 +121,7 @@ namespace PROJECT_NAME {
     struct FromUTF32_impl {
         using char_type = std::make_unsigned_t<b_char_type<Buf>>;
         mutable Tmp minbuf;
+        using to_type = remove_cv_ref<decltype(minbuf[0])>;
         mutable Reader<Buf> r;
         mutable size_t ofs = 0;
         mutable bool err = false;
@@ -194,7 +195,7 @@ namespace PROJECT_NAME {
         }
 
         template <class Func, class Func2>
-        char_type get_position(Func func, Func2 func2, size_t pos) const {
+        to_type get_position(Func func, Func2 func2, size_t pos) const {
             if (prev == pos) {
                 return minbuf[ofs];
             }
@@ -337,81 +338,81 @@ namespace PROJECT_NAME {
         }                                                                      \
     }
 
-#define DEFINE_UTF_TEMPLATE(NAME, SIZE, INCR, DECR, MINBUF)                \
-    template <class Buf>                                                   \
-    struct NAME<Buf, SIZE> {                                               \
-       private:                                                            \
-        FromUTF32_impl<Buf, MINBUF> impl;                                  \
-        size_t _size = 0;                                                  \
-        using char_type = typename FromUTF32_impl<Buf, MINBUF>::char_type; \
-                                                                           \
-       public:                                                             \
-        NAME() {                                                           \
-            _size = impl.count(INCR);                                      \
-        }                                                                  \
-                                                                           \
-        NAME(const Buf& in) : impl(in) {                                   \
-            _size = impl.count(INCR);                                      \
-        }                                                                  \
-                                                                           \
-        NAME(Buf&& in) : impl(std::forward<Buf>(in)) {                     \
-            _size = impl.count(INCR);                                      \
-        }                                                                  \
-                                                                           \
-        NAME(const NAME& in) {                                             \
-            _size = in._size;                                              \
-            impl.copy(in.impl);                                            \
-        }                                                                  \
-                                                                           \
-        NAME(NAME&& in)                                                    \
-        noexcept {                                                         \
-            _size = in._size;                                              \
-            impl.move(std::forward<FromUTF32_impl<Buf, MINBUF>>(in.impl)); \
-            in._size = 0;                                                  \
-        }                                                                  \
-                                                                           \
-        char_type operator[](size_t s) const {                             \
-            if (impl.err) return char();                                   \
-            return s >= _size ? char() : impl.get_position(INCR, DECR, s); \
-        }                                                                  \
-                                                                           \
-        size_t size() const {                                              \
-            return _size;                                                  \
-        }                                                                  \
-                                                                           \
-        size_t ofset_from_head() {                                         \
-            return impl.ofset_from_head();                                 \
-        }                                                                  \
-                                                                           \
-        size_t offset_to_next() {                                          \
-            return impl.offset_to_next();                                  \
-        }                                                                  \
-                                                                           \
-        Buf* operator->() {                                                \
-            return std::addressof(impl.ref());                             \
-        }                                                                  \
-                                                                           \
-        Reader<Buf>& base_reader() {                                       \
-            return impl.base_reader();                                     \
-        }                                                                  \
-                                                                           \
-        bool reset() {                                                     \
-            _size = impl.reset(INCR);                                      \
-            return impl.err;                                               \
-        }                                                                  \
-                                                                           \
-        NAME& operator=(const NAME& in) {                                  \
-            _size = in._size;                                              \
-            impl.copy(in.impl);                                            \
-            return *this;                                                  \
-        }                                                                  \
-                                                                           \
-        NAME& operator=(NAME&& in) noexcept {                              \
-            _size = in._size;                                              \
-            in._size = 0;                                                  \
-            impl.move(std::forward<FromUTF32_impl<Buf, MINBUF>>(in.impl)); \
-            return *this;                                                  \
-        }                                                                  \
+#define DEFINE_UTF_TEMPLATE(NAME, SIZE, INCR, DECR, MINBUF)                     \
+    template <class Buf>                                                        \
+    struct NAME<Buf, SIZE> {                                                    \
+       private:                                                                 \
+        FromUTF32_impl<Buf, MINBUF> impl;                                       \
+        size_t _size = 0;                                                       \
+        using char_type = typename FromUTF32_impl<Buf, MINBUF>::to_type;        \
+                                                                                \
+       public:                                                                  \
+        NAME() {                                                                \
+            _size = impl.count(INCR);                                           \
+        }                                                                       \
+                                                                                \
+        NAME(const Buf& in) : impl(in) {                                        \
+            _size = impl.count(INCR);                                           \
+        }                                                                       \
+                                                                                \
+        NAME(Buf&& in) : impl(std::forward<Buf>(in)) {                          \
+            _size = impl.count(INCR);                                           \
+        }                                                                       \
+                                                                                \
+        NAME(const NAME& in) {                                                  \
+            _size = in._size;                                                   \
+            impl.copy(in.impl);                                                 \
+        }                                                                       \
+                                                                                \
+        NAME(NAME&& in)                                                         \
+        noexcept {                                                              \
+            _size = in._size;                                                   \
+            impl.move(std::forward<FromUTF32_impl<Buf, MINBUF>>(in.impl));      \
+            in._size = 0;                                                       \
+        }                                                                       \
+                                                                                \
+        char_type operator[](size_t s) const {                                  \
+            if (impl.err) return char();                                        \
+            return s >= _size ? char_type() : impl.get_position(INCR, DECR, s); \
+        }                                                                       \
+                                                                                \
+        size_t size() const {                                                   \
+            return _size;                                                       \
+        }                                                                       \
+                                                                                \
+        size_t ofset_from_head() {                                              \
+            return impl.ofset_from_head();                                      \
+        }                                                                       \
+                                                                                \
+        size_t offset_to_next() {                                               \
+            return impl.offset_to_next();                                       \
+        }                                                                       \
+                                                                                \
+        Buf* operator->() {                                                     \
+            return std::addressof(impl.ref());                                  \
+        }                                                                       \
+                                                                                \
+        Reader<Buf>& base_reader() {                                            \
+            return impl.base_reader();                                          \
+        }                                                                       \
+                                                                                \
+        bool reset() {                                                          \
+            _size = impl.reset(INCR);                                           \
+            return impl.err;                                                    \
+        }                                                                       \
+                                                                                \
+        NAME& operator=(const NAME& in) {                                       \
+            _size = in._size;                                                   \
+            impl.copy(in.impl);                                                 \
+            return *this;                                                       \
+        }                                                                       \
+                                                                                \
+        NAME& operator=(NAME&& in) noexcept {                                   \
+            _size = in._size;                                                   \
+            in._size = 0;                                                       \
+            impl.move(std::forward<FromUTF32_impl<Buf, MINBUF>>(in.impl));      \
+            return *this;                                                       \
+        }                                                                       \
     }
 
     template <class Buf, int N = sizeof(b_char_type<Buf>)>
