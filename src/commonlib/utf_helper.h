@@ -16,22 +16,22 @@ namespace PROJECT_NAME {
         unsigned char minbuf[4] = {0};
         size_t pos = 0;
 
-        void push_back(unsigned char c) {
+        constexpr void push_back(unsigned char c) {
             if (pos >= 4) return;
             minbuf[pos] = c;
             pos++;
         }
 
-        size_t size() const {
+        constexpr size_t size() const {
             return pos;
         }
 
-        unsigned char operator[](size_t p) {
+        constexpr unsigned char operator[](size_t p) {
             if (p >= 4) return char();
             return minbuf[p];
         }
 
-        void reset() {
+        constexpr void reset() {
             pos = 0;
             minbuf[0] = 0;
             minbuf[1] = 0;
@@ -39,7 +39,7 @@ namespace PROJECT_NAME {
             minbuf[3] = 0;
         }
 
-        U8MiniBuffer& operator=(const U8MiniBuffer& in) {
+        constexpr U8MiniBuffer& operator=(const U8MiniBuffer& in) {
             reset();
             pos = in.pos;
             for (auto i = 0; i < pos; i++) {
@@ -48,7 +48,7 @@ namespace PROJECT_NAME {
             return *this;
         }
 
-        U8MiniBuffer& operator=(U8MiniBuffer&& in) {
+        constexpr U8MiniBuffer& operator=(U8MiniBuffer&& in) {
             reset();
             pos = in.pos;
             for (auto i = 0; i < pos; i++) {
@@ -63,28 +63,28 @@ namespace PROJECT_NAME {
         unsigned short minbuf[2] = {0};
         size_t pos = 0;
 
-        void push_back(unsigned short c) {
+        constexpr void push_back(unsigned short c) {
             if (pos >= 2) return;
             minbuf[pos] = c;
             pos++;
         }
 
-        size_t size() const {
+        constexpr size_t size() const {
             return pos;
         }
 
-        char16_t operator[](size_t p) {
+        constexpr char16_t operator[](size_t p) {
             if (p >= 2) return char();
             return minbuf[p];
         }
 
-        void reset() {
+        constexpr void reset() {
             pos = 0;
             minbuf[0] = 0;
             minbuf[1] = 0;
         }
 
-        U16MiniBuffer& operator=(const U16MiniBuffer& in) {
+        constexpr U16MiniBuffer& operator=(const U16MiniBuffer& in) {
             reset();
             pos = in.pos;
             for (auto i = 0; i < pos; i++) {
@@ -93,7 +93,7 @@ namespace PROJECT_NAME {
             return *this;
         }
 
-        U16MiniBuffer& operator=(U16MiniBuffer&& in) {
+        constexpr U16MiniBuffer& operator=(U16MiniBuffer&& in) {
             reset();
             pos = in.pos;
             for (auto i = 0; i < pos; i++) {
