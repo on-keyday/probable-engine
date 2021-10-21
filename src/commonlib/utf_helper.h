@@ -16,6 +16,15 @@ namespace PROJECT_NAME {
         unsigned char minbuf[4] = {0};
         size_t pos = 0;
 
+        constexpr U8MiniBuffer() {}
+        constexpr U8MiniBuffer(const U8MiniBuffer& in) noexcept {
+            minbuf[0] = in.minbuf[0];
+            minbuf[1] = in.minbuf[1];
+            minbuf[2] = in.minbuf[2];
+            minbuf[3] = in.minbuf[3];
+            pos = in.pos;
+        }
+
         constexpr void push_back(unsigned char c) {
             if (pos >= 4) return;
             minbuf[pos] = c;
@@ -62,6 +71,14 @@ namespace PROJECT_NAME {
     struct U16MiniBuffer {
         unsigned short minbuf[2] = {0};
         size_t pos = 0;
+
+        constexpr U16MiniBuffer() {}
+
+        constexpr U16MiniBuffer(const U16MiniBuffer& in) noexcept {
+            minbuf[0] = in.minbuf[0];
+            minbuf[1] = in.minbuf[1];
+            pos = in.pos;
+        }
 
         constexpr void push_back(unsigned short c) {
             if (pos >= 2) return;
@@ -238,7 +255,7 @@ namespace PROJECT_NAME {
             return 0;
         }
         auto maskbit = [](int i) {
-            return ~utf8bits(i);
+            return (unsigned char)~utf8bits(i);
         };
         if (len == 0) {
             return buf[offset];
@@ -309,7 +326,7 @@ namespace PROJECT_NAME {
     template <class Buf>
     constexpr bool make_utf8_from_utf32(char32_t C, Buf& buf) {
         auto push = [&buf, C](int len) {
-            unsigned char mask = ~utf8bits(1);
+            unsigned char mask = (unsigned char)~utf8bits(1);
             for (auto i = 0; i < len; i++) {
                 auto mul = (len - 1 - i);
                 auto shift = 6 * mul;
@@ -320,11 +337,11 @@ namespace PROJECT_NAME {
                 else {
                     abyte = utf8bits(0) | (shiftC & mask);
                 }
-                ret.push_back(abyte);
+                buf.push_back(abyte);
             }
         };
         if (C < 0x80) {
-            ret.push_back((unsigned char)C);
+            buf.push_back((unsigned char)C);
         }
         else if (C < 0x800) {
             push(2);
@@ -429,7 +446,7 @@ namespace PROJECT_NAME {
                 *ctx = 2;
                 return true;
             }
-            return make_surrogate_char(first, C, false);
+            return make_surrogate_char(first, C);
         }
         else {
             return C;
