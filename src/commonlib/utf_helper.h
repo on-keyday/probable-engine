@@ -400,6 +400,19 @@ namespace PROJECT_NAME {
     }
 
     template <class Buf>
+    constexpr char32_t make_utf32_from_utf16(char16_t first, char16_t second = 0, bool check = false) {
+        if (second == 0) {
+            return (char32_t)first;
+        }
+        else {
+            if (check && (!is_utf16_surrogate_high(first) || !is_utf16_surrogate_low(second))) {
+                return 0;
+            }
+            return make_surrogate_char(first, second);
+        }
+    }
+
+    template <class Buf>
     char32_t utf16toutf32_impl(Reader<Buf>* self, int* ctx) {
         auto C = self->achar();
         auto hi = [&C] {
@@ -416,7 +429,7 @@ namespace PROJECT_NAME {
                 *ctx = 2;
                 return true;
             }
-            return make_surrogate_char(first, C);
+            return make_surrogate_char(first, C, false);
         }
         else {
             return C;
