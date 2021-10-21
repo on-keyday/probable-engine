@@ -337,7 +337,7 @@ namespace PROJECT_NAME {
         template <class Str, class Ctx, class NotExpect = not_expect_default, class Cmp = cmp_default>
         bool expectp(Str&& str, Ctx& ctx, NotExpect&& not_expect = NotExpect(), Cmp&& cmp = std::move(default_cmp)) {
             if (expect<Str, NotExpect, Cmp>(str, std::forward<NotExpect>(not_expect), std::forward<Cmp>(cmp))) {
-                ctx = str;
+                ctx = (Ctx)str;
                 return true;
             }
             return false;
