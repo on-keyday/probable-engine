@@ -345,7 +345,7 @@ namespace PROJECT_NAME {
     bool utf32toutf8(Reader<Buf>* self, Ret& ret, int*& ctx, bool begin) {
         static_assert(sizeof(typename Reader<Buf>::char_type) == 4, "");
         static_assert(sizeof(ret[0]) == 1, "");
-        using Char8 = remove_cv_ref<decltype(ret[0])>;
+        //using Char8 = remove_cv_ref<decltype(ret[0])>;
         if (begin) {
             if (!ctx) return false;
             return true;
@@ -438,6 +438,23 @@ namespace PROJECT_NAME {
         return false;
     }
 
+    template <class Buf>
+    constexpr bool make_utf16_from_utf32(char32_t C, Buf& buf) {
+        if (C < 0 || C > 0x10FFFF) {
+            return false;
+        }
+        if (C < 0x10000) {
+            buf.push_back((char16_t)C);
+        }
+        else {
+            auto first = char16_t((C - 0x10000) / 0x400 + 0xD800);
+            auto second = char16_t((C - 0x10000) % 0x400 + 0xDC00);
+            buf.push_back(first);
+            buf.push_back(second);
+        }
+        return true;
+    }
+
     template <class Buf, class Ret>
     bool utf32toutf16(Reader<Buf>* self, Ret& ret, int*& ctx, bool begin) {
         static_assert(sizeof(typename Reader<Buf>::char_type) == 4, "");
@@ -448,6 +465,11 @@ namespace PROJECT_NAME {
         }
         if (!self) return true;
         auto C = self->achar();
+        if (!make_utf16_from_utf32(C, ret)) {
+            *ctx = 1;
+            return true;
+        }
+        /*
         if (C < 0 || C > 0x10FFFF) {
             *ctx = 1;
             return true;
@@ -461,6 +483,7 @@ namespace PROJECT_NAME {
             ret.push_back(first);
             ret.push_back(second);
         }
+        */
         return false;
     }
 
