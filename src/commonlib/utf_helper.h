@@ -104,7 +104,7 @@ namespace PROJECT_NAME {
         }
     };
 
-    inline unsigned char utf8bits(int i) {
+    constexpr unsigned char utf8bits(int i) {
         const unsigned char maskbits[] = {
             //first byte mask
             0b10000000,
@@ -121,7 +121,7 @@ namespace PROJECT_NAME {
         return i >= 0 && i < sizeof(maskbits) ? maskbits[i] : 0;
     }
 
-    inline unsigned char utf8mask(unsigned char c, int i) {
+    constexpr unsigned char utf8mask(unsigned char c, int i) {
         if (i < 1 || i > 4) return 0;
         return (utf8bits(i) & c) == utf8bits(i - 1) ? utf8bits(i - 1) : 0;
     }
@@ -232,14 +232,41 @@ namespace PROJECT_NAME {
         return false;
     }
 
+    template <class Buf>
+    constexpr char32_t make_utf32_from_utf8(Buf& buf, int len, int offset = 0) {
+        if (len <= 0 || len >= 4) {
+            return 0;
+        }
+        auto maskbit = [](int i) {
+            return ~utf8bits(i);
+        };
+        if (len == 0) {
+            return buf[offset];
+        }
+        char32_t ret = 0;
+        for (int i = 0; i < len; i++) {
+            auto mul = (len - i - 1);
+            auto shift = 6 * mul;
+            unsigned char masking = 0;
+            if (i == 0) {
+                masking = buf[offset] & maskbit(len - 1);
+            }
+            else {
+                masking = buf[offset + i] & maskbit(1);
+            }
+            ret |= masking << shift;
+        }
+        return ret;
+    }
+
     template <class Buf> /*,class Str>*/
     char32_t utf8toutf32_impl(Reader<Buf>* self, int* ctx) {
         //Str buf;
         U8MiniBuffer buf;
         utf8_read(self, buf, ctx, false);
         if (*ctx) return 0;
-        auto len = (int)buf.size();
-        if (len == 1) {
+        return make_utf32_from_utf8(buf, (int)buf.size(), 0);
+        /*if (len == 1) {
             return (char32_t)buf[0];
         }
         auto maskbit = [](int i) {
@@ -261,7 +288,7 @@ namespace PROJECT_NAME {
             }
             return ret;
         };
-        return (char32_t)make();
+        return (char32_t)make();*/
     }
 
     template <class Buf, class Ret>
@@ -279,6 +306,41 @@ namespace PROJECT_NAME {
         return false;
     }
 
+    template <class Buf>
+    constexpr bool make_utf8_from_utf32(char32_t C, Buf& buf) {
+        auto push = [&buf, C](int len) {
+            unsigned char mask = ~utf8bits(1);
+            for (auto i = 0; i < len; i++) {
+                auto mul = (len - 1 - i);
+                auto shift = 6 * mul;
+                unsigned char abyte = 0, shiftC = (unsigned char)(C >> shift);
+                if (i == 0) {
+                    abyte = utf8bits(len - 1) | (shiftC & mask);
+                }
+                else {
+                    abyte = utf8bits(0) | (shiftC & mask);
+                }
+                ret.push_back(abyte);
+            }
+        };
+        if (C < 0x80) {
+            ret.push_back((unsigned char)C);
+        }
+        else if (C < 0x800) {
+            push(2);
+        }
+        else if (C < 0x10000) {
+            push(3);
+        }
+        else if (C < 0x110000) {
+            push(4);
+        }
+        else {
+            return false;
+        }
+        return true;
+    }
+
     template <class Buf, class Ret>
     bool utf32toutf8(Reader<Buf>* self, Ret& ret, int*& ctx, bool begin) {
         static_assert(sizeof(typename Reader<Buf>::char_type) == 4, "");
@@ -290,6 +352,7 @@ namespace PROJECT_NAME {
         }
         if (!self) return true;
         unsigned int C = self->achar();
+        /*
         auto push = [&ret, C](int len) {
             Char8 mask = ~utf8bits(1);
             for (auto i = 0; i < len; i++) {
@@ -316,8 +379,8 @@ namespace PROJECT_NAME {
         }
         else if (C < 0x110000) {
             push(4);
-        }
-        else {
+        }*/
+        if (!make_utf8_from_utf32(C, ret)) {
             *ctx = C;
             return true;
         }
