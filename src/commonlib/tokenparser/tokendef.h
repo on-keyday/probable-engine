@@ -107,7 +107,7 @@ namespace PROJECT_NAME {
             }
 
             bool is_nodisplay() const {
-                return kind == TokenKind::unknown || kind == TokenKind::spaces || kind == TokenKind::line || kind == TokenKind::root
+                return kind == TokenKind::unknown || kind == TokenKind::spaces || kind == TokenKind::line || kind == TokenKind::root;
             }
 
             bool set_next(std::shared_ptr<Token> p) {
