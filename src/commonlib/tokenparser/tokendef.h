@@ -106,6 +106,10 @@ namespace PROJECT_NAME {
                 return kind;
             }
 
+            bool is_nodisplay() const {
+                return kind == TokenKind::unknown || kind == TokenKind::spaces || kind == TokenKind::line || kind == TokenKind::root
+            }
+
             bool set_next(std::shared_ptr<Token> p) {
                 if (this->next || !p || p->prev) {
                     return false;
