@@ -114,6 +114,10 @@ namespace PROJECT_NAME {
                 return kind == TokenKind::unknown || kind == TokenKind::spaces || kind == TokenKind::line || kind == TokenKind::root;
             }
 
+            virtual bool has_(const String&) const {
+                return false;
+            }
+
             bool set_next(std::shared_ptr<Token> p) {
                 if (this->next || !p || p->prev) {
                     return false;
@@ -276,6 +280,10 @@ namespace PROJECT_NAME {
                 return false;
             }
 
+            bool has_(const String& other) const override {
+                return to_string() == other;
+            }
+
             String to_string() const override {
                 String ret;
                 if (spchar == ' ' || spchar == '\t') {
@@ -369,6 +377,10 @@ namespace PROJECT_NAME {
                     return false;
                 }
                 return true;
+            }
+
+            bool has_(const String& other) const override {
+                return to_string() == other;
             }
 
             String to_string() const override {
@@ -468,6 +480,10 @@ namespace PROJECT_NAME {
                 return false;
             }
 
+            bool has_(const String& other) const override {
+                return comments == other;
+            }
+
             String to_string() const override {
                 return comments;
             }
@@ -502,6 +518,10 @@ namespace PROJECT_NAME {
             template <class Buf, class Registry>
             static bool ReadToken(commonlib2::Reader<Buf>& r, String& read, Registry& reg) {
                 return reg.Expect(r, read);
+            }
+
+            bool has_(const String& other) const override {
+                return token == other;
             }
 
             String to_string() const override {
@@ -587,6 +607,10 @@ namespace PROJECT_NAME {
                     r.increment();
                 }
                 return true;
+            }
+
+            bool has_(const String& other) const override {
+                return id == other;
             }
 
             String to_string() const override {
