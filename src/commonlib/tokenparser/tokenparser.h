@@ -32,7 +32,10 @@ namespace PROJECT_NAME {
             unexpected_line_on_string_disallow_line,
             unexpected_eof_on_string_escape,
             unexpected_eof_on_string,
+            unknown,
         };
+
+        using MergeErr = EnumWrap<MergeError, MergeError::none, MergeError::unknown>;
 
         template <class Vector, class String>
         struct TokenParser {
@@ -240,7 +243,7 @@ namespace PROJECT_NAME {
             }
 
             template <class RuleStr>
-            MergeError Merge(const MergeRule<RuleStr>& rule) {
+            MergeErr Merge(const MergeRule<RuleStr>& rule) {
                 for (std::shared_ptr<Token<String>> node = roottoken.get_next(); node; node = node->get_next()) {
                     if (MergeKeyWord(node)) {
                         continue;
@@ -256,7 +259,7 @@ namespace PROJECT_NAME {
             }
 
             template <class Buf, class RuleStr>
-            MergeError ReadAndMerge(commonlib2::Reader<Buf>& r, const MergeRule<RuleStr>& rule) {
+            MergeErr ReadAndMerge(commonlib2::Reader<Buf>& r, const MergeRule<RuleStr>& rule) {
                 if (!Read(r)) {
                     return MergeError::read_error;
                 }
