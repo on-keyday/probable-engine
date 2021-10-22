@@ -69,20 +69,6 @@ namespace PROJECT_NAME {
                         set_next(ln);
                         continue;
                     }
-                    /*bool err = false;
-                auto com = Comment<String>::ReadComment(r, err, begin, end, nest);
-                if (err) {
-                    return false;
-                }
-                if (com) {
-                    set_next(com);
-                    continue;
-                }
-                com = Comment<String>::ReadComment(r, err, oneline);
-                if (com) {
-                    set_next(com);
-                    continue;
-                }*/
                     auto sym = RegistryRead<String>::ReadToken(TokenKind::symbols, r, symbols);
                     if (sym) {
                         set_next(sym);
