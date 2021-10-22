@@ -20,8 +20,8 @@ namespace PROJECT_NAME {
             String escape;
             struct {
                 String symbol;
-                bool noescape;
-                bool allowline;
+                bool noescape = false;
+                bool allowline = false;
             } string_symbol[3];
         };
 
@@ -168,12 +168,14 @@ namespace PROJECT_NAME {
                             err = MergeError::unexpected_eof_on_block_comment;
                             return true;
                         }
-                        auto comment = std::make_shared<Comment<String>>(std::move(result), false);
-                        //auto last = com->get_prev();
-                        first->remove();
-                        //last->remove();
-                        node->set_next(comment);
-                        comment->set_next(com);
+                        if (com != first) {
+                            auto comment = std::make_shared<Comment<String>>(std::move(result), false);
+                            //auto last = com->get_prev();
+                            first->remove();
+                            //last->remove();
+                            node->set_next(comment);
+                            comment->set_next(com);
+                        }
                         node = com;
                         return true;
                     }
@@ -187,11 +189,16 @@ namespace PROJECT_NAME {
                             }
                             result += com->to_string();
                         }
-                        auto comment = std::make_shared<Comment<String>>(std::move(result), true);
-                        first->remove();
-                        node->set_next(comment);
-                        comment->set_next(com);
-                        node = com ? com : comment;
+                        if (com != first) {
+                            auto comment = std::make_shared<Comment<String>>(std::move(result), true);
+                            first->remove();
+                            node->set_next(comment);
+                            comment->set_next(com);
+                            node = com ? com : comment;
+                        }
+                        else {
+                            node = com;
+                        }
                         return true;
                     }
                     else {
@@ -229,10 +236,12 @@ namespace PROJECT_NAME {
                                     err = MergeError::unexpected_eof_on_string;
                                     return true;
                                 }
-                                auto comment = std::make_shared<Comment<String>>(std::move(result), false);
-                                first->remove();
-                                node->set_next(comment);
-                                comment->set_next(com);
+                                if (com != first) {
+                                    auto comment = std::make_shared<Comment<String>>(std::move(result), false);
+                                    first->remove();
+                                    node->set_next(comment);
+                                    comment->set_next(com);
+                                }
                                 node = com;
                                 return true;
                             }

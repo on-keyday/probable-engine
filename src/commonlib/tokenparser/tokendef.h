@@ -106,6 +106,10 @@ namespace PROJECT_NAME {
                 return kind;
             }
 
+            bool is_(TokenKind e) const {
+                return kind == e;
+            }
+
             bool is_nodisplay() const {
                 return kind == TokenKind::unknown || kind == TokenKind::spaces || kind == TokenKind::line || kind == TokenKind::root;
             }
