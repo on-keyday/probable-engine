@@ -327,6 +327,11 @@ namespace PROJECT_NAME {
             }
 
             template <class Buf>
+            static bool Ahead(commonlib2::Reader<Buf>& r) {
+                return r.achar() == '\n' || r.achar() == '\r';
+            }
+
+            template <class Buf>
             static std::shared_ptr<Line> ReadLine(commonlib2::Reader<Buf>& r) {
                 LineKind kind = LineKind::none;
                 size_t numline = 0;
@@ -528,7 +533,7 @@ namespace PROJECT_NAME {
 
             template <class Buf>
             bool Ahead(commonlib2::Reader<Buf>& r) {
-                return Spaces<String>::Ahead(r) || reg.Ahead(r);
+                return Spaces<String>::Ahead(r) || Line<String>::Ahead(r) || reg.Ahead(r);
             }
         };
 
