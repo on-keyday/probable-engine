@@ -168,9 +168,9 @@ namespace socklib {
             : AppLayer(std::move(in)), host(hostname), path_(path), query_(query) {}
 
        protected:
-        bool send_detail(std::string& res, const Header& header, const char* body, size_t bodylen) {
+        bool send_detail(std::string& res, const Header& header, const char* body, size_t bodylen, bool mustlen) {
             if (!conn) return false;
-            if (body && bodylen) {
+            if ((body && bodylen) || mustlen) {
                 res += "content-length: ";
                 res += std::to_string(bodylen);
                 res += "\r\n";
@@ -235,7 +235,7 @@ namespace socklib {
             return _method;
         }
 
-        bool send(const char* method, const Header& header = Header(), const char* body = nullptr, size_t bodylen = 0) {
+        bool send(const char* method, const Header& header = Header(), const char* body = nullptr, size_t bodylen = 0, bool mustlen = false) {
             if (!method) return false;
             std::string res = method;
             res += " ";
@@ -244,7 +244,7 @@ namespace socklib {
             res += " HTTP/1.1\r\nhost: ";
             res += host;
             res += "\r\n";
-            done = send_detail(res, header, body, bodylen);
+            done = send_detail(res, header, body, bodylen, mustlen);
             if (done) _method = method;
             return done;
         }
@@ -346,7 +346,7 @@ namespace socklib {
             res += " ";
             res += phrase;
             res += "\r\n";
-            return send_detail(res, header, body, bodylen);
+            return send_detail(res, header, body, bodylen, true);
         }
     };
 

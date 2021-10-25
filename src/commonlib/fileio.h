@@ -707,5 +707,10 @@ namespace PROJECT_NAME {
             return map != nullptr;
         }
     };
+#ifdef _WIN32
+    using path_string = std::wstring;
+#else
+    using path_string = std::string;
+#endif
 
 }  // namespace PROJECT_NAME

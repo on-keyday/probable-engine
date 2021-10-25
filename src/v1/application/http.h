@@ -304,7 +304,7 @@ namespace socklib {
        public:
         template <class F = void (*)(const char* version, const char* method, std::string&& path, const HttpConn::Header&)>
         HttpConn::Header* method(const char* method, const char* path = nullptr, HttpConn::Header&& header = HttpConn::Header(),
-                                 const char* data = nullptr, size_t size = 0, CancelContext* cancel = nullptr, F&& hcb = F()) {
+                                 const char* data = nullptr, size_t size = 0, bool mustlen = false, CancelContext* cancel = nullptr, F&& hcb = F()) {
             if (version == 0 || !method) return nullptr;
             auto spl = commonlib2::split(path ? path : "/", "?", 1);
             if (spl.size() < 1) return nullptr;
@@ -323,7 +323,7 @@ namespace socklib {
                     }
                 }
                 commonlib2::invoke_cb<F, void>::invoke(std::forward<F>(hcb), "HTTP/1.1", method, h1->path() + h1->query(), header);
-                if (!h1->send(method, header, data, size)) {
+                if (!h1->send(method, header, data, size, mustlen)) {
                     h1->close();
                     return nullptr;
                 }
