@@ -17,9 +17,20 @@ namespace socklib {
                 if (req.proxy.size() == 0) {
                     return false;
                 }
-                request_t proxyinfo;
-                proxyinfo.default_path = DefaultPath::host_port;
-                base_t::open_connection(conn, req, cancel, prev_version);
+                OpenHttpConnRequest<String> ctx;
+                ctx.cacert = req.cacert;
+                ctx.prev_version = prev_version;
+                commonlib2::Reader r(req.proxy);
+                r.readwhile(ctx.host, commonlib2::until, ':');
+                if (r.expect(":")) {
+                    r >> ctx.port;
+                }
+                auto res = base_t::open_connection(conn, ctx, ctx, ctx.port, ctx.prev_version);
+                req.err = ctx.err;
+                req.tcperr = ctx.tcperr;
+                if (!res) {
+                    return false;
+                }
             }
         };
     }  // namespace v2

@@ -421,6 +421,7 @@ namespace socklib {
             int http_version = 0;
             HttpError err = HttpError::none;
             TCPError tcperr = TCPError::none;
+            RequestFlag flag = RequestFlag::none;
 
             //for arg
             int prev_version = 0;
