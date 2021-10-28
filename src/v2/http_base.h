@@ -192,7 +192,8 @@ namespace socklib {
             header_is_small = 0x10,
             invalid_header_is_error = 0x20,
             no_read_body = 0x40,
-            no_need_len = 0x80,
+            not_need_len = 0x80,
+            need_len = 0x80,
         };
 
         DEFINE_ENUMOP(RequestFlag)
@@ -211,7 +212,7 @@ namespace socklib {
         ENUM_STRING_MSG(DefaultPath::index_html, "/index.html")
         ENUM_STRING_MSG(DefaultPath::index_htm, "/index.htm")
         ENUM_STRING_MSG(DefaultPath::wildcard, "*")
-        ENUM_STRING_MSG(DefaultPath::robot_txt, "/robot.txt")
+        ENUM_STRING_MSG(DefaultPath::robot_txt, "/robots.txt")
         END_ENUM_STRING_MSG("/")
 
         enum class HttpDefaultScheme : std::uint8_t {
@@ -324,8 +325,22 @@ namespace socklib {
                         *err = e;
                     }
                 };
+                commonlib2::Reader<string_t&> parser(url);
+                if (parser.ahead("//")) {
+                    if (parsed.scheme.size()) {
+                        url = parsed.scheme + ":" + url;
+                    }
+                }
+                else if (parser.achar() == '/') {
+                    if (parsed.host.size()) {
+                        url = parsed.host + url;
+                    }
+                    if (parsed.scheme.size()) {
+                        url = parsed.scheme + ":" + url;
+                    }
+                }
                 parsed = parsed_t();
-                commonlib2::Reader<string_t&>(url).readwhile(commonlib2::parse_url, parsed);
+                parser.readwhile(commonlib2::parse_url, parsed);
                 if (!parsed.succeed) {
                     set_err(HttpError::url_parse);
                     return false;
@@ -397,6 +412,21 @@ namespace socklib {
             }
         };
 
+        template <class String>
+        struct OpenHttpConnRequest {
+            String scheme;
+            String host;
+            String cacert;
+            int ip_version = 0;
+            int http_version = 0;
+            HttpError err = HttpError::none;
+            TCPError tcperr = TCPError::none;
+
+            //for arg
+            int prev_version = 0;
+            std::uint16_t port = 0;
+        };
+
         template <class String, class Header, class Body>
         struct HttpBase {
             using string_t = String;
@@ -417,16 +447,14 @@ namespace socklib {
                 return 1;
             }
 
-            static bool open(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr,
-                             const string_t& expect1 = "http", const string_t& expect2 = "https", int prev_version = 0) {
-                if (!urlparser_t::parse_request(req, expect1, expect2)) {
-                    return false;
-                }
+            template <class URL, class Property>
+            static bool open_connection(std::shared_ptr<InetConn>& conn,
+                                        URL& parsed, Property& prop, std::uint16_t port, int prev_version, CancelContext* cancel) {
                 TCPOpenContext<String> tcpopen;
-                if (prev_version != 0 && req.http_version != prev_version) {
+                if (prev_version != 0 && prop.http_version != prev_version) {
                     tcpopen.forceopen = true;
                 }
-                switch (req.http_version) {
+                switch (prop.http_version) {
                     case 1:
                         tcpopen.alpnstr = "\x08http/1.1";
                         tcpopen.len = 9;
@@ -443,71 +471,95 @@ namespace socklib {
                         break;
                 }
                 tcpopen.stat.type = ConnType::tcp_over_ssl;
-                if (req.parsed.scheme == "https" || req.parsed.scheme == "wss") {
+                if (parsed.scheme == "https" || parsed.scheme == "wss") {
                     tcpopen.stat.status = ConnStatus::secure;
                 }
-                tcpopen.ip_version = req.ip_version;
-                tcpopen.host = req.parsed.host;
-                tcpopen.service = util_t::translate_to_service(req.parsed.scheme);
-                tcpopen.cacert = req.cacert;
+                tcpopen.ip_version = prop.ip_version;
+                tcpopen.host = parsed.host;
+                tcpopen.service = util_t::translate_to_service(parsed.scheme);
+                tcpopen.cacert = prop.cacert;
                 tcpopen.non_block = true;
-                if (req.parsed.port.size()) {
-                    commonlib2::Reader(req.parsed.port) >> tcpopen.port;
-                }
-                std::shared_ptr<InetConn> tmpconn = conn;
-                if (!TCP<String>::open(tmpconn, tcpopen, cancel)) {
-                    req.err = HttpError::tcp_error;
-                    req.tcperr = tcpopen.err;
+                tcpopen.port = port;
+                //std::shared_ptr<InetConn> tmpconn = conn;
+                if (!TCP<String>::open(conn, tcpopen, cancel)) {
+                    prop.err = HttpError::tcp_error;
+                    prop.tcperr = tcpopen.err;
                     return false;
                 }
-                req.tcperr = tcpopen.err;
-                if (req.tcperr == TCPError::not_reopened) {
-                    req.phase = RequestPhase::open_direct;
-                    return true;
-                }
+                prop.tcperr = tcpopen.err;
+                return true;
+            }
+
+            template <class Property>
+            static bool verify_alpn(std::shared_ptr<InetConn>& conn, Property& prop) {
                 ConnStat stat;
-                tmpconn->stat(stat);
+                conn->stat(stat);
                 if (any(stat.status & ConnStatus::secure)) {
                     const unsigned char* data = nullptr;
                     const char** tmp = (const char**)&data;
                     unsigned int len = 0;
                     ::SSL_get0_alpn_selected(stat.net.ssl, &data, &len);
                     if (!data) {
-                        if (!any(req.flag & RequestFlag::ignore_alpn_failure)) {
-                            req.err = HttpError::alpn_failed;
+                        if (!any(prop.flag & RequestFlag::ignore_alpn_failure)) {
+                            prop.err = HttpError::alpn_failed;
                             return false;
                         }
                         *tmp = "http/1.1";
                     }
                     bool result = false;
-                    req.resolved_version = 0;
-                    switch (req.http_version) {
+                    prop.resolved_version = 0;
+                    switch (prop.http_version) {
                         case 1:
-                            req.resolved_version = 1;
+                            prop.resolved_version = 1;
                             result = strncmp(*tmp, "http/1.1", 8) == 0;
                             break;
                         case 2:
-                            req.resolved_version = 2;
+                            prop.resolved_version = 2;
                             result = strncmp(*tmp, "h2", 2) == 0;
                             break;
                         default:
                             if (strncmp(*tmp, "h2", 2) == 0) {
-                                req.resolved_version = 2;
+                                prop.resolved_version = 2;
                                 result = true;
                             }
                             else if (strncmp(*tmp, "http/1.1", 8) == 0) {
-                                req.resolved_version = 1;
+                                prop.resolved_version = 1;
                                 result = true;
                             }
                             break;
                     }
                     if (!result) {
-                        req.err = HttpError::alpn_failed;
+                        prop.err = HttpError::alpn_failed;
                         return false;
                     }
                 }
                 else {
-                    req.resolved_version = 1;
+                    prop.resolved_version = 1;
+                }
+                return true;
+            }
+
+            static bool open(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel = nullptr,
+                             const string_t& expect1 = "http", const string_t& expect2 = "https", int prev_version = 0) {
+                if (!urlparser_t::parse_request(req, expect1, expect2)) {
+                    return false;
+                }
+                std::uint16_t port = 0;
+                if (req.parsed.port.size()) {
+                    commonlib2::Reader(req.parsed.port) >> port;
+                }
+                std::shared_ptr<InetConn> tmpconn = conn;
+                auto res = open_connection(conn, req.parsed, req, port, prev_version, cancel);
+                if (!res) {
+                    return false;
+                }
+                if (req.tcperr == TCPError::not_reopened) {
+                    req.phase = RequestPhase::open_direct;
+                    return true;
+                }
+                if (!verify_alpn(conn, req)) {
+                    req.phase = RequestPhase::error;
+                    return true;
                 }
                 req.phase = RequestPhase::open_direct;
                 conn = std::move(tmpconn);

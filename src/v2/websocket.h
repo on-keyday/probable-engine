@@ -526,7 +526,7 @@ namespace socklib {
                 if (!verifyed && !verify_accept(req)) {
                     return nullptr;
                 }
-                req->add_requestflag(RequestFlag::no_need_len);
+                req->add_requestflag(RequestFlag::not_need_len);
                 req->response(101, cancel);
                 return std::make_shared<websocketconn_t>(req->hijack());
             }

@@ -1325,7 +1325,7 @@ namespace PROJECT_NAME {
                                 if (c == '/') return false;
                             }
                             else {
-                                if (c == '.' || c == '[') return false;
+                                if (c == '.' || c == '[' || c == ']') return false;
                             }
                             return true;
                         },

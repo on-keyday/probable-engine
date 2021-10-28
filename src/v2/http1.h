@@ -19,7 +19,14 @@ namespace socklib {
             using request_t = typename base_t::request_t;
             using errorhandle_t = ErrorHandler<String, Header, Body>;
 
-            static bool write_header_common(std::shared_ptr<InetConn>& conn, string_t& towrite, Header& header, Body& body, request_t& req, bool need_len, CancelContext* cancel) {
+            static bool write_to_conn(std::shared_ptr<InetConn>& conn, string_t& towrite, request_t& req, CancelContext* cancel) {
+                WriteContext w;
+                w.ptr = towrite.c_str();
+                w.bufsize = towrite.size();
+                return errorhandle_t::write_to_conn(conn, w, req, cancel);
+            }
+
+            static bool write_header_common(string_t& towrite, Header& header, Body& body, request_t& req, bool need_len) {
                 for (auto& h : header) {
                     if (auto e = base_t::is_valid_field(h, req); e < 0) {
                         return false;
@@ -46,14 +53,11 @@ namespace socklib {
                 else {
                     towrite += "\r\n";
                 }
-                WriteContext w;
-                w.ptr = towrite.c_str();
-                w.bufsize = towrite.size();
-                return errorhandle_t::write_to_conn(conn, w, req, cancel);
+                return true;
             }
 
-            static bool write_request(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
-                string_t towrite = req.method;
+            static bool write_request(string_t& towrite, request_t& req) {
+                towrite = req.method;
                 towrite += ' ';
                 base_t::write_path(towrite, req);
                 towrite += ' ';
@@ -66,26 +70,13 @@ namespace socklib {
                 }
                 towrite += urlparser_t::host_with_port(req.parsed);
                 towrite += "\r\n";
-                if (write_header_common(conn, towrite, req.request, req.requestbody, req, false, cancel)) {
-                    req.phase = RequestPhase::request_sent;
-                    return true;
-                }
-                req.phase = RequestPhase::error;
-                return false;
+                bool need_len = any(req.flag & RequestFlag::need_len);
+                return write_header_common(towrite, req.request, req.requestbody, req, need_len);
             }
 
-            static bool write_response(std::shared_ptr<InetConn>& conn, request_t& req, CancelContext* cancel) {
-                string_t towrite;
+            static bool write_response(string_t& towrite, request_t& req) {
                 if (req.header_version == 9) {
-                    WriteContext w;
-                    w.ptr = req.responsebody.data();
-                    w.bufsize = req.responsebody.size();
-                    if (errorhandle_t::write_to_conn(conn, w, req, cancel)) {
-                        req.phase = RequestPhase::response_sent;
-                        return true;
-                    }
-                    req.phase = RequestPhase::error;
-                    return false;
+                    towrite = string_t(req.responsebody.data(), req.responsebody.size());
                 }
                 else if (req.header_version == 10) {
                     towrite += "HTTP/1.0 ";
@@ -97,13 +88,8 @@ namespace socklib {
                 towrite += ' ';
                 towrite += reason_phrase(req.statuscode);
                 towrite += "\r\n";
-                bool need_len = any(req.flag & RequestFlag::no_need_len);
-                if (write_header_common(conn, towrite, req.response, req.responsebody, req, need_len, cancel)) {
-                    req.phase = RequestPhase::response_sent;
-                    return true;
-                }
-                req.phase = RequestPhase::error;
-                return false;
+                bool need_len = !any(req.flag & RequestFlag::not_need_len);
+                return write_header_common(towrite, req.response, req.responsebody, req, need_len);
             }
         };
 
@@ -371,7 +357,16 @@ namespace socklib {
                 if (req.method.size() == 0) {
                     req.method = "GET";
                 }
-                return headerwriter_t::write_request(conn, req, cancel);
+                string_t towrite;
+                if (!headerwriter_t::write_request(towrite, req)) {
+                    req.phase = RequestPhase::error;
+                    return false;
+                }
+                if (!headerwriter_t::write_to_conn(conn, towrite, req, cancel)) {
+                    req.phase = RequestPhase::error;
+                }
+                req.phase = RequestPhase::request_sent;
+                return true;
             }
 
             static bool response(std::shared_ptr<InetConn>& conn, readcontext_t& read, CancelContext* cancel = nullptr) {
@@ -398,6 +393,7 @@ namespace socklib {
             using request_t = typename base_t::request_t;
             using httpwriter_t = HttpHeaderWriter<String, Header, Body>;
             using readcontext_t = Http1ReadContext<String, Header, Body>;
+            using string_t = String;
 
             static bool request(std::shared_ptr<InetConn>& conn, readcontext_t& read, CancelContext* cancel = nullptr) {
                 if (!conn) return false;
@@ -429,11 +425,15 @@ namespace socklib {
                     req.err = HttpError::invalid_phase;
                     return false;
                 }
-                if (httpwriter_t::write_response(conn, req, cancel)) {
-                    req.phase = RequestPhase::idle;
-                    return true;
+                string_t towrite;
+                if (!httpwriter_t::write_response(towrite, req)) {
+                    req.phase = RequestPhase::error;
+                    return false;
                 }
-                req.phase = RequestPhase::error;
+                if (!httpwriter_t::write_to_conn(conn, towrite, req, cancel)) {
+                    req.phase = RequestPhase::error;
+                }
+                req.phase = RequestPhase::idle;
                 return false;
             }
         };

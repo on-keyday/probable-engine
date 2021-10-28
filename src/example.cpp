@@ -75,6 +75,8 @@ void test_http() {
     }
 }
 
+#include <channel.h>
+
 int main() {
     auto request = make_request();
     request->request("GET", "www.google.com");
@@ -88,4 +90,10 @@ int main() {
     info.path = request->get_parsed().path;
     TimeConvert::from_time_t(::time(nullptr), info.expires);
     CookieWriter<String>::write(str, info, cookies);
+
+    auto [send, recv] = commonlib2::make_chan<int>(10);
+    send << 302;
+    int test = 0;
+    recv >> test;
+    auto d = send;
 }
