@@ -37,13 +37,11 @@ namespace socklib {
             StringBuffer* errmsg = nullptr;
             StringBuffer* cacert = nullptr;
 
-            ::BIO* read_ssl = nullptr;
-            ::BIO* write_ssl = nullptr;
-            ::BIO* write_base = nullptr;
-            ::BIO* read_base = nullptr;
+            ::BIO* io_ssl = nullptr;
+            ::BIO* io_base = nullptr;
 
             void call_ssl_error() {
-                numerr = ERR_get_error();
+                numerr = ERR_peek_last_error();
                 ERR_print_errors_cb(
                     [](const char* str, size_t len, void* u) -> int {
                         auto buf = (StringBuffer*)u;
@@ -52,6 +50,108 @@ namespace socklib {
                         return 1;
                     },
                     (void*)errmsg);
+            }
+
+            StringBuffer* tmpbuf = nullptr;
+
+            size_t nowread = 0;
+
+            template <int progbase>
+            State read_write_bio() {
+                switch (progress) {
+                    case progbase: {
+                        tmpbuf->clear();
+                        progress = prgbase + 1;
+                    }
+                    case progbase + 1: {
+                        while (size_t sz = ::BIO_ctrl_pending(io_base)) {
+                            char buf[1024] = {0};
+                            size_t red = 0;
+                            if (!::BIO_read_ex(buf, buf, 1024, &red)) {
+                                errmsg->set("unknown error; ::BIO_read_ex failed when ::BIO_ctrl_pending");
+                                call_ssl_error();
+                                return false;
+                            }
+                            tmpbuf->append_back(buf, red);
+                            if (red < 1024) {
+                                break;
+                            }
+                        }
+                        progress = progbase + 2;
+                    }
+                    case progbase + 2: {
+                        if (tmpbuf->size()) {
+                            if (auto e = Context::write(tmpbuf->c_str(), tmpbuf->size()); !e) {
+                                return e;
+                            }
+                            tmpbuf->clear();
+                        }
+                        progress = progbase + 3;
+                    }
+                    case progbase + 3: {
+                        if (BIO_should_read(io_ssl)) {
+                            char buf[1024] = {0};
+                            if (auto e = Context::read(buf, 1024, nowread); e == StateValue::inprogress) {
+                                tmpbuf->append_back(buf, nowread);
+                                return e;
+                            }
+                            else if (!e) {
+                                return false;
+                            }
+                            else {
+                                tmpbuf->append_back(buf, nowread);
+                            }
+                            size_t written = 0;
+                            if (!::BIO_write_ex(io_base, tmpbuf->c_str(), tmpbuf->size(), &written)) {
+                                errmsg->set("unknown error; ::BIO_write_ex failed");
+                                call_ssl_error();
+                                return false;
+                            }
+                            tmpbuf->clear();
+                        }
+                    }
+                    default:
+                        break;
+                }
+                return true;
+            }
+
+            State connect() {
+                switch (progress) {
+                    case 4: {
+                        auto res = ::SSL_connect(ssl);
+                        if (res <= 0) {
+                            auto code = ::SSL_get_error(ssl, -1);
+                            switch (code) {
+                                case SSL_ERROR_WANT_READ:
+                                case SSL_ERROR_WANT_WRITE:
+                                case SSL_ERROR_SYSCALL:
+                                    break;
+                                default:
+                                    errmsg->set("failed call ::SSL_connect()\n");
+                                    call_ssl_error();
+                                    return false;
+                            }
+                        }
+                        else {
+                            return true;
+                        }
+                        progress = 5;
+                    }
+                    case 5:
+                    case 6:
+                    case 7:
+                    case 8: {
+                        if (auto e = read_write_bio<5>(); !e) {
+                            return e;
+                        }
+                        progress = 4;
+                        return StateValue::inprogress;
+                    }
+                    default:
+                        break;
+                }
+                return false;
             }
 
            public:
@@ -81,23 +181,19 @@ namespace socklib {
                         progress = 2;
                     }
                     case 2: {
-                        if (!read_ssl) {
-                            if (!::BIO_new_bio_pair(&read_ssl, 0, &write_ssl, 0)) {
-                                errmsg->set("failed call ::BIO_new_bio_pair with read_ssl and write_ssl\n");
+                        if (!io_ssl) {
+                            if (!::BIO_new_bio_pair(&io_ssl, 0, &io_base, 0)) {
+                                errmsg->set("failed call ::BIO_new_bio_pair\n");
                                 call_ssl_error();
                                 progress = 0;
                                 return false;
                             }
-                            if (!::BIO_new_bio_pair(&read_base, 0, &write_base, 0)) {
-                                errmsg->set("failed call ::BIO_new_bio_pair with read_base and write_base\n");
-                                call_ssl_error();
-                                progress = 0;
-                                return false;
-                            }
-                            ::BIO_up_ref(read_ssl);
-                            ::BIO_up_ref(write_ssl);
-                            ::BIO_up_ref(read_base);
-                            ::BIO_up_ref(write_base);
+                            ::BIO_up_ref(io_ssl);
+                            ::BIO_up_ref(io_base);
+                        }
+                        else {
+                            BIO_reset(io_ssl);
+                            BIO_reset(io_base);
                         }
                         progress = 3;
                     }
@@ -111,12 +207,25 @@ namespace socklib {
                             progress = 0;
                             return false;
                         }
-                        ::SSL_set0_rbio(ssl, read_base);
-                        ::SSL_set0_wbio(ssl, write_ssl);
+                        ::SSL_set0_rbio(ssl, io_ssl);
+                        ::SSL_set0_wbio(ssl, io_ssl);
                         progress = 4;
                     }
-                    case 4: {
-                    }
+                    case 4:
+                    case 5:
+                    case 6:
+                    case 7:
+                    case 8:
+                        if (auto e = connect(); e == StateValue::inprogress) {
+                            return e;
+                        }
+                        else if (!e) {
+                            progress = 0;
+                            return e;
+                        }
+                    default:
+                        progress = 0;
+                        break;
                 }
             }
             virtual Context* get_base() override {
