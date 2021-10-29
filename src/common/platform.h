@@ -13,6 +13,7 @@
 #endif
 #include <WinSock2.h>
 #include <WS2tcpip.h>
+#define EWOULDBLOCK WSAEWOULDBLOCK
 #else
 #include <arpa/inet.h>
 #include <netdb.h>

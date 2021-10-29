@@ -84,26 +84,52 @@ namespace socklib {
                 return nullptr;
             }
             virtual State open() {
+                if (auto base = get_base()) {
+                    return base->open();
+                }
                 return false;
             }
-            virtual State write(const char*, size_t) {
+            virtual State write(const char* str, size_t size) {
+                if (auto base = get_base()) {
+                    return base->write(str, size);
+                }
                 return false;
             }
-            virtual State read(const char*, size_t) {
+            virtual State read(char* str, size_t size, size_t& red) {
+                if (auto base = get_base()) {
+                    return base->read(str, size, red);
+                }
                 return false;
             }
-            virtual bool set_setting(const InputSetting&) {
+            virtual bool set_setting(const InputSetting& in) {
+                if (auto base = get_base()) {
+                    return base->set_setting(in);
+                }
                 return false;
             }
-            virtual bool get_setting(OutputSetting&) {
+            virtual bool get_setting(OutputSetting& out) {
+                if (auto base = get_base()) {
+                    return base->get_setting(out);
+                }
                 return false;
             }
             virtual State close() {
+                if (auto base = get_base()) {
+                    return base->close();
+                }
                 return false;
             }
 
             virtual bool has_error(ErrorInfo* info) {
-                return false;
+                if (auto base = get_base()) {
+                    return base->has_error(info);
+                }
+                if (info) {
+                    info->type = ContextType::unknown;
+                    info->errmsg = "unimplemented";
+                    info->numerr = -1;
+                }
+                return true;
             }
         };
 
