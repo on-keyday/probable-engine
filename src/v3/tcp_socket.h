@@ -56,6 +56,8 @@ namespace socklib {
             ::addrinfo* current = nullptr;
             ::SOCKET tmp = invalid_socket;
 
+            int ip_version = 0;
+
            public:
             TCPContext(std::shared_ptr<Context> base, const StringBufferBuilder& bufbase)
                 : base(base), errmsg(bufbase.make()) {}
@@ -257,7 +259,7 @@ namespace socklib {
                 }
                 size_t sz = size - write_offset <= int_max ? size - write_offset : int_max;
                 auto res = ::send(sock, data + write_offset, sz, 0);
-                if (res < -1) {
+                if (res < 0) {
                     if (get_socket_error() == EWOULDBLOCK) {
                         return StateValue::inprogress;
                     }
@@ -286,16 +288,14 @@ namespace socklib {
                 }
                 auto res = ::recv(sock, data, (int)size, 0);
                 if (res < 0) {
-                    if (res < -1) {
-                        if (get_socket_error() == EWOULDBLOCK) {
-                            state = TCPCtxState::free;
-                            return StateValue::inprogress;
-                        }
-                        errmsg->set("read failed on ::recv() calling.");
-                        numerr = get_socket_error();
+                    if (get_socket_error() == EWOULDBLOCK) {
                         state = TCPCtxState::free;
-                        return false;
+                        return StateValue::inprogress;
                     }
+                    errmsg->set("read failed on ::recv() calling.");
+                    numerr = get_socket_error();
+                    state = TCPCtxState::free;
+                    return false;
                 }
                 red = (size_t)res;
                 if (red < size) {
@@ -311,6 +311,7 @@ namespace socklib {
 
             virtual bool set_setting(const InputSetting& set) override {
                 if (auto tcp = cast_<TCPInSetting>(&set)) {
+                    ip_version = tcp->ip_version;
                     return true;
                 }
                 if (base) {
@@ -334,6 +335,8 @@ namespace socklib {
                 if (errmsg->size()) {
                     if (err) {
                         err->type = ContextType::tcp_socket;
+                        err->errmsg = errmsg->c_str();
+                        err->numerr = numerr;
                     }
                     return true;
                 }
@@ -353,15 +356,18 @@ namespace socklib {
                     ::closesocket(sock);
                     sock = invalid_socket;
                 }
-
+                numerr = 0;
                 state = TCPCtxState::free;
                 progress = 0;
                 dns = nullptr;
                 current = nullptr;
+                write_offset = 0;
                 return true;
             }
 
             virtual ~TCPContext() {
+                close();
+                Context::close();
                 delete errmsg;
             }
         };
