@@ -16,6 +16,7 @@ namespace socklib {
         struct StringBuffer {
             virtual const char* c_str() const = 0;
             virtual char* data() = 0;
+            virtual bool resize(size_t) = 0;
             virtual size_t size() const = 0;
             virtual bool set(const char*, size_t) = 0;
             virtual bool set(const char*) = 0;
@@ -27,6 +28,7 @@ namespace socklib {
             virtual bool is_readonly() const = 0;
             virtual bool equal(const char* str, size_t size) = 0;
             virtual bool equal(const char* str) = 0;
+            virtual void push_back() = 0;
             virtual ~StringBuffer() {}
         };
 
@@ -39,13 +41,14 @@ namespace socklib {
            private:
             Buf buf;
 
+           public:
             template <class C>
-            static char* get_data(C* c) {
+            static auto get_data(C* c) {
                 return (C*)c;
             }
 
             template <class Str>
-            static char* get_data(Str& c) {
+            static auto get_data(Str& c) {
                 return c.data();
             }
 
@@ -58,6 +61,17 @@ namespace socklib {
             template <class Str>
             static size_t get_size(Str& c) {
                 return c.size();
+            }
+
+            template <class Str>
+            static bool call_resize(Str& c, size_t sz) {
+                c.size(sz);
+                return true;
+            }
+
+            template <class C>
+            static bool call_resize(C* c, size_t sz) {
+                return false;
             }
 
             template <bool is_append, bool front, class Str>
@@ -110,7 +124,6 @@ namespace socklib {
                 return true;
             }
 
-           public:
             virtual const char* c_str() const override {
                 return get_data(buf);
             }
@@ -120,6 +133,10 @@ namespace socklib {
 
             virtual size_t size() const override {
                 return get_size(buf);
+            }
+
+            virtual bool resize(size_t sz) override {
+                return call_resize(buf, sz);
             }
 
             virtual bool is_readonly() const override {
@@ -145,6 +162,13 @@ namespace socklib {
                 return set_or_append<true, true>(buf, toset, len(toset));
             }
 
+            virtual bool append(const char* toset, size_t size) {
+                return set_or_append<true, false>(buf, toset, size);
+            }
+            virtual bool append_back(const char* toset) {
+                return set_or_append<true, false>(buf, toset, len(toset));
+            }
+
             virtual bool append_back(const char* toset, size_t size) override {
                 return set_or_append<true, false>(buf, toset, size);
             }
@@ -161,6 +185,10 @@ namespace socklib {
             }
             virtual bool equal(const char* str) {
                 return equal(str, len(str));
+            }
+
+            virtual void push_back(char c) {
+                append_back(&c, 1);
             }
         };
 

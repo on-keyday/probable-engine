@@ -10,6 +10,7 @@
 
 namespace socklib {
     namespace v3 {
+
         struct Http1Context {
         };
     }  // namespace v3
