@@ -31,16 +31,19 @@ namespace socklib {
             const char* alpn = nullptr;
             size_t alpnlen = 0;
 
-            bool thru = false;
-            int progress = 0;
-            errno_t numerr = 0;
             StringBuffer* errmsg = nullptr;
             StringBuffer* cacert = nullptr;
+            StringBuffer* hostname = nullptr;
 
             ::BIO* io_ssl = nullptr;
             ::BIO* io_base = nullptr;
 
             StringBuffer* tmpbuf = nullptr;
+
+            CtxState state = CtxState::free;
+            int progress = 0;
+            errno_t numerr = 0;
+            bool thru = false;
 
             void call_ssl_error() {
                 numerr = ERR_peek_last_error();
@@ -106,6 +109,7 @@ namespace socklib {
                                 call_ssl_error();
                                 return false;
                             }
+                            BIO_flush(io_base);
                             tmpbuf->clear();
                         }
                     }
@@ -115,21 +119,28 @@ namespace socklib {
                 return true;
             }
 
+            bool is_continue_error() {
+                auto err = ::SSL_get_error(ssl, -1);
+                switch (err) {
+                    case SSL_ERROR_WANT_READ:
+                    case SSL_ERROR_WANT_WRITE:
+                    case SSL_ERROR_SYSCALL:
+                        break;
+                    default:
+                        return false;
+                }
+                return true;
+            }
+
             State connect() {
                 switch (progress) {
                     case 4: {
                         auto res = ::SSL_connect(ssl);
                         if (res <= 0) {
-                            auto code = ::SSL_get_error(ssl, -1);
-                            switch (code) {
-                                case SSL_ERROR_WANT_READ:
-                                case SSL_ERROR_WANT_WRITE:
-                                case SSL_ERROR_SYSCALL:
-                                    break;
-                                default:
-                                    errmsg->set("failed call ::SSL_connect()\n");
-                                    call_ssl_error();
-                                    return false;
+                            if (!is_continue_error()) {
+                                errmsg->set("failed call ::SSL_connect()\n");
+                                call_ssl_error();
+                                return false;
                             }
                         }
                         else {
@@ -155,13 +166,23 @@ namespace socklib {
 
            public:
             virtual State open() {
+                if (state != CtxState::free && state != CtxState::opening) {
+                    errmsg->clear();
+                    errmsg->set("invalid state. now ");
+                    errmsg->append_back(state_value(state));
+                    errmsg->append_back(", need free or opening");
+                    numerr = -1;
+                    return false;
+                }
                 switch (progress) {
                     case 0: {
+                        state = CtxState::opening;
                         auto res = Context::open();
                         if (!res) {
                             return res;
                         }
                         if (thru) {
+                            state = CtxState::free;
                             return true;
                         }
                         progress = 1;
@@ -173,9 +194,16 @@ namespace socklib {
                                 errmsg->set("failed to make SSL_CTX.\n");
                                 call_ssl_error();
                                 progress = 0;
+                                state = CtxState::free;
                                 return false;
                             }
                             SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2);
+                        }
+                        if (!::SSL_CTX_load_verify_locations(ctx, cacert->c_str(), nullptr)) {
+                            errmsg->set("faild call ::SSL_CTX_load_verify_locations\n");
+                            call_ssl_error();
+                            progress = 0;
+                            state = CtxState::free;
                         }
                         progress = 2;
                     }
@@ -185,6 +213,7 @@ namespace socklib {
                                 errmsg->set("failed call ::BIO_new_bio_pair\n");
                                 call_ssl_error();
                                 progress = 0;
+                                state = CtxState::free;
                                 return false;
                             }
                             ::BIO_up_ref(io_ssl);
@@ -204,7 +233,40 @@ namespace socklib {
                             errmsg->set("failed call ::SSL_new\n");
                             call_ssl_error();
                             progress = 0;
+                            state = CtxState::free;
                             return false;
+                        }
+                        if (alpn) {
+                            if (!::SSL_set_alpn_protos(ssl, (const unsigned char*)alpn, (unsigned int)alpnlen)) {
+                                errmsg->set("failed call ::SSL_set_alpn_protos\n");
+                                call_ssl_error();
+                                ::SSL_free(ssl);
+                                ssl = nullptr;
+                                progress = 0;
+                                state = CtxState::free;
+                                return false;
+                            }
+                        }
+                        if (hostname->size()) {
+                            if (!SSL_set_tlsext_host_name(ssl, hostname->c_str())) {
+                                errmsg->set("failed call SSL_set_tlsext_host_name\n");
+                                call_ssl_error();
+                                ::SSL_free(ssl);
+                                ssl = nullptr;
+                                progress = 0;
+                                state = CtxState::free;
+                                return false;
+                            }
+                            auto param = ::SSL_get0_param(ssl);
+                            if (!::X509_VERIFY_PARAM_add1_host(param, hostname->c_str(), 0)) {
+                                errmsg->set("failed call ::X509_VERIFY_PARAM_add1_host\n");
+                                call_ssl_error();
+                                ::SSL_free(ssl);
+                                ssl = nullptr;
+                                progress = 0;
+                                state = CtxState::free;
+                                return false;
+                            }
                         }
                         ::SSL_set0_rbio(ssl, io_ssl);
                         ::SSL_set0_wbio(ssl, io_ssl);
@@ -219,15 +281,137 @@ namespace socklib {
                             return e;
                         }
                         else if (!e) {
+                            state = CtxState::free;
                             progress = 0;
                             return e;
                         }
                     default:
+                        state = CtxState::free;
                         progress = 0;
                         break;
                 }
                 return true;
             }
+
+           private:
+            template <CtxState st>
+            bool check_valid() {
+                if (state != CtxState::free && state != st) {
+                    errmsg->set("invalid state. now ");
+                    errmsg->append_back(state_value(state));
+                    errmsg->append_back(", need free or opening");
+                    numerr = -1;
+                    return false;
+                }
+                if (!thru && !ssl) {
+                    errmsg->set("call open() before ");
+                    errmsg->append_back(state_value(st));
+                    numerr = -1;
+                    return false;
+                }
+                return true;
+            }
+
+           public:
+            virtual State write(const char* data, size_t size) override {
+                if (!check_valid<CtxState::writing>()) {
+                    return false;
+                }
+                switch (progress) {
+                    case 0:
+                        state = CtxState::writing;
+                        if (thru) {
+                            if (auto e = Context::write(data, size); e == StateValue::inprogress) {
+                                return e;
+                            }
+                            else {
+                                state = CtxState::free;
+                                return e;
+                            }
+                        }
+                        progress = 1;
+                    case 1: {
+                        size_t w = 0;
+                        if (::SSL_write_ex(ssl, data, size, &w) <= 0) {
+                            if (!is_continue_error()) {
+                                errmsg->set("failed call ::SSL_write_ex()\n");
+                                call_ssl_error();
+                                return false;
+                            }
+                        }
+                        else {
+                            state = CtxState::free;
+                            progress = 0;
+                            return true;
+                        }
+                    }
+                    case 2:
+                    case 3:
+                    case 4:
+                    case 5:
+                        if (auto e = read_write_bio<2>(); e == StateValue::inprogress) {
+                            return e;
+                        }
+                        else if (!e) {
+                            progress = 0;
+                            state = CtxState::free;
+                            return true;
+                        }
+                        progress = 1;
+                    default:
+                        return StateValue::inprogress;
+                }
+            }
+
+            virtual State read(char* data, size_t size, size_t& red) override {
+                if (!check_valid<CtxState::reading>()) {
+                    return false;
+                }
+                switch (progress) {
+                    case 0:
+                        state = CtxState::writing;
+                        if (thru) {
+                            if (auto e = Context::read(data, size, red); e == StateValue::inprogress) {
+                                return e;
+                            }
+                            else {
+                                state = CtxState::free;
+                                return e;
+                            }
+                        }
+                        progress = 1;
+                    case 1: {
+                        if (::SSL_read_ex(ssl, data, size, &red) <= 0) {
+                            if (!is_continue_error()) {
+                                errmsg->set("failed call ::SSL_write_ex()\n");
+                                call_ssl_error();
+                                return false;
+                            }
+                        }
+                        else {
+                            state = CtxState::free;
+                            progress = 0;
+                            return true;
+                        }
+                    }
+                    case 2:
+                    case 3:
+                    case 4:
+                    case 5:
+                        if (auto e = read_write_bio<2>(); e == StateValue::inprogress) {
+                            return e;
+                        }
+                        else if (!e) {
+                            progress = 0;
+                            state = CtxState::free;
+                            return true;
+                        }
+                        progress = 1;
+                    default:
+                        return StateValue::inprogress;
+                }
+            }
+
             virtual Context* get_base() override {
                 if (!base) return nullptr;
                 return std::addressof(*base);

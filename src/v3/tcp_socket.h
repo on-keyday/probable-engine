@@ -24,17 +24,17 @@ namespace socklib {
             ::SOCKET sock = invalid_socket;
         };
 
-        enum class TCPCtxState {
+        enum class CtxState {
             free,
             opening,
             writing,
             reading,
         };
 
-        BEGIN_ENUM_STRING_MSG(TCPCtxState, state_value)
-        ENUM_STRING_MSG(TCPCtxState::opening, "opening")
-        ENUM_STRING_MSG(TCPCtxState::writing, "writing")
-        ENUM_STRING_MSG(TCPCtxState::reading, "reading")
+        BEGIN_ENUM_STRING_MSG(CtxState, state_value)
+        ENUM_STRING_MSG(CtxState::opening, "opening")
+        ENUM_STRING_MSG(CtxState::writing, "writing")
+        ENUM_STRING_MSG(CtxState::reading, "reading")
         END_ENUM_STRING_MSG("free")
 
         struct TCPContext : IContext<ContextType::tcp_socket> {
@@ -47,7 +47,7 @@ namespace socklib {
 
             errno_t numerr = 0;
 
-            TCPCtxState state = TCPCtxState::free;
+            CtxState state = CtxState::free;
             int progress = 0;
 
             size_t write_offset = 0;
@@ -138,7 +138,7 @@ namespace socklib {
 
            public:
             virtual State open() override {
-                if (state != TCPCtxState::free && state != TCPCtxState::opening) {
+                if (state != CtxState::free && state != CtxState::opening) {
                     errmsg->clear();
                     errmsg->set("invalid state. now ");
                     errmsg->append_back(state_value(state));
@@ -148,7 +148,7 @@ namespace socklib {
                 }
                 switch (progress) {
                     case 0:
-                        state = TCPCtxState::opening;
+                        state = CtxState::opening;
                         errmsg->clear();
                         if (!base) {
                             errmsg->set("need base for DNS");
@@ -198,7 +198,7 @@ namespace socklib {
                         }
                         else if (!e) {
                             dns = nullptr;
-                            state = TCPCtxState::free;
+                            state = CtxState::free;
                             current = nullptr;
                             progress = 0;
                             return e;
@@ -208,17 +208,17 @@ namespace socklib {
                         dns = nullptr;
                         current = nullptr;
                         progress = 0;
-                        state = TCPCtxState::free;
+                        state = CtxState::free;
                         break;
                 }
                 return true;
             }
 
            private:
-            template <TCPCtxState st>
+            template <CtxState st>
             bool check_valid(const char* data, size_t size) {
                 errmsg->clear();
-                if (state != TCPCtxState::free && state != st) {
+                if (state != CtxState::free && state != st) {
                     errmsg->set("invalid state. now ");
                     errmsg->append_back(state_value(state));
                     errmsg->append_back(", need free or ");
@@ -231,7 +231,7 @@ namespace socklib {
                     errmsg->set("need not null data and not 0 size.");
                     numerr = -1;
                     write_offset = 0;
-                    state = TCPCtxState::free;
+                    state = CtxState::free;
                     return false;
                 }
                 if (sock == invalid_socket) {
@@ -239,7 +239,7 @@ namespace socklib {
                     errmsg->append_back(state_value(st));
                     numerr = -1;
                     write_offset = 0;
-                    state = TCPCtxState::free;
+                    state = CtxState::free;
                     return false;
                 }
                 return true;
@@ -247,14 +247,14 @@ namespace socklib {
 
            public:
             virtual State write(const char* data, size_t size) {
-                if (!check_valid<TCPCtxState::writing>(data, size)) {
+                if (!check_valid<CtxState::writing>(data, size)) {
                     return false;
                 }
                 if (size < write_offset) {
                     errmsg->set("invalid write progress. size < write_offset");
                     numerr = -1;
                     write_offset = 0;
-                    state = TCPCtxState::free;
+                    state = CtxState::free;
                     return false;
                 }
                 size_t sz = size - write_offset <= int_max ? size - write_offset : int_max;
@@ -265,13 +265,13 @@ namespace socklib {
                     }
                     errmsg->set("write failed on ::send() calling.");
                     numerr = get_socket_error();
-                    state = TCPCtxState::free;
+                    state = CtxState::free;
                     write_offset = 0;
                     return false;
                 }
                 if (sz < int_max) {
                     write_offset = 0;
-                    state = TCPCtxState::free;
+                    state = CtxState::free;
                     return true;
                 }
                 write_offset += int_max;
@@ -280,7 +280,7 @@ namespace socklib {
 
             virtual State read(char* data, size_t size, size_t& red) override {
                 errmsg->clear();
-                if (!check_valid<TCPCtxState::reading>(data, size)) {
+                if (!check_valid<CtxState::reading>(data, size)) {
                     return false;
                 }
                 if (size > int_max) {
@@ -289,12 +289,12 @@ namespace socklib {
                 auto res = ::recv(sock, data, (int)size, 0);
                 if (res < 0) {
                     if (get_socket_error() == EWOULDBLOCK) {
-                        state = TCPCtxState::free;
+                        state = CtxState::free;
                         return StateValue::inprogress;
                     }
                     errmsg->set("read failed on ::recv() calling.");
                     numerr = get_socket_error();
-                    state = TCPCtxState::free;
+                    state = CtxState::free;
                     return false;
                 }
                 red = (size_t)res;
@@ -357,7 +357,7 @@ namespace socklib {
                     sock = invalid_socket;
                 }
                 numerr = 0;
-                state = TCPCtxState::free;
+                state = CtxState::free;
                 progress = 0;
                 dns = nullptr;
                 current = nullptr;
