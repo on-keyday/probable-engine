@@ -24,21 +24,6 @@ namespace socklib {
             ::SOCKET sock = invalid_socket;
         };
 
-        enum class CtxState {
-            free,
-            opening,
-            writing,
-            reading,
-            closing,
-        };
-
-        BEGIN_ENUM_STRING_MSG(CtxState, state_value)
-        ENUM_STRING_MSG(CtxState::opening, "opening")
-        ENUM_STRING_MSG(CtxState::writing, "writing")
-        ENUM_STRING_MSG(CtxState::reading, "reading")
-        ENUM_STRING_MSG(CtxState::closing, "closing")
-        END_ENUM_STRING_MSG("free")
-
         struct TCPContext : IContext<ContextType::tcp_socket> {
            private:
             std::shared_ptr<Context> base;

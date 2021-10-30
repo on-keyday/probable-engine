@@ -30,6 +30,21 @@ namespace socklib {
             inprogress,
         };
 
+        enum class CtxState {
+            free,
+            opening,
+            writing,
+            reading,
+            closing,
+        };
+
+        BEGIN_ENUM_STRING_MSG(CtxState, state_value)
+        ENUM_STRING_MSG(CtxState::opening, "opening")
+        ENUM_STRING_MSG(CtxState::writing, "writing")
+        ENUM_STRING_MSG(CtxState::reading, "reading")
+        ENUM_STRING_MSG(CtxState::closing, "closing")
+        END_ENUM_STRING_MSG("free")
+
         using State = commonlib2::EnumWrap<StateValue, StateValue::succeed, StateValue::failed>;
 
         struct Setting {
