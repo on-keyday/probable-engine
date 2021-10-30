@@ -14,7 +14,9 @@ namespace socklib {
             const char* alpn = nullptr;
             size_t alpnlen = 0;
             const char* cacert = nullptr;
+            const char* hostname = nullptr;
             bool thru = false;
+            bool no_shutdown = false;
         };
 
         struct SSLOutSetting : IOutputSetting<ContextType::ssl> {
@@ -44,6 +46,7 @@ namespace socklib {
             int progress = 0;
             errno_t numerr = 0;
             bool thru = false;
+            bool no_shutdown = false;
 
             void call_ssl_error() {
                 numerr = ERR_peek_last_error();
@@ -421,9 +424,15 @@ namespace socklib {
                 if (auto sl = cast_<SSLInSetting>(&set)) {
                     alpn = sl->alpn;
                     alpnlen = sl->alpnlen;
-                    cacert->clear();
-                    cacert->set(sl->cacert);
+                    if (sl->cacert) {
+                        cacert->clear();
+                        cacert->set(sl->cacert);
+                    }
                     thru = sl->thru;
+                    if (sl->hostname) {
+                        hostname->clear();
+                        hostname->set(sl->hostname);
+                    }
                     return true;
                 }
                 if (base) {
@@ -457,6 +466,75 @@ namespace socklib {
                     return base->has_error(err);
                 }
                 return false;
+            }
+
+           private:
+            State close_impl(bool force_close) {
+                if (state != CtxState::closing) {
+                    state = CtxState::closing;
+                    progress = 0;
+                }
+                switch (progress) {
+                    case 0:
+                        if (ssl && !no_shutdown && !force_close) {
+                            auto res = ::SSL_shutdown(ssl);
+                            if (res <= 0 && is_continue_error()) {
+                                return StateValue::inprogress;
+                            }
+                            else {
+                                progress = 5;
+                                break;
+                            }
+                        }
+                        else {
+                            progress = 5;
+                            break;
+                        }
+                    case 1:
+                    case 2:
+                    case 3:
+                    case 4:
+                        if (auto e = read_write_bio<1>(); e == StateValue::inprogress) {
+                            return e;
+                        }
+                        else if (e) {
+                            progress = 0;
+                            return StateValue::inprogress;
+                        }
+                        progress = 5;
+                    default:
+                        break;
+                }
+                if (progress == 5) {
+                    ::SSL_free(ssl);
+                    ssl = nullptr;
+                    progress = 6;
+                }
+                if (progress == 6) {
+                    if (auto e = Context::close(); !force_close && e == StateValue::inprogress) {
+                        return e;
+                    }
+                    progress = 7;
+                }
+                numerr = 0;
+                state = CtxState::free;
+                progress = 0;
+                return true;
+            }
+
+           public:
+            virtual State close() {
+                return close_impl(false);
+            }
+
+            ~SSLContext() {
+                size_t count = 0;
+                while (count < 100 && close() == StateValue::inprogress) {
+                    count++;
+                }
+                if (count == 100) {
+                    close_impl(true);
+                }
             }
         };
     }  // namespace v3
