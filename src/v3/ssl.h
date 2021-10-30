@@ -40,6 +40,8 @@ namespace socklib {
             ::BIO* io_ssl = nullptr;
             ::BIO* io_base = nullptr;
 
+            StringBuffer* tmpbuf = nullptr;
+
             void call_ssl_error() {
                 numerr = ERR_peek_last_error();
                 ERR_print_errors_cb(
@@ -51,10 +53,6 @@ namespace socklib {
                     },
                     (void*)errmsg);
             }
-
-            StringBuffer* tmpbuf = nullptr;
-
-            size_t nowread = 0;
 
             template <int progbase>
             State read_write_bio() {
@@ -91,15 +89,16 @@ namespace socklib {
                     case progbase + 3: {
                         if (BIO_should_read(io_ssl)) {
                             char buf[1024] = {0};
-                            if (auto e = Context::read(buf, 1024, nowread); e == StateValue::inprogress) {
-                                tmpbuf->append_back(buf, nowread);
+                            size_t red = 0;
+                            if (auto e = Context::read(buf, 1024, red); e == StateValue::inprogress) {
+                                tmpbuf->append_back(buf, red);
                                 return e;
                             }
                             else if (!e) {
                                 return false;
                             }
                             else {
-                                tmpbuf->append_back(buf, nowread);
+                                tmpbuf->append_back(buf, red);
                             }
                             size_t written = 0;
                             if (!::BIO_write_ex(io_base, tmpbuf->c_str(), tmpbuf->size(), &written)) {
@@ -145,7 +144,7 @@ namespace socklib {
                         if (auto e = read_write_bio<5>(); !e) {
                             return e;
                         }
-                        progress = 4;
+                        progress = 9;
                         return StateValue::inprogress;
                     }
                     default:
@@ -227,6 +226,7 @@ namespace socklib {
                         progress = 0;
                         break;
                 }
+                return true;
             }
             virtual Context* get_base() override {
                 if (!base) return nullptr;
