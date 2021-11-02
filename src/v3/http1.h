@@ -18,16 +18,37 @@ namespace socklib {
             std::shared_ptr<Context> base;
             URL* url = nullptr;
             HeaderContext* request = nullptr;
+            int status = 0;
             HeaderContext* response = nullptr;
             HeaderFlag hflag = HeaderFlag::verify_header | HeaderFlag::verify_status;
             CtxState state = CtxState::free;
             int progress = 0;
             errno_t numerr = 0;
+            bool thru = false;
             StringBuffer* errmsg = nullptr;
             StringBuffer* tmpbuf1 = nullptr;
             StringBuffer* tmpbuf2 = nullptr;
 
            public:
+            virtual State open() {
+                if (state != CtxState::free && state != CtxState::opening) {
+                    errmsg->clear();
+                    errmsg->set("invalid state. now ");
+                    errmsg->append_back(state_value(state));
+                    errmsg->append_back(", need free or opening");
+                    numerr = -1;
+                    return false;
+                    return false;
+                }
+                state = CtxState::opening;
+                progress = 0;
+                auto res = Context::open();
+                if (res != StateValue::inprogress) {
+                    state = CtxState::free;
+                }
+                return res;
+            }
+
             virtual State write(const char* data, size_t size) override {
             }
 

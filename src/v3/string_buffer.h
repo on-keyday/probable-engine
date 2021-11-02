@@ -25,10 +25,12 @@ namespace socklib {
             virtual bool append_front(const char*) = 0;
             virtual bool append_back(const char*, size_t) = 0;
             virtual bool append_back(const char*) = 0;
+            virtual bool append(const char* toset, size_t size) = 0;
+            virtual bool append(const char* toset) = 0;
             virtual bool is_readonly() const = 0;
             virtual bool equal(const char* str, size_t size) = 0;
             virtual bool equal(const char* str) = 0;
-            virtual void push_back() = 0;
+            virtual void push_back(char c) = 0;
             virtual ~StringBuffer() {}
         };
 
@@ -162,10 +164,10 @@ namespace socklib {
                 return set_or_append<true, true>(buf, toset, len(toset));
             }
 
-            virtual bool append(const char* toset, size_t size) {
+            virtual bool append(const char* toset, size_t size) override {
                 return set_or_append<true, false>(buf, toset, size);
             }
-            virtual bool append_back(const char* toset) {
+            virtual bool append_back(const char* toset) override {
                 return set_or_append<true, false>(buf, toset, len(toset));
             }
 
@@ -177,17 +179,17 @@ namespace socklib {
                 return set_or_append<true, false>(buf, toset, len(toset));
             }
 
-            virtual bool equal(const char* str, size_t strsize) {
+            virtual bool equal(const char* str, size_t strsize) override {
                 if (!str || !data() || size() != strsize) {
                     return false;
                 }
                 return ::memcmp(data(), str) == 0;
             }
-            virtual bool equal(const char* str) {
+            virtual bool equal(const char* str) override {
                 return equal(str, len(str));
             }
 
-            virtual void push_back(char c) {
+            virtual void push_back(char c) override {
                 append_back(&c, 1);
             }
         };

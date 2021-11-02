@@ -36,15 +36,13 @@ namespace socklib {
            private:
             StringBuffer* host = nullptr;
             StringBuffer* service = nullptr;
-            StringBuffer* errmsg = nullptr;
             int socktype = 0;
             int sockfamily = 0;
             ::addrinfo* addr = nullptr;
-            errno_t errcode = 0;
 
            public:
             DnsContext(const StringBufferBuilder& bufbase)
-                : host(bufbase.make()), service(bufbase.make()), errmsg(bufbase.make()) {}
+                : host(bufbase.make()), service(bufbase.make()), IContext<ContextType::dns>(&bufbase) {}
 
             virtual bool set_setting(const InputSetting& set) override {
                 if (auto dns = cast_<DnsInSetting>(&set)) {
@@ -77,11 +75,10 @@ namespace socklib {
                 const char* hostname = host->size() ? host->c_str() : nullptr;
                 const char* servicename = service->size() ? service->c_str() : nullptr;
                 if (::getaddrinfo(hostname, servicename, &hint, &info) != 0) {
-                    errmsg->set("resolve address failed: host ");
+                    report("resolve address failed: host ", get_socket_error());
                     errmsg->append_back(hostname ? hostname : "<NULL>");
                     errmsg->append_back(" , service ");
                     errmsg->append_back(servicename ? servicename : "<NULL>");
-                    errcode = get_socket_error();
                     return false;
                 }
                 close();

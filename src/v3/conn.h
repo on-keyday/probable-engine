@@ -8,6 +8,7 @@
 #pragma once
 #include "../common/platform.h"
 #include <enumext.h>
+#include "string_buffer.h"
 
 namespace socklib {
     namespace v3 {
@@ -28,6 +29,7 @@ namespace socklib {
             succeed,
             failed,
             inprogress,
+            retry_now,
         };
 
         enum class CtxState {
@@ -92,6 +94,24 @@ namespace socklib {
         };
 
         struct Context {
+           protected:
+            std::shared_ptr<Context> base;
+            StringBuffer* errmsg = nullptr;
+            errno_t numerr = 0;
+            void report(const char* err, errno_t num = -1) {
+                errmsg->clear();
+                errmsg->set(err);
+                numerr = num;
+            }
+
+            void add_report(const char* err) {
+                errmsg->append(err);
+            }
+
+           public:
+            Context(const StringBufferBuilder* b)
+                : errmsg(b->make()) {}
+
             virtual ContextType get_type() const {
                 return ContextType::unknown;
             }
@@ -150,6 +170,9 @@ namespace socklib {
 
         template <ContextType v>
         struct IContext : Context {
+            IContext(const StringBufferBuilder* b)
+                : Context(b) {}
+
             constexpr static ContextType context_type() {
                 return v;
             }
