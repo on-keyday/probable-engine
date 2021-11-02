@@ -12,46 +12,37 @@
 
 namespace socklib {
     namespace v3 {
-
-        struct Http1Context : IContext<ContextType::http1> {
-           private:
-            std::shared_ptr<Context> base;
+        struct Http1Context : Context {
+            OVERRIDE_CONTEXT(ContextType::http1)
             URL* url = nullptr;
             HeaderContext* request = nullptr;
             int status = 0;
             HeaderContext* response = nullptr;
             HeaderFlag hflag = HeaderFlag::verify_header | HeaderFlag::verify_status;
-            CtxState state = CtxState::free;
-            int progress = 0;
-            errno_t numerr = 0;
             bool thru = false;
-            StringBuffer* errmsg = nullptr;
             StringBuffer* tmpbuf1 = nullptr;
             StringBuffer* tmpbuf2 = nullptr;
+        };
+
+        struct Http1Conn : Conn {
+           private:
+            std::shared_ptr<Context> base;
 
            public:
-            virtual State open() {
-                if (state != CtxState::free && state != CtxState::opening) {
-                    errmsg->clear();
-                    errmsg->set("invalid state. now ");
-                    errmsg->append_back(state_value(state));
-                    errmsg->append_back(", need free or opening");
-                    numerr = -1;
-                    return false;
-                    return false;
+            virtual State open(ContextManager& m) override {
+                if (m.check_id(ctx)) {
                 }
-                state = CtxState::opening;
-                progress = 0;
-                auto res = Context::open();
+                auto res = Conn::open(m);
                 if (res != StateValue::inprogress) {
                     state = CtxState::free;
                 }
                 return res;
             }
 
-            virtual State write(const char* data, size_t size) override {
+            virtual State write(ContextManager& m, const char* data, size_t size) override {
             }
 
+            /*
             virtual bool has_error(ErrorInfo* err) override {
                 if (errmsg->size()) {
                     if (err) {
@@ -70,7 +61,7 @@ namespace socklib {
             virtual Context* get_base() override {
                 if (!base) return nullptr;
                 return std::addressof(*base);
-            }
+            }*/
         };
     }  // namespace v3
 }  // namespace socklib

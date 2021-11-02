@@ -60,6 +60,9 @@ namespace socklib {
                 return ContextType::unknown;
             }
             virtual Conn* get_base() {
+                if (base) {
+                    return std::addressof(*base);
+                }
                 return nullptr;
             }
             virtual State open(ContextManager& m) {

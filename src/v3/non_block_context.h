@@ -191,6 +191,9 @@ namespace socklib {
             StringBufferBuilder* b;
 
            public:
+            ContextManager(StringBufferBuilder* b)
+                : b(b) {}
+
             template <class CtxType>
             State check_id(CtxType*& ctx, bool* is_new = nullptr) {
                 auto got = this->get<CtxType>();
