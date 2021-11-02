@@ -113,16 +113,21 @@ namespace socklib {
 
            public:
             virtual State open(ContextManager& m) override {
-                if (auto e = m.check_id(ctx); !e) {
+                bool is_new = false;
+                if (auto e = m.check_id(ctx, &is_new); !e) {
                     return e;
                 }
                 if (!ctx->test_and_set_state<CtxState::opening>()) {
+                    if (is_new) {
+                        ctx = nullptr;
+                    }
                     return false;
                 }
                 switch (ctx->get_progress()) {
                     case 0:
                         if (!get_base()) {
                             ctx->report("need base for DNS");
+                            ctx = nullptr;
                             return false;
                         }
                         ctx->increment();
@@ -130,6 +135,7 @@ namespace socklib {
                         size_t t = 0;
                         if (ctx->dns = m.get_in_link<DnsContext>(&t); !ctx->dns || t != 1) {
                             ctx->report("need DnsContext at base to resolve address");
+                            ctx = nullptr;
                             return false;
                         }
                         ctx->increment();
@@ -140,6 +146,7 @@ namespace socklib {
                         }
                         else if (!e) {
                             ctx->report(nullptr);
+                            ctx = nullptr;
                             return e;
                         }
                         else {
@@ -155,6 +162,7 @@ namespace socklib {
                         else if (!e) {
                             ctx->current = nullptr;
                             ctx->dns = nullptr;
+                            ctx = nullptr;
                             return e;
                         }
                         ctx->increment();

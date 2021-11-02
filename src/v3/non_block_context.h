@@ -173,7 +173,7 @@ namespace socklib {
 
            public:
             template <class CtxType>
-            State check_id(CtxType*& ctx) {
+            State check_id(CtxType*& ctx, bool* is_new = nullptr) {
                 auto got = this->get<CtxType>();
                 if (!got) {
                     return StateValue::fatal;
@@ -183,9 +183,15 @@ namespace socklib {
                         got->report("invalid context. id not same");
                         return false;
                     }
+                    if (is_new) {
+                        *is_new = false;
+                    }
                 }
                 else {
                     ctx = got;
+                    if (is_new) {
+                        *is_new = true;
+                    }
                 }
                 return true;
             }
