@@ -77,6 +77,12 @@ namespace socklib {
             }
         };
 
+        struct ErrorInfo {
+            ContextType type = ContextType::unknown;
+            const char* errmsg = nullptr;
+            std::int64_t numerr = 0;
+        };
+
         struct Context {
            private:
             ContextType type = ContextType::unknown;
@@ -87,6 +93,9 @@ namespace socklib {
             ContextID id;
 
            public:
+            bool is_free_context() const {
+                return state == CtxState::free;
+            }
             static size_t type_id() {
                 static ContextID id;
                 return id.get();
@@ -145,6 +154,16 @@ namespace socklib {
 
             virtual size_t get_typeid() const {
                 return type_id();
+            }
+
+            bool has_error(ErrorInfo& info) const {
+                if (errmsg->size()) {
+                    info.errmsg = errmsg->c_str();
+                    info.numerr = errcode;
+                    info.type = type;
+                    return true;
+                }
+                return false;
             }
 
             virtual ~Context() {
@@ -239,6 +258,16 @@ namespace socklib {
                     return child->get_in_link<CtxType>(dpresult, depth + 1);
                 }
                 return nullptr;
+            }
+
+            bool get_error_in_link(ErrorInfo& info) const {
+                if (ctx && ctx->has_error(info)) {
+                    return true;
+                }
+                if (child) {
+                    return child->get_error_in_link(info);
+                }
+                return true;
             }
         };
 

@@ -51,12 +51,6 @@ namespace socklib {
             }
         };
 
-        struct ErrorInfo {
-            ContextType type = ContextType::unknown;
-            const char* errmsg = nullptr;
-            std::int64_t numerr = 0;
-        };
-
         struct Conn {
            private:
             std::shared_ptr<Conn> base;
