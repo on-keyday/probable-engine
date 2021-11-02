@@ -129,6 +129,12 @@ namespace socklib {
             size_t length = 0;
         };
 
+        struct ImportantHeader {
+            const char* host = nullptr;
+            size_t content_length = 0;
+            bool needlen = false;
+        };
+
         struct HeaderIO {
             static bool endline(char c) {
                 return c != '\r' && c != '\n';
@@ -269,7 +275,7 @@ namespace socklib {
             }
 
             template <class Const, class String>
-            static bool write_keyval(Const&& key, Const&& value, String* tmpbuf, HeaderFlag flag) {
+            static bool write_keyval(String& raw, Const&& key, Const&& value, String* tmpbuf, HeaderFlag flag) {
                 if (any(flag & HeaderFlag::verify_header)) {
                     if (!is_valid_header(key, value)) {
                         if (any(flag & HeaderFlag::ignore_invalid)) {
@@ -301,10 +307,17 @@ namespace socklib {
             }
 
             template <class String>
-            static bool write_common(String& raw, HeaderContext& ctx, String* tmpbuf, HeaderFlag flag) {
+            static bool write_common(String& raw, HeaderContext& ctx, String* tmpbuf, HeaderFlag flag, ImportantHeader* imh) {
+                if (imh) {
+                    if (imh->host) {
+                        if(!write_keyval(raw,"Host", imh->host,tmpbuf,flag){
+                            return false;
+                        }
+                    }
+                }
                 const char *key = nullptr, *value = nullptr;
                 for (size_t i = 0; ctx.get(i, key, value); i++) {
-                    if (!write_keyval(key, value, tmpbuf, flag)) {
+                    if (!write_keyval(raw, key, value, tmpbuf, flag)) {
                         return false;
                     }
                 }
@@ -318,7 +331,8 @@ namespace socklib {
             }
 
             template <class String, class Const = const char*>
-            static bool write_request(String& raw, const Const& method, const Const& path, HeaderContext& header, int version = 1, HeaderFlag flag = HeaderFlag::verify_header | HeaderFlag::verify_status, String* tmpbuf = nullptr) {
+            static bool write_request(String& raw, const Const& method, const Const& path, HeaderContext& header,
+                                      int version = 1, HeaderFlag flag = HeaderFlag::verify_header | HeaderFlag::verify_status, const Const& host = nullptr, String* tmpbuf = nullptr) {
                 using buffer_t = StringBuffer_impl<std::remove_cvref<Const>>;
                 if (any(flag & HeaderFlag::verify_status)) {
                     if (!is_valid_statusline(buffer_t::get_data(method)) &&

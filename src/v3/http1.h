@@ -53,13 +53,12 @@ namespace socklib {
                         ctx->request->remove("host");
                         ctx->request->remove("content-length");
                         ctx->request->remove("transfer-encoding");
-                        ctx->request->set("Host", ctx->url->host_port());
                         if (!header_t::write_request(*ctx->tmpbuf1,
                                                      ctx->method,
                                                      ctx->url->path_query(),
                                                      *ctx->request,
                                                      ctx->header_version,
-                                                     ctx->hflag, ctx->tmpbuf2)) {
+                                                     ctx->hflag, ctx->url->host_port(), ctx->tmpbuf2)) {
                             ctx->report("failed to write http header");
                             ctx = nullptr;
                             return false;
