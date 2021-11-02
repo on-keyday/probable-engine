@@ -30,6 +30,9 @@ namespace socklib {
             virtual bool set_tag(const char*) = 0;
             virtual const char* opaque() = 0;
             virtual bool set_opaque(const char*) = 0;
+
+            virtual const char* path_query() = 0;
+            virtual const char* host_port() = 0;
         };
 
         template <class String>

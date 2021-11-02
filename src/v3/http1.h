@@ -12,9 +12,12 @@
 
 namespace socklib {
     namespace v3 {
+
         struct Http1Context : Context {
             OVERRIDE_CONTEXT(ContextType::http1)
             URL* url = nullptr;
+            int header_version = 0;
+            const char* method = nullptr;
             HeaderContext* request = nullptr;
             int status = 0;
             HeaderContext* response = nullptr;
@@ -26,20 +29,65 @@ namespace socklib {
 
         struct Http1Conn : Conn {
            private:
-            std::shared_ptr<Context> base;
+            using header_t = HeaderIO;
+            Http1Context* ctx;
 
            public:
             virtual State open(ContextManager& m) override {
-                if (m.check_id(ctx)) {
+                if (auto e = m.check_id(ctx); !e) {
+                    return e;
                 }
                 auto res = Conn::open(m);
                 if (res != StateValue::inprogress) {
-                    state = CtxState::free;
+                    ctx->report(nullptr);
+                    ctx = nullptr;
                 }
                 return res;
             }
 
             virtual State write(ContextManager& m, const char* data, size_t size) override {
+                switch (ctx->get_progress()) {
+                    case 0:
+                        ctx->tmpbuf1->clear();
+                        ctx->tmpbuf2->clear();
+                        ctx->request->remove("host");
+                        ctx->request->remove("content-length");
+                        ctx->request->remove("transfer-encoding");
+                        ctx->request->set("Host", ctx->url->host_port());
+                        if (!header_t::write_request(*ctx->tmpbuf1,
+                                                     ctx->method,
+                                                     ctx->url->path_query(),
+                                                     *ctx->request,
+                                                     ctx->header_version,
+                                                     ctx->hflag, ctx->tmpbuf2)) {
+                            ctx->report("failed to write http header");
+                            ctx = nullptr;
+                            return false;
+                        }
+                        ctx->increment();
+                    case 1:
+                        if (auto e = Conn::write(m, ctx->tmpbuf1->c_str(), ctx->tmpbuf1->size()); e == StateValue::inprogress) {
+                            return e;
+                        }
+                        else if (!e) {
+                            ctx = nullptr;
+                            return e;
+                        }
+                        ctx->increment();
+                    case 2:
+                        if (data && size) {
+                            if (auto e = Conn::write(m, data, size); e == StateValue::inprogress) {
+                                return e;
+                            }
+                            else if (!e) {
+                                return e;
+                            }
+                        }
+                    default:
+                        ctx->report(nullptr);
+                        ctx = nullptr;
+                }
+                return true;
             }
 
             /*

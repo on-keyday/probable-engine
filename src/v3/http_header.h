@@ -115,6 +115,20 @@ namespace socklib {
 
         DEFINE_ENUMOP(HeaderFlag);
 
+        enum class BodySizeHeader {
+            noinfo = 0,
+            chunked = 0x1,
+            content_length = 0x2,
+            content_type = 0x4,
+        };
+
+        DEFINE_ENUMOP(BodySizeHeader)
+
+        struct BodyInfo {
+            BodySizeHeader state;
+            size_t length = 0;
+        };
+
         struct HeaderIO {
             static bool endline(char c) {
                 return c != '\r' && c != '\n';
@@ -125,9 +139,13 @@ namespace socklib {
                 return r.expect("\r\n") || r.expect("\r") || r.expect("\n");
             }
 
+            static bool header_cmp(unsigned char c1, unsigned char c2) {
+                return std::toupper(c1) == std::toupper(c2);
+            }
+
             template <class Buf, class String>
             static bool parse_common(commonlib2::Reader<Buf>& r, HeaderContext& header,
-                                     String& tmpbuf1, String& tmpbuf2) {
+                                     String& tmpbuf1, String& tmpbuf2, BodyInfo* info) {
                 while (!r.ceof()) {
                     tmpbuf1.clear();
                     tmpbuf2.clear();
@@ -146,13 +164,27 @@ namespace socklib {
                         return false;
                     }
                     header.set(tmpbuf1.c_str(), tmpbuf2.c_str());
+                    if (info) {
+                        if (commonlib2::str_eq(tmpbuf1.c_str(), "content-length", header_cmp)) {
+                            commonlib2::Reader(tmpbuf2.c_str()) >> info->length;
+                            info->state |= BodySizeHeader::content_length;
+                        }
+                        else if (commonlib2::str_eq(tmpbuf1.c_str(), "transfer-encoding", header_cmp)) {
+                            if (std::string_view(tmpbuf2.c_str()).find("chunked")) {
+                                info->state |= BodySizeHeader::chunked;
+                            }
+                        }
+                        else if (commonlib2::str_eq(tmpbuf1.c_str(), "content-type", header_cmp)) {
+                            info->state |= BodySizeHeader::content_type;
+                        }
+                    }
                 }
                 return false;
             }
 
             template <class Buf, class String>
             static bool parse_request(commonlib2::Reader<Buf>& r, String& method, String& path,
-                                      HeaderContext& header, String& tmpbuf1, String& tmpbuf2, String* version = nullptr) {
+                                      HeaderContext& header, String& tmpbuf1, String& tmpbuf2, String* version = nullptr, BodyInfo* bodyinfo = nullptr) {
                 r.readwhile(method, commonlib2::until, ' ');
                 if (!r.expect(" ")) {
                     return false;
@@ -165,14 +197,14 @@ namespace socklib {
                 if (!expect_endline(r)) {
                     return false;
                 }
-                return parse_common(r, header, tmpbuf1, tmpbuf2);
+                return parse_common(r, header, tmpbuf1, tmpbuf2, bodyinfo);
             }
 
             template <class Buf, class String>
             static bool parse_response(commonlib2::Reader<Buf>& r, int& status,
                                        HeaderContext& header,
                                        String& tmpbuf1, String& tmpbuf2,
-                                       String* version = nullptr, String* reason = nullptr) {
+                                       String* version = nullptr, String* reason = nullptr, BodyInfo* bodyinfo = nullptr) {
                 r.readwhile(version ? *version : tmpbuf1, commonlib2::until, ' ');
                 if (!r.expect(" ")) {
                     return false;
@@ -192,7 +224,7 @@ namespace socklib {
                 if (!expect_endline(r)) {
                     return false;
                 }
-                return parse_common(r, header, tmpbuf1, tmpbuf2)
+                return parse_common(r, header, tmpbuf1, tmpbuf2, bodyinfo)
             }
 
             static bool is_valid_statusline(const char* val) {
@@ -276,11 +308,17 @@ namespace socklib {
                         return false;
                     }
                 }
+                if (any(flag & HeaderFlag::only_lf)) {
+                    raw.append("\n");
+                }
+                else {
+                    raw.append("\r\n");
+                }
                 return true;
             }
 
-            template <class String, class Const>
-            bool write_request(String& raw, Const&& method, Const&& path, HeaderContext& header, int version = 1, HeaderFlag flag = HeaderFlag::verify_header | HeaderFlag::verify_status, String* tmpbuf = nullptr) {
+            template <class String, class Const = const char*>
+            static bool write_request(String& raw, const Const& method, const Const& path, HeaderContext& header, int version = 1, HeaderFlag flag = HeaderFlag::verify_header | HeaderFlag::verify_status, String* tmpbuf = nullptr) {
                 using buffer_t = StringBuffer_impl<std::remove_cvref<Const>>;
                 if (any(flag & HeaderFlag::verify_status)) {
                     if (!is_valid_statusline(buffer_t::get_data(method)) &&
@@ -308,7 +346,7 @@ namespace socklib {
             }
 
             template <class String, class Const = const char*>
-            bool write_response(String& raw, int status, HeaderContext& header, int version = 1, HeaderFlag flag = HeaderFlag::verify_header | HeaderFlag::verify_status, String* tmpbuf = nullptr, Const&& reason = nullptr) {
+            static bool write_response(String& raw, int status, HeaderContext& header, int version = 1, HeaderFlag flag = HeaderFlag::verify_header | HeaderFlag::verify_status, String* tmpbuf = nullptr, const Const& reason = nullptr) {
                 using buffer_t = StringBuffer_impl<std::remove_cvref<Const>>;
                 if (status < 100 || status > 999) {
                     return false;

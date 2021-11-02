@@ -25,6 +25,7 @@ namespace socklib {
             ::SSL_CTX* ctx = nullptr;
         };
 */
+
         struct SSLContext : Context {
             OVERRIDE_CONTEXT(ContextType::ssl)
             ::SSL* ssl = nullptr;
@@ -34,8 +35,8 @@ namespace socklib {
             size_t alpnlen = 0;
             bool thru = false;
             bool no_shutdown = false;
-            StringBuffer* cacert = nullptr;
-            StringBuffer* hostname = nullptr;
+            const char* cacert = nullptr;
+            const char* hostname = nullptr;
 
             ::BIO* io_ssl = nullptr;
             ::BIO* io_base = nullptr;
@@ -199,7 +200,7 @@ namespace socklib {
                             }
                             SSL_CTX_set_options(ctx->ctx, SSL_OP_NO_SSLv2);
                         }
-                        if (!::SSL_CTX_load_verify_locations(ctx->ctx, ctx->cacert->c_str(), nullptr)) {
+                        if (!::SSL_CTX_load_verify_locations(ctx->ctx, ctx->cacert, nullptr)) {
                             call_ssl_error("faild call ::SSL_CTX_load_verify_locations\n");
                             ctx = nullptr;
                             return false;
@@ -240,8 +241,8 @@ namespace socklib {
                                 return false;
                             }
                         }
-                        if (ctx->hostname->size()) {
-                            if (!SSL_set_tlsext_host_name(ctx->ssl, ctx->hostname->c_str())) {
+                        if (ctx->hostname) {
+                            if (!SSL_set_tlsext_host_name(ctx->ssl, ctx->hostname)) {
                                 call_ssl_error("failed call SSL_set_tlsext_host_name\n");
                                 ::SSL_free(ctx->ssl);
                                 ctx->ssl = nullptr;
@@ -249,7 +250,7 @@ namespace socklib {
                                 return false;
                             }
                             auto param = ::SSL_get0_param(ctx->ssl);
-                            if (!::X509_VERIFY_PARAM_add1_host(param, ctx->hostname->c_str(), 0)) {
+                            if (!::X509_VERIFY_PARAM_add1_host(param, ctx->hostname, 0)) {
                                 call_ssl_error("failed call ::X509_VERIFY_PARAM_add1_host\n");
                                 ::SSL_free(ctx->ssl);
                                 ctx->ssl = nullptr;

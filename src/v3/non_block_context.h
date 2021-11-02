@@ -172,6 +172,7 @@ namespace socklib {
         };
 
 #define OVERRIDE_CONTEXT(TYPE)                   \
+    using Context::Context;                      \
     constexpr static ContextType get_type() {    \
         return TYPE;                             \
     }                                            \
