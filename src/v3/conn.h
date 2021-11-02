@@ -8,46 +8,10 @@
 #pragma once
 #include "../common/platform.h"
 #include <enumext.h>
-#include "string_buffer.h"
+#include "non_block_context.h"
 
 namespace socklib {
     namespace v3 {
-
-        enum class ContextType {
-            unknown,
-            dns,
-            tcp_socket,
-            udp_socket,
-            ssl,
-            crypt,
-            file,
-            http1,
-            http2,
-        };
-
-        enum class StateValue {
-            succeed,
-            failed,
-            inprogress,
-            retry_now,
-        };
-
-        enum class CtxState {
-            free,
-            opening,
-            writing,
-            reading,
-            closing,
-        };
-
-        BEGIN_ENUM_STRING_MSG(CtxState, state_value)
-        ENUM_STRING_MSG(CtxState::opening, "opening")
-        ENUM_STRING_MSG(CtxState::writing, "writing")
-        ENUM_STRING_MSG(CtxState::reading, "reading")
-        ENUM_STRING_MSG(CtxState::closing, "closing")
-        END_ENUM_STRING_MSG("free")
-
-        using State = commonlib2::EnumWrap<StateValue, StateValue::succeed, StateValue::failed>;
 
         struct Setting {
             virtual ContextType get_type() const = 0;
@@ -93,46 +57,32 @@ namespace socklib {
             std::int64_t numerr = 0;
         };
 
-        struct Context {
-           protected:
-            std::shared_ptr<Context> base;
-            StringBuffer* errmsg = nullptr;
-            errno_t numerr = 0;
-            void report(const char* err, errno_t num = -1) {
-                errmsg->clear();
-                errmsg->set(err);
-                numerr = num;
-            }
-
-            void add_report(const char* err) {
-                errmsg->append(err);
-            }
+        struct Conn {
+           private:
+            std::shared_ptr<Conn> base;
 
            public:
-            Context(const StringBufferBuilder* b)
-                : errmsg(b->make()) {}
-
             virtual ContextType get_type() const {
                 return ContextType::unknown;
             }
-            virtual Context* get_base() {
+            virtual Conn* get_base() {
                 return nullptr;
             }
-            virtual State open() {
+            virtual State open(ContextManager& m) {
                 if (auto base = get_base()) {
-                    return base->open();
+                    return base->open(*m.get_child());
                 }
                 return false;
             }
-            virtual State write(const char* str, size_t size) {
+            virtual State write(ContextManager& m, const char* str, size_t size) {
                 if (auto base = get_base()) {
-                    return base->write(str, size);
+                    return base->write(*m.get_child(), str, size);
                 }
                 return false;
             }
-            virtual State read(char* str, size_t size, size_t& red) {
+            virtual State read(ContextManager& m, char* str, size_t size, size_t& red) {
                 if (auto base = get_base()) {
-                    return base->read(str, size, red);
+                    return base->read(*m.get_child(), str, size, red);
                 }
                 return false;
             }
@@ -148,13 +98,13 @@ namespace socklib {
                 }
                 return false;
             }
-            virtual State close() {
+            virtual State close(ContextManager& m) {
                 if (auto base = get_base()) {
-                    return base->close();
+                    return base->close(*m.get_child());
                 }
                 return false;
             }
-
+            /*
             virtual bool has_error(ErrorInfo* info) {
                 if (auto base = get_base()) {
                     return base->has_error(info);
@@ -165,9 +115,10 @@ namespace socklib {
                     info->numerr = -1;
                 }
                 return true;
-            }
+            }*/
         };
 
+        /*
         template <ContextType v>
         struct IContext : Context {
             IContext(const StringBufferBuilder* b)
@@ -207,6 +158,6 @@ namespace socklib {
                 return static_cast<const T*>(ctx);
             }
             return nullptr;
-        }
+        }*/
     }  // namespace v3
 }  // namespace socklib

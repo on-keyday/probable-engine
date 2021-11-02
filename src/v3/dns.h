@@ -32,18 +32,20 @@ namespace socklib {
             ::addrinfo* addr = nullptr;
         };
 
-        struct DnsContext : IContext<ContextType::dns> {
-           private:
+        struct DnsContext : Context {
+            OVERRIDE_CONTEXT(ContextType::dns);
             StringBuffer* host = nullptr;
             StringBuffer* service = nullptr;
             int socktype = 0;
             int sockfamily = 0;
             ::addrinfo* addr = nullptr;
+        };
 
+        struct DnsConn : Conn {
            public:
-            DnsContext(const StringBufferBuilder& bufbase)
-                : host(bufbase.make()), service(bufbase.make()), IContext<ContextType::dns>(&bufbase) {}
-
+            DnsConn(const StringBufferBuilder& bufbase) {}
+            /* : host(bufbase.make()), service(bufbase.make())*/
+            /*
             virtual bool set_setting(const InputSetting& set) override {
                 if (auto dns = cast_<DnsInSetting>(&set)) {
                     host->clear();
@@ -65,34 +67,44 @@ namespace socklib {
                     return true;
                 }
                 return false;
-            }
+            }*/
 
-            virtual State open() override {
-                errmsg->clear();
+            virtual State open(ContextManager& m) override {
+                auto got = m.get<DnsContext>();
+                if (!got) {
+                    return StateValue::fatal;
+                }
+                auto ctx = got;
                 ::addrinfo hint = {0}, *info = nullptr;
-                hint.ai_socktype = socktype;
-                hint.ai_family = sockfamily;
-                const char* hostname = host->size() ? host->c_str() : nullptr;
-                const char* servicename = service->size() ? service->c_str() : nullptr;
+                hint.ai_socktype = ctx->socktype;
+                hint.ai_family = ctx->sockfamily;
+                const char* hostname = ctx->host->size() ? ctx->host->c_str() : nullptr;
+                const char* servicename = ctx->service->size() ? ctx->service->c_str() : nullptr;
                 if (::getaddrinfo(hostname, servicename, &hint, &info) != 0) {
-                    report("resolve address failed: host ", get_socket_error());
-                    errmsg->append_back(hostname ? hostname : "<NULL>");
-                    errmsg->append_back(" , service ");
-                    errmsg->append_back(servicename ? servicename : "<NULL>");
+                    ctx->report("resolve address failed: host ", get_socket_error());
+                    ctx->add_report(hostname ? hostname : "<NULL>");
+                    ctx->add_report(" , service ");
+                    ctx->add_report(servicename ? servicename : "<NULL>");
                     return false;
                 }
-                close();
-                addr = info;
+                close(m);
+                ctx->addr = info;
+                ctx = nullptr;
                 return true;
             }
 
-            virtual State close() override {
-                if (addr) {
-                    ::freeaddrinfo(addr);
+            virtual State close(ContextManager& m) override {
+                auto got = m.get<DnsContext>();
+                if (!got) {
+                    return StateValue::fatal;
+                }
+                if (got->addr) {
+                    ::freeaddrinfo(got->addr);
+                    got->addr = nullptr;
                 }
                 return true;
             }
-
+            /*
             virtual bool has_error(ErrorInfo* err) override {
                 if (errmsg->size()) {
                     if (err) {
@@ -103,13 +115,13 @@ namespace socklib {
                     return true;
                 }
                 return false;
-            }
+            }*/
 
-            ~DnsContext() {
-                close();
+            ~DnsConn() {
+                /*close();
                 delete host;
                 delete service;
-                delete errmsg;
+                delete errmsg;*/
             }
         };
     }  // namespace v3

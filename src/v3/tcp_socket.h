@@ -16,106 +16,94 @@ namespace socklib {
         constexpr ::SOCKET invalid_socket = ~0;
         constexpr size_t int_max = ~(unsigned int)commonlib2::msb_on<int>();
 
-        struct TCPInSetting : IInputSetting<ContextType::tcp_socket> {
+        /*struct TCPInSetting : IInputSetting<ContextType::tcp_socket> {
             int ip_version = 0;
         };
 
         struct TCPOutSetting : IOutputSetting<ContextType::tcp_socket> {
             ::SOCKET sock = invalid_socket;
-        };
+        };*/
 
-        struct TCPContext : IContext<ContextType::tcp_socket> {
-           private:
-            std::shared_ptr<Context> base;
-
+        struct TCPContext : Context {
+            OVERRIDE_CONTEXT(ContextType::tcp_socket)
             ::SOCKET sock = invalid_socket;
-
-            StringBuffer* errmsg = nullptr;
-
-            errno_t numerr = 0;
-
-            CtxState state = CtxState::free;
-            int progress = 0;
-
             size_t write_offset = 0;
-
             DnsContext* dns = nullptr;
             ::addrinfo* current = nullptr;
             ::SOCKET tmp = invalid_socket;
-
             int ip_version = 0;
+        };
+
+        struct TCPConn : Conn {
+           private:
+            TCPContext* ctx = nullptr;
 
            public:
-            TCPContext(std::shared_ptr<Context> base, const StringBufferBuilder& bufbase)
-                : base(base), errmsg(bufbase.make()) {}
+            TCPConn() {}
 
            private:
-            State connect() {
+            State connect(ContextManager& m) {
                 auto append_host_service = [&] {
-                    DnsOutSetting osetting;
-                    dns->get_setting(osetting);
-                    errmsg->append_back("host ");
-                    errmsg->append_back(osetting.host);
-                    errmsg->append_back(" ,service ");
-                    errmsg->append_back(osetting.service);
+                    //DnsOutSetting osetting;
+                    ctx->add_report("host ");
+                    ctx->add_report(ctx->dns->host->c_str());
+                    ctx->add_report(" ,service ");
+                    ctx->add_report(ctx->dns->service->c_str());
                 };
-                switch (progress) {
+                switch (ctx->get_progress()) {
                     case 3: {
-                        if (!current) {
-                            errmsg->set("address not resolved. ");
+                        if (!ctx->current) {
+                            ctx->report("address not resolved. ");
                             append_host_service();
                             return false;
                         }
-                        if (tmp != invalid_socket) {
-                            ::closesocket(tmp);
-                            tmp = invalid_socket;
+                        if (ctx->tmp != invalid_socket) {
+                            ::closesocket(ctx->tmp);
+                            ctx->tmp = invalid_socket;
                         }
-                        tmp = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
-                        if (tmp < 0 || tmp == invalid_socket) {
-                            current = current->ai_next;
+                        ctx->tmp = ::socket(ctx->current->ai_family, ctx->current->ai_socktype, ctx->current->ai_protocol);
+                        if (ctx->tmp < 0 || ctx->tmp == invalid_socket) {
+                            ctx->current = ctx->current->ai_next;
                             return StateValue::inprogress;
                         }
                         u_long flag = 1;
-                        ::ioctlsocket(tmp, FIONBIO, &flag);
-                        progress = 4;
+                        ::ioctlsocket(ctx->tmp, FIONBIO, &flag);
+                        ctx->increment();
                     }
                     case 4:
-                        if (::connect(tmp, current->ai_addr, current->ai_addrlen) == 0) {
-                            close();
-                            sock = tmp;
-                            tmp = invalid_socket;
+                        if (::connect(ctx->tmp, ctx->current->ai_addr, ctx->current->ai_addrlen) == 0) {
+                            close(m);
+                            ctx->sock = ctx->tmp;
+                            ctx->tmp = invalid_socket;
                             return true;
                         }
-                        progress = 5;
+                        ctx->increment();
                     case 5: {
                         ::timeval timeout = {0};
                         ::fd_set baseset = {0}, sucset = {0}, errset = {0};
                         FD_ZERO(&baseset);
-                        FD_SET(tmp, &baseset);
+                        FD_SET(ctx->tmp, &baseset);
                         memcpy(&sucset, &baseset, sizeof(::fd_set));
                         memcpy(&errset, &baseset, sizeof(::fd_set));
                         timeout.tv_usec = 1;
-                        auto res = ::select(tmp + 1, nullptr, &sucset, &errset, &timeout);
+                        auto res = ::select(ctx->tmp + 1, nullptr, &sucset, &errset, &timeout);
                         if (res < 0) {
-                            ::closesocket(tmp);
-                            tmp = invalid_socket;
-                            errmsg->set("connect failed on select() calling. ");
-                            append_host_service();
-                            numerr = get_socket_error();
-                            append_host_service();
-                            progress = 0;
-                            return false;
-                        }
-                        if (FD_ISSET(tmp, &errset)) {
-                            ::closesocket(tmp);
-                            tmp = invalid_socket;
-                            errmsg->set("connect failed on FD_ISSET(&errset) calling. ");
+                            ::closesocket(ctx->tmp);
+                            ctx->tmp = invalid_socket;
+                            ctx->report("connect failed on select() calling. ", get_socket_error());
                             append_host_service();
                             return false;
                         }
-                        if (FD_ISSET(tmp, &sucset)) {
-                            sock = tmp;
-                            tmp = invalid_socket;
+                        if (FD_ISSET(ctx->tmp, &errset)) {
+                            ::closesocket(ctx->tmp);
+                            ctx->tmp = invalid_socket;
+                            ctx->report("connect failed on FD_ISSET(&errset) calling. ");
+                            append_host_service();
+                            return false;
+                        }
+                        if (FD_ISSET(ctx->tmp, &sucset)) {
+                            ctx->sock = ctx->tmp;
+                            ctx->tmp = invalid_socket;
                             return true;
                         }
                         return StateValue::inprogress;
@@ -124,78 +112,57 @@ namespace socklib {
             }
 
            public:
-            virtual State open() override {
-                if (state != CtxState::free && state != CtxState::opening) {
-                    errmsg->clear();
-                    errmsg->set("invalid state. now ");
-                    errmsg->append_back(state_value(state));
-                    errmsg->append_back(", need free or opening");
-                    numerr = -1;
+            virtual State open(ContextManager& m) override {
+                if (auto e = m.check_id(ctx); !e) {
+                    return e;
+                }
+                if (!ctx->test_and_set_state<CtxState::opening>()) {
                     return false;
                 }
-                switch (progress) {
+                switch (ctx->get_progress()) {
                     case 0:
-                        state = CtxState::opening;
-                        errmsg->clear();
-                        if (!base) {
-                            errmsg->set("need base for DNS");
-                            numerr = -1;
+                        if (!get_base()) {
+                            ctx->report("need base for DNS");
                             return false;
                         }
-                        progress = 1;
-                    case 1:
-                        for (auto p = get_base(); p; p = p->get_base()) {
-                            if (dns = cast_<DnsContext>(p)) {
-                                break;
-                            }
-                        }
-                        if (!dns) {
-                            errmsg->set("need DnsContext at base to resolve address");
-                            numerr = -1;
-                            progress = 0;
+                        ctx->increment();
+                    case 1: {
+                        size_t t = 0;
+                        if (ctx->dns = m.get_in_link<DnsContext>(&t); !ctx->dns || t != 1) {
+                            ctx->report("need DnsContext at base to resolve address");
                             return false;
                         }
-                        progress = 2;
+                        ctx->increment();
+                    }
                     case 2:
-                        if (auto e = dns->open(); e == StateValue::inprogress) {
+                        if (auto e = Conn::open(m); e == StateValue::inprogress) {
                             return e;
                         }
                         else if (!e) {
-                            dns = nullptr;
-                            progress = 0;
+                            ctx->report(nullptr);
                             return e;
                         }
                         else {
-                            DnsOutSetting osetting;
-                            if (!dns->get_setting(osetting)) {
-                                errmsg->set("unknown error: can't get addrinfo");
-                                numerr = -1;
-                                dns = nullptr;
-                                progress = 0;
-                                return false;
-                            }
-                            current = osetting.addr;
+                            ctx->current = ctx->dns->addr;
                         }
-                        progress = 3;
+                        ctx->increment();
                     case 3:
                     case 4:
                     case 5:
-                        if (auto e = connect(); e = StateValue::inprogress) {
+                        if (auto e = connect(m); e = StateValue::inprogress) {
                             return e;
                         }
                         else if (!e) {
-                            dns = nullptr;
-                            state = CtxState::free;
-                            current = nullptr;
-                            progress = 0;
+                            ctx->current = nullptr;
+                            ctx->dns = nullptr;
                             return e;
                         }
-                        progress = 6;
+                        ctx->increment();
                     default:
-                        dns = nullptr;
-                        current = nullptr;
-                        progress = 0;
-                        state = CtxState::free;
+                        ctx->report(nullptr);
+                        ctx->current = nullptr;
+                        ctx->dns = nullptr;
+                        ctx = nullptr;
                         break;
                 }
                 return true;
@@ -203,93 +170,81 @@ namespace socklib {
 
            private:
             template <CtxState st>
-            bool check_valid(const char* data, size_t size) {
-                errmsg->clear();
-                if (state != CtxState::free && state != st) {
-                    errmsg->set("invalid state. now ");
-                    errmsg->append_back(state_value(state));
-                    errmsg->append_back(", need free or ");
-                    errmsg->append_back(state_value(st));
-                    numerr = -1;
+            State check_valid(ContextManager& m, const char* data, size_t size) {
+                if (auto e = m.check_id(ctx); !e) {
+                    return e;
+                }
+                if (!ctx->test_and_set_state<st>()) {
                     return false;
                 }
-                state = st;
                 if (!data || !size) {
-                    errmsg->set("need not null data and not 0 size.");
-                    numerr = -1;
-                    write_offset = 0;
-                    state = CtxState::free;
+                    ctx->report("need not null data and not 0 size.");
+                    ctx->write_offset = 0;
                     return false;
                 }
-                if (sock == invalid_socket) {
-                    errmsg->set("need open() before ");
-                    errmsg->append_back(state_value(st));
-                    numerr = -1;
-                    write_offset = 0;
-                    state = CtxState::free;
+                if (ctx->sock == invalid_socket) {
+                    ctx->report("need open() before ");
+                    ctx->add_report(state_value(st));
+                    ctx->write_offset = 0;
                     return false;
                 }
                 return true;
             }
 
            public:
-            virtual State write(const char* data, size_t size) {
-                if (!check_valid<CtxState::writing>(data, size)) {
+            virtual State write(ContextManager& m, const char* data, size_t size) {
+                if (auto e = check_valid<CtxState::writing>(m, data, size); !e) {
+                    return e;
+                }
+                if (size < ctx->write_offset) {
+                    ctx->report("invalid write progress. size < write_offset");
+                    ctx->write_offset = 0;
                     return false;
                 }
-                if (size < write_offset) {
-                    errmsg->set("invalid write progress. size < write_offset");
-                    numerr = -1;
-                    write_offset = 0;
-                    state = CtxState::free;
-                    return false;
-                }
-                size_t sz = size - write_offset <= int_max ? size - write_offset : int_max;
-                auto res = ::send(sock, data + write_offset, sz, 0);
+                size_t sz = size - ctx->write_offset <= int_max ? size - ctx->write_offset : int_max;
+                auto res = ::send(ctx->sock, data + ctx->write_offset, sz, 0);
                 if (res < 0) {
                     if (get_socket_error() == EWOULDBLOCK) {
                         return StateValue::inprogress;
                     }
-                    errmsg->set("write failed on ::send() calling.");
-                    numerr = get_socket_error();
-                    state = CtxState::free;
-                    write_offset = 0;
+                    ctx->report("write failed on ::send() calling.", get_socket_error());
+                    ctx->write_offset = 0;
                     return false;
                 }
                 if (sz < int_max) {
-                    write_offset = 0;
-                    state = CtxState::free;
+                    ctx->report(nullptr);
+                    ctx->write_offset = 0;
+                    ctx = nullptr;
                     return true;
                 }
-                write_offset += int_max;
+                ctx->write_offset += int_max;
                 return StateValue::inprogress;
             }
 
-            virtual State read(char* data, size_t size, size_t& red) override {
-                errmsg->clear();
-                if (!check_valid<CtxState::reading>(data, size)) {
-                    return false;
+            virtual State read(ContextManager& m, char* data, size_t size, size_t& red) override {
+                if (auto e = check_valid<CtxState::reading>(m, data, size); !e) {
+                    return e;
                 }
                 if (size > int_max) {
                     size = int_max;
                 }
-                auto res = ::recv(sock, data, (int)size, 0);
+                auto res = ::recv(ctx->sock, data, (int)size, 0);
                 if (res < 0) {
                     if (get_socket_error() == EWOULDBLOCK) {
-                        state = CtxState::free;
+                        ctx->reset_state();
                         return StateValue::inprogress;
                     }
-                    errmsg->set("read failed on ::recv() calling.");
-                    numerr = get_socket_error();
-                    state = CtxState::free;
+                    ctx->report("read failed on ::recv() calling.", get_socket_error());
                     return false;
                 }
                 red = (size_t)res;
                 if (red < size) {
+                    ctx = nullptr;
                     return true;
                 }
                 return StateValue::inprogress;
             }
+            /*
 
             virtual Context* get_base() override {
                 if (!base) return nullptr;
@@ -331,32 +286,30 @@ namespace socklib {
                     return base->has_error(err);
                 }
                 return false;
-            }
+            }*/
 
-            virtual State close() {
-                if (tmp != invalid_socket) {
-                    ::closesocket(tmp);
-                    tmp = invalid_socket;
+            virtual State close(ContextManager& m) override {
+                if (auto e = m.check_id(ctx); !e) {
+                    return e;
                 }
-                if (sock != invalid_socket) {
-                    ::shutdown(sock, SD_BOTH);
-                    ::closesocket(sock);
-                    sock = invalid_socket;
+                if (ctx->tmp != invalid_socket) {
+                    ::closesocket(ctx->tmp);
+                    ctx->tmp = invalid_socket;
                 }
-                numerr = 0;
-                state = CtxState::free;
-                progress = 0;
-                dns = nullptr;
-                current = nullptr;
-                write_offset = 0;
+                if (ctx->sock != invalid_socket) {
+                    ::shutdown(ctx->sock, SD_BOTH);
+                    ::closesocket(ctx->sock);
+                    ctx->sock = invalid_socket;
+                }
+                ctx->report(nullptr);
+                ctx->current = nullptr;
+                ctx->dns = nullptr;
+                ctx->write_offset = 0;
+                //Conn::close(m);
                 return true;
             }
 
-            virtual ~TCPContext() {
-                close();
-                Context::close();
-                delete errmsg;
-            }
+            virtual ~TCPConn() {}
         };
     }  // namespace v3
 }  // namespace socklib
