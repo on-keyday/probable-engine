@@ -59,19 +59,18 @@ namespace socklib {
             }
 
             template <int progbase>
-            State read_write_bio() {
-                switch (progress) {
+            State read_write_bio(ContextManager& m) {
+                switch (ctx->get_progress()) {
                     case progbase: {
-                        tmpbuf->clear();
-                        progress = prgbase + 1;
+                        ctx->tmpbuf->clear();
+                        ctx->increment();
                     }
                     case progbase + 1: {
-                        while (size_t sz = ::BIO_ctrl_pending(io_base)) {
+                        while (size_t sz = ::BIO_ctrl_pending(ctx->io_base)) {
                             char buf[1024] = {0};
                             size_t red = 0;
                             if (!::BIO_read_ex(buf, buf, 1024, &red)) {
-                                errmsg->set("unknown error; ::BIO_read_ex failed when ::BIO_ctrl_pending");
-                                call_ssl_error();
+                                call_ssl_error("unknown error; ::BIO_read_ex failed when ::BIO_ctrl_pending");
                                 return false;
                             }
                             tmpbuf->append_back(buf, red);
@@ -83,7 +82,7 @@ namespace socklib {
                     }
                     case progbase + 2: {
                         if (tmpbuf->size()) {
-                            if (auto e = Context::write(tmpbuf->c_str(), tmpbuf->size()); !e) {
+                            if (auto e = Conn::write(m, tmpbuf->c_str(), tmpbuf->size()); !e) {
                                 return e;
                             }
                             tmpbuf->clear();
@@ -91,7 +90,7 @@ namespace socklib {
                         progress = progbase + 3;
                     }
                     case progbase + 3: {
-                        if (BIO_should_read(io_ssl)) {
+                        if (BIO_should_read(ctx->io_ssl)) {
                             char buf[1024] = {0};
                             size_t red = 0;
                             if (auto e = Context::read(buf, 1024, red); e == StateValue::inprogress) {
@@ -105,12 +104,11 @@ namespace socklib {
                                 tmpbuf->append_back(buf, red);
                             }
                             size_t written = 0;
-                            if (!::BIO_write_ex(io_base, tmpbuf->c_str(), tmpbuf->size(), &written)) {
-                                errmsg->set("unknown error; ::BIO_write_ex failed");
-                                call_ssl_error();
+                            if (!::BIO_write_ex(ctx->io_base, tmpbuf->c_str(), tmpbuf->size(), &written)) {
+                                call_ssl_error("unknown error; ::BIO_write_ex failed");
                                 return false;
                             }
-                            BIO_flush(io_base);
+                            BIO_flush(ctx->io_base);
                             tmpbuf->clear();
                         }
                     }
@@ -133,7 +131,7 @@ namespace socklib {
                 return true;
             }
 
-            State connect() {
+            State connect(ContextManager& m) {
                 switch (ctx->get_progress()) {
                     case 4: {
                         auto res = ::SSL_connect(ctx->ssl);
@@ -152,7 +150,7 @@ namespace socklib {
                     case 6:
                     case 7:
                     case 8: {
-                        if (auto e = read_write_bio<5>(); !e) {
+                        if (auto e = read_write_bio<5>(m); !e) {
                             return e;
                         }
                         ctx->increment();
@@ -245,26 +243,24 @@ namespace socklib {
                                 return false;
                             }
                         }
-                        ::SSL_set0_rbio(ssl, io_ssl);
-                        ::SSL_set0_wbio(ssl, io_ssl);
-                        progress = 4;
+                        ::SSL_set0_rbio(ctx->ssl, ctx->io_ssl);
+                        ::SSL_set0_wbio(ctx->ssl, ctx->io_ssl);
+                        ctx->increment();
                     }
                     case 4:
                     case 5:
                     case 6:
                     case 7:
                     case 8:
-                        if (auto e = connect(); e == StateValue::inprogress) {
+                        if (auto e = connect(m); e == StateValue::inprogress) {
                             return e;
                         }
                         else if (!e) {
-                            state = CtxState::free;
-                            progress = 0;
                             return e;
                         }
                     default:
-                        state = CtxState::free;
-                        progress = 0;
+                        ctx->report(nullptr);
+                        ctx = nullptr;
                         break;
                 }
                 return true;
