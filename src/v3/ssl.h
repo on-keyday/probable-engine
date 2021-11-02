@@ -215,45 +215,33 @@ namespace socklib {
                         ctx->increment();
                     }
                     case 3: {
-                        ::SSL_free(ssl);
-                        ssl = nullptr;
-                        ssl = SSL_new(ctx);
-                        if (!ssl) {
-                            errmsg->set("failed call ::SSL_new\n");
-                            call_ssl_error();
-                            progress = 0;
-                            state = CtxState::free;
+                        ::SSL_free(ctx->ssl);
+                        ctx->ssl = nullptr;
+                        ctx->ssl = SSL_new(ctx->ctx);
+                        if (!ctx->ssl) {
+                            call_ssl_error("failed call ::SSL_new\n");
                             return false;
                         }
-                        if (alpn) {
-                            if (!::SSL_set_alpn_protos(ssl, (const unsigned char*)alpn, (unsigned int)alpnlen)) {
-                                errmsg->set("failed call ::SSL_set_alpn_protos\n");
-                                call_ssl_error();
-                                ::SSL_free(ssl);
-                                ssl = nullptr;
-                                progress = 0;
-                                state = CtxState::free;
+                        if (ctx->alpn) {
+                            if (!::SSL_set_alpn_protos(ctx->ssl, (const unsigned char*)ctx->alpn, (unsigned int)ctx->alpnlen)) {
+                                call_ssl_error("failed call ::SSL_set_alpn_protos\n");
+                                ::SSL_free(ctx->ssl);
+                                ctx->ssl = nullptr;
                                 return false;
                             }
                         }
-                        if (hostname->size()) {
-                            if (!SSL_set_tlsext_host_name(ssl, hostname->c_str())) {
-                                errmsg->set("failed call SSL_set_tlsext_host_name\n");
-                                call_ssl_error();
-                                ::SSL_free(ssl);
-                                ssl = nullptr;
-                                progress = 0;
-                                state = CtxState::free;
+                        if (ctx->hostname->size()) {
+                            if (!SSL_set_tlsext_host_name(ctx->ssl, ctx->hostname->c_str())) {
+                                call_ssl_error("failed call SSL_set_tlsext_host_name\n");
+                                ::SSL_free(ctx->ssl);
+                                ctx->ssl = nullptr;
                                 return false;
                             }
-                            auto param = ::SSL_get0_param(ssl);
-                            if (!::X509_VERIFY_PARAM_add1_host(param, hostname->c_str(), 0)) {
-                                errmsg->set("failed call ::X509_VERIFY_PARAM_add1_host\n");
-                                call_ssl_error();
-                                ::SSL_free(ssl);
-                                ssl = nullptr;
-                                progress = 0;
-                                state = CtxState::free;
+                            auto param = ::SSL_get0_param(ctx->ssl);
+                            if (!::X509_VERIFY_PARAM_add1_host(param, ctx->hostname->c_str(), 0)) {
+                                call_ssl_error("failed call ::X509_VERIFY_PARAM_add1_host\n");
+                                ::SSL_free(ctx->ssl);
+                                ctx->ssl = nullptr;
                                 return false;
                             }
                         }
