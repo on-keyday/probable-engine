@@ -332,7 +332,7 @@ namespace socklib {
 
             template <class String, class Const = const char*>
             static bool write_request(String& raw, const Const& method, const Const& path, HeaderContext& header,
-                                      int version = 1, HeaderFlag flag = HeaderFlag::verify_header | HeaderFlag::verify_status, const Const& host = nullptr, String* tmpbuf = nullptr) {
+                                      int version = 1, HeaderFlag flag = HeaderFlag::verify_header | HeaderFlag::verify_status, ImportantHeader* imh = nullptr, String* tmpbuf = nullptr) {
                 using buffer_t = StringBuffer_impl<std::remove_cvref<Const>>;
                 if (any(flag & HeaderFlag::verify_status)) {
                     if (!is_valid_statusline(buffer_t::get_data(method)) &&
@@ -356,7 +356,7 @@ namespace socklib {
                 else {
                     raw.append("\r\n");
                 }
-                return write_common(raw, header, tmpbuf, flag);
+                return write_common(raw, header, tmpbuf, flag, imh);
             }
 
             template <class String, class Const = const char*>

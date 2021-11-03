@@ -275,5 +275,27 @@ namespace socklib {
             }
         };
 
+        template <class... Args>
+        struct ContextChainMaker {
+            static void make(ContextManager* in) {}
+        };
+
+        template <class Ctx, class... Args>
+        struct ContextChainMaker {
+            static void make(ContextManager* in) {
+                in->get_or_make<Ctx>();
+                if CONSTEXPRIF (sizeof...(Args)) {
+                    ContextChainMaker<Args...>::make(in->get_child());
+                }
+            }
+        };
+
+        template <class... Args>
+        std::shared_ptr<ContextManager> make_context_chain(StringBufferBuilder* b) {
+            auto ret = std::make_shared<ContextManager>(b);
+            ContextChainMaker<Args...>::make(std::addressof(*ret));
+            return ret;
+        }
+
     }  // namespace v3
 }  // namespace socklib

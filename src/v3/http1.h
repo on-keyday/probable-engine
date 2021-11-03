@@ -19,7 +19,7 @@ namespace socklib {
             int header_version = 0;
             const char* method = nullptr;
             HeaderContext* request = nullptr;
-            int status = 0;
+            int statuscode = 0;
             HeaderContext* response = nullptr;
             HeaderFlag hflag = HeaderFlag::verify_header | HeaderFlag::verify_status;
             bool thru = false;
@@ -53,12 +53,14 @@ namespace socklib {
                         ctx->request->remove("host");
                         ctx->request->remove("content-length");
                         ctx->request->remove("transfer-encoding");
+                        ImportantHeader imh;
+                        imh.host = ctx->url->host_port();
                         if (!header_t::write_request(*ctx->tmpbuf1,
                                                      ctx->method,
                                                      ctx->url->path_query(),
                                                      *ctx->request,
                                                      ctx->header_version,
-                                                     ctx->hflag, ctx->url->host_port(), ctx->tmpbuf2)) {
+                                                     ctx->hflag, &imh, ctx->tmpbuf2)) {
                             ctx->report("failed to write http header");
                             ctx = nullptr;
                             return false;

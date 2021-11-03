@@ -12,7 +12,7 @@
 
 namespace socklib {
     namespace v3 {
-
+        /*
         struct Setting {
             virtual ContextType get_type() const = 0;
         };
@@ -50,6 +50,7 @@ namespace socklib {
                 return v;
             }
         };
+        */
 
         struct Conn {
            private:
@@ -83,6 +84,7 @@ namespace socklib {
                 }
                 return false;
             }
+            /*
             virtual bool set_setting(const InputSetting& in) {
                 if (auto base = get_base()) {
                     return base->set_setting(in);
@@ -95,6 +97,7 @@ namespace socklib {
                 }
                 return false;
             }
+            */
             virtual State close(ContextManager& m) {
                 if (auto base = get_base()) {
                     return base->close(*m.get_child());
