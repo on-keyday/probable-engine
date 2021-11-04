@@ -142,6 +142,21 @@ namespace PROJECT_NAME {
                 return true;
             }
 
+            bool force_set_next(std::shared_ptr<Token> p) {
+                if (!p) {
+                    return false;
+                }
+                if (p->prev) {
+                    p->prev->next = nullptr;
+                }
+                if (this->next) {
+                    this->next->prev = nullptr;
+                }
+                this->next = p;
+                p->prev = this;
+                return true;
+            }
+
             std::shared_ptr<Token>& get_next() {
                 return next;
             }
