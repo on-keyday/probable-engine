@@ -223,6 +223,14 @@ namespace PROJECT_NAME {
                                                 err = MergeError::unexpected_eof_on_string_escape;
                                                 return true;
                                             }
+                                            if (auto l = com->line()) {
+                                                if (l->get_linecount() != 1) {
+                                                    if (!str.allowline) {
+                                                        err = MergeError::unexpected_line_on_string_disallow_line;
+                                                        return true;
+                                                    }
+                                                }
+                                            }
                                             result += com->to_string();
                                             continue;
                                         }
