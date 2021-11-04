@@ -51,6 +51,11 @@ namespace PROJECT_NAME {
             TokenParser(reg_t&& sym, reg_t&& key)
                 : symbols(std::move(sym)), keywords(std::move(key)) {}
 
+            void SetSymbolAndKeyWord(reg_t&& sym, reg_t&& key) {
+                symbols = std::move(sym);
+                keywords = std::move(key);
+            }
+
             template <class Buf>
             bool Read(commonlib2::Reader<Buf>& r) {
                 auto set_next = [this](auto& v) {
