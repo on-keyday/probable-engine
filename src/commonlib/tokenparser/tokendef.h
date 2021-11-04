@@ -39,11 +39,26 @@ namespace PROJECT_NAME {
         struct Registry {
             Base reg;
 
+            Registry() {}
+
+            Registry(Base&& b)
+                : reg(std::move(b)) {}
+
             Registry(Registry&& r)
                 : reg(std::move(r.reg)) {}
 
             Registry(const Registry& r)
                 : reg(r.reg) {}
+
+            Registry& operator=(Registry&& m) {
+                reg = std::move(m.reg);
+                return *this;
+            }
+
+            Registry& operator=(const Registry& m) {
+                reg = m.reg;
+                return *this;
+            }
 
             Registry(std::initializer_list<const char*> list) {
                 for (auto&& i : list) {

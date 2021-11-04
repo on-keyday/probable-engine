@@ -48,6 +48,7 @@ namespace PROJECT_NAME {
             token_t* current = &roottoken;
 
            public:
+            TokenParser() {}
             TokenParser(reg_t&& sym, reg_t&& key)
                 : symbols(std::move(sym)), keywords(std::move(key)) {}
 
