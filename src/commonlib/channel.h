@@ -224,7 +224,7 @@ namespace PROJECT_NAME {
         bool close() {
             lock();
             bool res = closed_.test_and_set();
-            block_.notify_all();
+            unblock();
             unlock();
             return res;
         }
