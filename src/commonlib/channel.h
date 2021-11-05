@@ -114,6 +114,7 @@ namespace PROJECT_NAME {
         queue_type que;
         std::atomic_flag lock_;
         std::atomic_flag closed_;
+        std::atomic_flag block_;
 
        public:
         Channel(size_t quelimit = ~0, ChanDisposeFlag dflag = ChanDisposeFlag::remove_new) {
@@ -168,8 +169,34 @@ namespace PROJECT_NAME {
                 return ChanError::limited;
             }
             que.push_back(std::move(t));
+            block_.clear();
             unlock();
             return true;
+        }
+
+       private:
+        bool load_impl(T& t) {
+            t = std::move(que.front());
+            que.pop_front();
+            unlock();
+            return true;
+        }
+
+       public:
+        ChanErr block_load(T& t) {
+            while (true) {
+                if (!lock()) {
+                    return ChanError::closed;
+                }
+                if (que.size() == 0) {
+                    block_.test_and_set();
+                    unlock();
+                    block_.wait(true);
+                    continue;
+                }
+                break;
+            }
+            return load_impl(t);
         }
 
         ChanErr load(T& t) {
@@ -180,15 +207,13 @@ namespace PROJECT_NAME {
                 unlock();
                 return ChanError::empty;
             }
-            t = std::move(que.front());
-            que.pop_front();
-            unlock();
-            return true;
+            return load_impl(t);
         }
 
         bool close() {
             lock();
             bool res = closed_.test_and_set();
+            block_.clear();
             unlock();
             return res;
         }
