@@ -32,7 +32,7 @@ namespace PROJECT_NAME {
     template <class T, template <class...> class Queue>
     struct Channel;
 
-    template <class T, template <class...> class Que>
+    template <class T, template <class...> class Que = std::deque>
     struct SendChan {
         using base_chan = Channel<T, Que>;
 
@@ -56,7 +56,7 @@ namespace PROJECT_NAME {
         }
     };
 
-    template <class T, template <class...> class Que>
+    template <class T, template <class...> class Que = std::deque>
     struct RecvChan {
         using base_chan = Channel<T, Que>;
 
