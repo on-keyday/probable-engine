@@ -11,6 +11,7 @@
 #include <memory>
 #include <tuple>
 #include <deque>
+#include <map>
 
 namespace PROJECT_NAME {
 
@@ -239,4 +240,70 @@ namespace PROJECT_NAME {
         auto base = std::make_shared<Channel<T, Que>>(limit, dflag);
         return {base, base};
     }
+
+    template <class T, template <class...> class Que = std::deque, template <class...> class Map = std::map>
+    struct ForkChan {
+       private:
+        Map<size_t, SendChan<T, Que>> listeners;
+        std::atomic_flag lock_;
+        size_t id = 0;
+
+       private:
+        bool lock() {
+            if (lock_.test_and_set()) {
+                lock_.wait(true);
+            }
+            return true;
+        }
+        void unlock() {
+            lock_.clear();
+            lock_.notify_all();
+        }
+
+       public:
+        ChanErr subscribe(size_t& id, SendChan<T, Que> chan) {
+            if (chan.closed()) {
+                return ChanError::closed;
+            }
+            if (!lock()) {
+                return ChanError::closed;
+            }
+            listeners.emplace(this->id, std::move(chan));
+            this->id++;
+            unlock();
+            return true;
+        }
+
+        bool remove(size_t id) {
+            if (!lock()) {
+                return ChanError::closed;
+            }
+            auto result = (bool)listeners.erase(id);
+            unlock();
+            return result;
+        }
+
+        ChanErr operator<<(T&& t) {
+            return store(std::forward<T>(t));
+        }
+
+        ChanErr store(T&& value) {
+            if (!lock()) {
+                return ChanError::closed;
+            }
+            std::erase_if(listeners, [](auto& h) {
+                if (h.second.closed()) {
+                    return true;
+                }
+                return false;
+            });
+            T copy(std::move(value));
+            for (auto& p : listeners) {
+                auto tmp = copy;
+                p.second << std::move(tmp);
+            }
+            unlock();
+            return true;
+        }
+    };
 }  // namespace PROJECT_NAME
