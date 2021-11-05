@@ -162,7 +162,7 @@ namespace PROJECT_NAME {
 
         void unlock() {
             lock_.clear();
-            lock_.notify_one();
+            lock_.notify_all();
         }
 
        public:
@@ -175,7 +175,7 @@ namespace PROJECT_NAME {
                 return ChanError::limited;
             }
             que.push_back(std::move(t));
-            block_.clear();
+            block_.notify_all();
             unlock();
             return true;
         }
@@ -219,7 +219,7 @@ namespace PROJECT_NAME {
         bool close() {
             lock();
             bool res = closed_.test_and_set();
-            block_.clear();
+            block_.notify_all();
             unlock();
             return res;
         }
