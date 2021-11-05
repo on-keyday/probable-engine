@@ -165,6 +165,11 @@ namespace PROJECT_NAME {
             lock_.notify_all();
         }
 
+        void unblock() {
+            block_.clear();
+            block_.notify_all();
+        }
+
        public:
         ChanErr store(T&& t) {
             if (!lock()) {
@@ -175,7 +180,7 @@ namespace PROJECT_NAME {
                 return ChanError::limited;
             }
             que.push_back(std::move(t));
-            block_.notify_all();
+            unblock();
             unlock();
             return true;
         }
