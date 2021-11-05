@@ -62,13 +62,14 @@ namespace PROJECT_NAME {
 
        private:
         std::shared_ptr<base_chan> chan;
+        bool block = false;
 
        public:
         RecvChan(std::shared_ptr<base_chan>& chan)
             : chan(chan) {}
 
         ChanErr operator>>(T& value) {
-            return chan->load(value);
+            return block ? chan->block_load(value) : chan->load(value);
         }
 
         bool close() {
@@ -77,6 +78,10 @@ namespace PROJECT_NAME {
 
         bool closed() const {
             return chan->closed();
+        }
+
+        void set_block(bool block) {
+            this->block = block;
         }
     };
 
@@ -120,6 +125,7 @@ namespace PROJECT_NAME {
         Channel(size_t quelimit = ~0, ChanDisposeFlag dflag = ChanDisposeFlag::remove_new) {
             lock_.clear();
             closed_.clear();
+            block_.clear();
             this->quelimit = quelimit;
             this->dflag = dflag;
         }
