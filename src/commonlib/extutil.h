@@ -134,6 +134,16 @@ namespace PROJECT_NAME {
         return split_cmd<Buf, Vec>(Buf(str), n, line);
     }
 
+    template <class Vec>
+    void remove_strsymbol(Vec& vec) {
+        for (auto& v : vec) {
+            if (v.size() && is_string_symbol(v[0])) {
+                v.erase(0, 1);
+                v.pop_back();
+            }
+        }
+    }
+
     template <class Buf, class Str, class cmp_t = cmpf_t<Buf>, class not_expect_t = nexpf_t<Buf>>
     bool str_eq(Reader<Buf>& r, Str&& token, cmp_t&& cmp = Reader<Buf>::default_cmp, not_expect_t&& nexpt = not_expect_t()) {
         return r.expect(token, nexpt, cmp) && r.eof();

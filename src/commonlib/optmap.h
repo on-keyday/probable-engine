@@ -303,7 +303,13 @@ namespace PROJECT_NAME {
             return ret;
         }
 
-        template <class C, class Ignore = bool (*)(const String&)>
+        template <class C, class Ignore = bool (*)(const String&, bool)>
+        OptErr parse_opt(int argc, C** argv, OptResMap& optres, Ignore&& cb = Ignore()) {
+            int index = 1, col = 0;
+            return parse_opt(index, col, argc, argv, optres, OptOption::default_mode, std::forward<Ignore>(cb));
+        }
+
+        template <class C, class Ignore = bool (*)(const String&, bool)>
         OptErr parse_opt(int& index, int& col, int argc, C** argv, OptResMap& optres, OptOption op = OptOption::default_mode, Ignore&& cb = Ignore()) {
             if (!argv || argc < 0 || index < 0 || col < 0) {
                 return OptError::invalid_argument;

@@ -43,16 +43,25 @@ namespace PROJECT_NAME {
        public:
         SendChan(std::shared_ptr<base_chan>& chan)
             : chan(chan) {}
-
+        SendChan() {}
         ChanErr operator<<(T&& value) {
+            if (!chan) {
+                return false;
+            }
             return chan->store(std::move(value));
         }
 
         bool close() {
+            if (!chan) {
+                return false;
+            }
             return chan->close();
         }
 
         bool closed() const {
+            if (!chan) {
+                return false;
+            }
             return chan->closed();
         }
     };
@@ -68,16 +77,25 @@ namespace PROJECT_NAME {
        public:
         RecvChan(std::shared_ptr<base_chan>& chan)
             : chan(chan) {}
-
+        RecvChan() {}
         ChanErr operator>>(T& value) {
+            if (!chan) {
+                return false;
+            }
             return block ? chan->block_load(value) : chan->load(value);
         }
 
         bool close() {
+            if (!chan) {
+                return false;
+            }
             return chan->close();
         }
 
         bool closed() const {
+            if (!chan) {
+                return false;
+            }
             return chan->closed();
         }
 
@@ -242,7 +260,7 @@ namespace PROJECT_NAME {
     }
 
     template <class T, template <class...> class Que = std::deque, template <class...> class Map = std::map>
-    struct ForkChan {
+    struct ForkChannel {
        private:
         Map<size_t, SendChan<T, Que>> listeners;
         std::atomic_flag lock_;
@@ -250,7 +268,7 @@ namespace PROJECT_NAME {
 
        private:
         bool lock() {
-            if (lock_.test_and_set()) {
+            while (lock_.test_and_set()) {
                 lock_.wait(true);
             }
             return true;
@@ -268,23 +286,32 @@ namespace PROJECT_NAME {
             if (!lock()) {
                 return ChanError::closed;
             }
-            listeners.emplace(this->id, std::move(chan));
             this->id++;
+            listeners.emplace(this->id, std::move(chan));
+            id = this->id;
             unlock();
             return true;
         }
 
         bool remove(size_t id) {
             if (!lock()) {
-                return ChanError::closed;
+                return false;
             }
             auto result = (bool)listeners.erase(id);
             unlock();
             return result;
         }
 
-        ChanErr operator<<(T&& t) {
-            return store(std::forward<T>(t));
+        bool reset_id() {
+            if (!lock()) {
+                return false;
+            }
+            if (listeners.size()) {
+                return false;
+            }
+            this->id = 0;
+            unlock();
+            return true;
         }
 
         ChanErr store(T&& value) {
@@ -297,6 +324,10 @@ namespace PROJECT_NAME {
                 }
                 return false;
             });
+            if (listeners.size() == 0) {
+                unlock();
+                return ChanError::empty;
+            }
             T copy(std::move(value));
             for (auto& p : listeners) {
                 auto tmp = copy;
@@ -305,5 +336,80 @@ namespace PROJECT_NAME {
             unlock();
             return true;
         }
+
+        bool close() {
+            if (!lock()) {
+                return false;
+            }
+            for (auto& p : listeners) {
+                p.second.close();
+            }
+            listeners.clear();
+            unlock();
+            return true;
+        }
+
+        size_t size() const {
+            return listeners.size();
+        }
     };
+
+    template <class T, template <class...> class Que = std::deque, template <class...> class Map = std::map>
+    struct ForkChan {
+       private:
+        std::shared_ptr<ForkChannel<T, Que, Map>> chan;
+
+       public:
+        ForkChan(std::shared_ptr<ForkChannel<T, Que, Map>> p)
+            : chan(p) {}
+        ForkChan() {}
+
+        ChanErr operator<<(T&& t) {
+            if (!chan) {
+                return false;
+            }
+            return chan->store(std::forward<T>(t));
+        }
+
+        ChanErr subscribe(size_t& id, const SendChan<T, Que>& sub) {
+            if (!chan) {
+                return false;
+            }
+            return chan->subscribe(id, sub);
+        }
+
+        bool remove(size_t id) {
+            if (!chan) {
+                return false;
+            }
+            return chan->remove(id);
+        }
+
+        bool reset_id() {
+            if (!chan) {
+                return false;
+            }
+            return chan->reset_id();
+        }
+
+        bool close() {
+            if (!chan) {
+                return false;
+            }
+            return chan->close();
+        }
+        size_t size() const {
+            if (!chan) {
+                return false;
+            }
+            return chan->size();
+        }
+    };
+
+    template <class T, template <class...> class Que = std::deque, template <class...> class Map = std::map>
+    ForkChan<T, Que> make_forkchan() {
+        auto fork = std::make_shared<ForkChannel<T, Que, Map>>();
+        return fork;
+    }
+
 }  // namespace PROJECT_NAME

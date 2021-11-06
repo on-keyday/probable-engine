@@ -10,16 +10,18 @@
 #include <type_traits>
 
 namespace PROJECT_NAME {
-    struct has_bool_impl {
-        template <class F>
-        static std::true_type has(decltype((bool)std::declval<F>(), (void)0)*);
 
-        template <class F>
-        static std::false_type has(...);
-    };
+#define DEFINE_ENABLE_IF_EXPR_VALID(NAME, EXPR)              \
+    struct NAME##_impl {                                     \
+        template <class T>                                   \
+        static std::true_type has(decltype(EXPR, (void)0)*); \
+        template <class T>                                   \
+        static std::false_type has(...);                     \
+    };                                                       \
+    template <class T>                                       \
+    struct NAME : decltype(NAME##_impl::has<T>(nullptr)) {}
 
-    template <class F>
-    struct has_bool : decltype(has_bool_impl::has<F>(nullptr)) {};
+    DEFINE_ENABLE_IF_EXPR_VALID(has_bool, (bool)std::declval<T>());
 
     template <class F, class Ret, bool f = has_bool<F>::value>
     struct invoke_cb {

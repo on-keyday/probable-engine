@@ -115,7 +115,8 @@ namespace PROJECT_NAME {
         FILE* fout = nullptr;
         FILE* base = nullptr;
         std::ostringstream ss;
-        bool onlybuffer;
+        bool onlybuffer = false;
+        bool multiout = false;
 
        public:
         StdOutWrapper(FILE* fp)
@@ -132,7 +133,9 @@ namespace PROJECT_NAME {
             if (fout != base) {
                 std::string tmp = ss.str();
                 fwrite(tmp.c_str(), 1, tmp.size(), fout);
-                return *this;
+                if (!multiout) {
+                    return *this;
+                }
             }
             if (cb) {
                 std::string tmp = ss.str();
@@ -148,7 +151,7 @@ namespace PROJECT_NAME {
 #endif
             Reader(ss.str()) >> tmp;
 
-            fwrite(tmp.c_str(), sizeof(tmp[0]), tmp.size(), fout);
+            fwrite(tmp.c_str(), sizeof(tmp[0]), tmp.size(), base);
             return *this;
         }
 
@@ -199,6 +202,12 @@ namespace PROJECT_NAME {
         void reset_buf() {
             ss.str("");
             ss.clear();
+        }
+
+        bool set_multiout(bool s) {
+            auto ret = multiout;
+            multiout = s;
+            return ret;
         }
 
         bool is_file() {
@@ -318,6 +327,7 @@ namespace PROJECT_NAME {
         std::ofstream file;
         std::ostringstream ss;
         bool onlybuffer = false;
+        bool multiout = false;
 #ifdef _WIN32
         std::wostream& out;
 #else
@@ -336,7 +346,9 @@ namespace PROJECT_NAME {
             }
             if (file.is_open()) {
                 file << in;
-                return *this;
+                if (!multiout) {
+                    return *this;
+                }
             }
             if (cb) {
                 ss.str(std::string());
@@ -371,7 +383,9 @@ namespace PROJECT_NAME {
             }
             if (file.is_open()) {
                 file << in;
-                return *this;
+                if (!multiout) {
+                    return *this;
+                }
             }
             if (!Able_continue()) throw std::runtime_error("not called IOWrapper::Init() before io function");
 #ifdef _WIN32
@@ -391,6 +405,12 @@ namespace PROJECT_NAME {
             file.open(in);
 #endif
             return (bool)file;
+        }
+
+        bool set_multiout(bool s) {
+            auto ret = multiout;
+            multiout = s;
+            return ret;
         }
 
         bool stop_out(bool stop) {
