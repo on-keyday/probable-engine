@@ -40,4 +40,21 @@ namespace PROJECT_NAME {
         }
     };
 
+    template <class F, class Ret, Ret defaultvalue, bool f = has_bool<F>::value>
+    struct Invoker {
+        template <class... Args>
+        static Ret invoke(F&& in, Args&&... args) {
+            return in(std::forward<Args>(args)...);
+        }
+    };
+
+    template <class F, class Ret, Ret defaultvalue>
+    struct Invoker<F, Ret, defaultvalue, true> {
+        template <class... Args>
+        static Ret invoke(F&& in, Args&&... args) {
+            if (!(bool)in) return defaultvalue;
+            return (Ret)in(std::forward<Args>(args)...);
+        }
+    };
+
 }  // namespace PROJECT_NAME

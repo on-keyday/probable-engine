@@ -230,50 +230,103 @@ namespace PROJECT_NAME {
         throw "type not matched";
     }
 
-    template <class T, class... Arg>
-    struct Tuple {
-       private:
+    template <class T>
+    struct TupleValue {
         T val;
-        Tuple<Arg...> next;
-        constexpr static size_t _size = sizeof...(Arg) + 1;
 
-        constexpr size_t size() const {
-            return _size;
+        template <class V>
+        constexpr TupleValue(V&& v)
+            : val(std::forward<V>(v)) {}
+        T& get() {
+            return val;
+        }
+        const T& get() const {
+            return val;
+        }
+        bool equal(const TupleValue& in) const {
+            return val == in;
+        }
+    };
+
+    template <>
+    struct TupleValue<void> {
+        constexpr TupleValue(void) {}
+        void get() {}
+        void get() const {}
+        bool equal(const TupleValue& in) const {
+            return true;
+        }
+    };
+
+    template <class... Args>
+    struct Tuple {
+        constexpr Tuple(Args&&...) {}
+        constexpr Tuple(const Tuple& arg) {}
+
+        constexpr static size_t tuple_size = 0;
+        static constexpr size_t size() {
+            return 0;
+        }
+        template <class Func>
+        void for_each(Func func) {
         }
 
+        template <class Func, class = std::enable_if_t<true>>
+        auto put(Func func) {
+        }
+    };
+
+    template <class T, class... Arg>
+    struct Tuple<T, Arg...> {
+       private:
+        TupleValue<T> val;
+        using next_t = Tuple<Arg...>;
+        next_t next;
+
        public:
+        constexpr static size_t tuple_size = sizeof...(Arg);
+        constexpr Tuple() {}
         constexpr Tuple(T&& in, Arg&&... arg)
             : val(std::forward<T>(in)), next(std::forward<Arg>(arg)...) {}
 
         constexpr Tuple(const Tuple& arg)
             : val(arg.val), next(arg.next) {}
 
-        constexpr bool operator==(const Tuple& in) const {
-            return val == in.val && next == in.next;
+        template <size_t pos, class = std::enable_if_t<pos == 0, T>>
+        constexpr decltype(val.get()) get() const {
+            return val.get();
         }
 
-        template <size_t pos, class Ret = std::enable_if_t<pos == 0, T>>
-        constexpr Ret& get() {
-            return val;
+        template <size_t pos, class = std::enable_if_t<pos == 0, T>>
+        constexpr decltype(val.get()) get() {
+            return val.get();
         }
 
-        template <size_t pos, class Ret = std::enable_if_t<pos != 0, T>>
+        template <size_t pos, class = std::enable_if_t<pos != 0, T>>
         constexpr decltype(auto) get() {
             return next.template get<pos - 1>();
         }
 
-        template <class Func>
-        void for_each(Func func) {
-            func(val);
-            next.for_each(func);
+        template <size_t pos, class = std::enable_if_t<pos != 0, T>>
+        constexpr decltype(auto) get() const {
+            return next.template get<pos - 1>();
+        }
+
+        static constexpr size_t size() {
+            return tuple_size;
         }
 
         template <class Func>
-        auto put(Func func) {
-            return func(val, next.put(func));
+        void for_each(Func&& func) {
+            func(val);
+            next.for_each(std::forward<Func>(func));
         }
     };
 
+    template <class... Args>
+    Tuple(Args...) -> Tuple<std::decay_t<Args>...>;
+
+    /*
     template <class T>
     struct Tuple<T> {
        private:
@@ -316,7 +369,7 @@ namespace PROJECT_NAME {
     struct Tuple<void, Arg...>;
 
     template <>
-    struct Tuple<void>;
+    struct Tuple<void>;*/
 
     template <class Func, class C = void*, class... Arg1, class... Arg2>
     void tuple_op(Func func, const Tuple<Arg1...>& t1, const Tuple<Arg2...>& t2, C ctx = nullptr) {

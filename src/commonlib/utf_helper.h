@@ -35,7 +35,7 @@ namespace PROJECT_NAME {
             return pos;
         }
 
-        constexpr unsigned char operator[](size_t p) {
+        constexpr unsigned char operator[](size_t p) const {
             if (p >= 4) return char();
             return minbuf[p];
         }
@@ -90,7 +90,7 @@ namespace PROJECT_NAME {
             return pos;
         }
 
-        constexpr char16_t operator[](size_t p) {
+        constexpr char16_t operator[](size_t p) const {
             if (p >= 2) return char();
             return minbuf[p];
         }
@@ -251,14 +251,14 @@ namespace PROJECT_NAME {
 
     template <class Buf>
     constexpr char32_t make_utf32_from_utf8(Buf& buf, int len, int offset = 0) {
-        if (len <= 0 || len >= 4) {
+        if (len <= 0 || len > 4) {
             return 0;
         }
         auto maskbit = [](int i) {
             return (unsigned char)~utf8bits(i);
         };
         if (len == 0) {
-            return buf[offset];
+            return (char32_t)buf[offset];
         }
         char32_t ret = 0;
         for (int i = 0; i < len; i++) {

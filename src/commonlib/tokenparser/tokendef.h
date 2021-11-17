@@ -16,13 +16,14 @@ namespace PROJECT_NAME {
     namespace tokenparser {
         enum class TokenKind {
             unknown,
-            root,         //ルートノード
-            spaces,       //スペース
-            line,         //ライン
-            identifiers,  //識別子
-            comments,     //コメント
-            symbols,      //記号
-            keyword,      //キーワード
+            root,          //ルートノード
+            spaces,        //スペース
+            line,          //ライン
+            identifiers,   //識別子
+            comments,      //コメント
+            symbols,       //記号
+            keyword,       //キーワード
+            weak_keyword,  //弱キーワード
         };
 
         BEGIN_ENUM_STRING_MSG(TokenKind, token_kind)
@@ -33,6 +34,7 @@ namespace PROJECT_NAME {
         ENUM_STRING_MSG(TokenKind::comments, "comment")
         ENUM_STRING_MSG(TokenKind::symbols, "symbol")
         ENUM_STRING_MSG(TokenKind::keyword, "keyword")
+        ENUM_STRING_MSG(TokenKind::weak_keyword, "weak_keyword")
         END_ENUM_STRING_MSG("unknown")
 
         template <class Base>
@@ -71,8 +73,18 @@ namespace PROJECT_NAME {
                 reg.push_back(keyword);
             }
 
+            template <class String>
+            bool Include(String& expects) const {
+                for (auto& e : reg) {
+                    if (e == expects) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             template <class Buf, class String>
-            bool Expect(commonlib2::Reader<Buf>& r, String& expected) {
+            bool Expect(commonlib2::Reader<Buf>& r, String& expected) const {
                 for (auto& e : reg) {
                     if (r.expectp(e, expected)) {
                         return true;
@@ -82,7 +94,7 @@ namespace PROJECT_NAME {
             }
 
             template <class Buf>
-            bool Ahead(commonlib2::Reader<Buf>& r) {
+            bool Ahead(commonlib2::Reader<Buf>& r) const {
                 for (auto& e : reg) {
                     if (r.ahead(e)) {
                         return true;
@@ -114,6 +126,10 @@ namespace PROJECT_NAME {
             constexpr Token(TokenKind k)
                 : kind(k) {}
 
+            void set_kind(TokenKind k) {
+                kind = k;
+            }
+
            public:
             constexpr Token()
                 : kind(TokenKind::root) {}
@@ -127,6 +143,14 @@ namespace PROJECT_NAME {
 
             bool is_nodisplay() const {
                 return kind == TokenKind::unknown || kind == TokenKind::spaces || kind == TokenKind::line || kind == TokenKind::root;
+            }
+
+            bool is_identifier() const {
+                return kind == TokenKind::identifiers || kind == TokenKind::weak_keyword;
+            }
+
+            bool is_keyword() const {
+                return kind == TokenKind::keyword || kind == TokenKind::weak_keyword;
             }
 
             virtual bool has_(const String&) const {
@@ -531,6 +555,13 @@ namespace PROJECT_NAME {
            public:
             RegistryRead(String&& str, TokenKind kind)
                 : token(std::move(str)), Token<String>(kind) {}
+            bool keyword_to_weak() {
+                if (this->get_kind() != TokenKind::keyword) {
+                    return false;
+                }
+                set_kind(TokenKind::weak_keyword);
+                return true;
+            }
 
             const String& get_token() const {
                 return token;

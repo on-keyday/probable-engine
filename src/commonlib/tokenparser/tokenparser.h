@@ -289,6 +289,23 @@ namespace PROJECT_NAME {
                 return Merge(rule);
             }
 
+            bool ConvertWeakKeyWord(const reg_t& weaks) {
+                auto first = roottoken.get_next();
+                if (!first) {
+                    return false;
+                }
+                while (first) {
+                    if (first->get_type() == TokenKind::keyword) {
+                        auto reg = first->registry();
+                        if (weaks.Include(reg->get_token())) {
+                            reg->keyword_to_weak();
+                        }
+                    }
+                    first = first->get_next();
+                }
+                return true;
+            }
+
             std::shared_ptr<token_t> GetParsed() {
                 return roottoken.get_next();
             }
