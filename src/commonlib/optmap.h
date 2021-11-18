@@ -27,6 +27,7 @@ namespace PROJECT_NAME {
         not_found,
         need_more_argument,
         option_already_set,
+        needless_argument,
     };
 
     BEGIN_ENUM_ERROR_MSG(OptError)
@@ -39,6 +40,7 @@ namespace PROJECT_NAME {
     ENUM_ERROR_MSG(OptError::not_found, "unknown option")
     ENUM_ERROR_MSG(OptError::need_more_argument, "need more argument")
     ENUM_ERROR_MSG(OptError::option_already_set, "option already set")
+    ENUM_ERROR_MSG(OptError::needless_argument, "needless argument")
     END_ENUM_ERROR_MSG
 
     /*
@@ -78,7 +80,12 @@ namespace PROJECT_NAME {
         ignore_when_not_found = 0x4,
         two_same_opt_denied = 0x8,
         parse_all_arg = 0x10,
-        default_mode = two_prefix_igopt | ignore_when_not_found | two_prefix_longname | parse_all_arg
+        one_prefix_longname = 0x20,
+        allow_equal = 0x40,
+        allow_adjacent = 0x80,
+        default_mode = two_prefix_igopt | ignore_when_not_found | two_prefix_longname | parse_all_arg,
+        oneprefix_mode = ignore_when_not_found | one_prefix_longname | parse_all_arg,
+        getopt_mode = ignore_when_not_found | allow_equal | allow_adjacent | two_prefix_longname | parse_all_arg,
     };
 
     DEFINE_ENUMOP(OptOption)
@@ -91,6 +98,7 @@ namespace PROJECT_NAME {
         size_t argcount = 0;
         bool same_denied = false;
         bool needless_cut = false;
+        size_t effort_min = 0;
 
         Option& operator=(const Option& other) {
             optname = other.optname;
@@ -121,10 +129,15 @@ namespace PROJECT_NAME {
             friend struct OptMap;
             Opt* base = nullptr;
             Vec<Vec<String>> arg_;
+            size_t count = 0;
 
            public:
             const Opt* info() const {
                 return base;
+            }
+
+            size_t get_flagcount() const {
+                return count;
             }
 
             const Vec<Vec<String>>& args() const {
@@ -172,6 +185,29 @@ namespace PROJECT_NAME {
                 }
             }
             return true;
+        }
+
+        OptErr set_option(const String& name, const Char* alias, const String& help, size_t argcount = 0, bool needless_cut = true, bool same_denied = false, size_t effort_min = 0) {
+            Opt opt{
+                .optname = name,
+                .help = help,
+                .argcount = argcount,
+                .same_denied = same_denied,
+                .needless_cut = needless_cut,
+                .effort_min = effort_min,
+            };
+            if (alias) {
+                if (alias[0] != 0) {
+                    opt.alias[0] = alias[0];
+                    if (alias[1] != 0) {
+                        opt.alias[1] = alias[1];
+                        if (alias[2] != 0) {
+                            opt.alias[2] = alias[2];
+                        }
+                    }
+                }
+            }
+            return set_option(opt);
         }
 
         OptErr set_option(const Opt& option) {
@@ -224,7 +260,7 @@ namespace PROJECT_NAME {
             usage = use;
         }
 
-        String help(size_t preoffset = 0, size_t currentoffset = 2, bool noUsage = false) const {
+        String help(size_t preoffset = 0, size_t currentoffset = 2, bool noUsage = false, const char* usagestr = "Usage:") const {
             String ret;
             String fullarg;
             size_t two = currentoffset << 1;
@@ -237,7 +273,8 @@ namespace PROJECT_NAME {
             if (usage.size()) {
                 if (!noUsage) {
                     add_space(preoffset);
-                    fullargkey("Usage:\n", ret);
+                    fullargkey(usagestr, ret);
+                    ret += '\n';
                 }
                 add_space(preoffset + currentoffset);
                 ret += "";
@@ -304,9 +341,9 @@ namespace PROJECT_NAME {
         }
 
         template <class C, class Ignore = bool (*)(const String&, bool)>
-        OptErr parse_opt(int argc, C** argv, OptResMap& optres, Ignore&& cb = Ignore()) {
+        OptErr parse_opt(int argc, C** argv, OptResMap& optres, OptOption opt = OptOption::default_mode, Ignore&& cb = Ignore()) {
             int index = 1, col = 0;
-            return parse_opt(index, col, argc, argv, optres, OptOption::default_mode, std::forward<Ignore>(cb));
+            return parse_opt(index, col, argc, argv, optres, opt, std::forward<Ignore>(cb));
         }
 
         template <class C, class Ignore = bool (*)(const String&, bool)>
@@ -318,23 +355,33 @@ namespace PROJECT_NAME {
             if (any(op & OptOption::parse_all_arg)) {
                 setfullarg(fullarg);
             }
-            auto set_optarg = [&](Opt* opt, bool fullarg = false) -> OptErr {
+            auto set_optarg = [&](Opt* opt, bool fullarg = false, String* argp = nullptr) -> OptErr {
                 OptResult* res = nullptr;
                 if (auto found = optres.mapping.find(opt->optname); found != optres.mapping.end()) {
                     if (!fullarg && (any(op & OptOption::two_same_opt_denied) || opt->same_denied)) {
                         return OptError::option_already_set;
                     }
                     res = &found->second;
+                    res->count++;
                 }
                 else {
                     res = &optres.mapping[opt->optname];
                     res->base = opt;
+                    res->count = 1;
                 }
                 if (opt->argcount) {
                     Vec<String> arg;
-                    for (auto i = 0; i < opt->argcount; i++) {
+                    auto i = 0;
+                    if (argp) {
+                        arg.push_back(*argp);
+                        i = 1;
+                    }
+                    for (; i < opt->argcount; i++) {
                         index++;
                         if (index == argc || !argv[index]) {
+                            if (opt->effort_min && i >= opt->effort_min) {
+                                break;
+                            }
                             return OptError::need_more_argument;
                         }
                         String str;
@@ -353,9 +400,12 @@ namespace PROJECT_NAME {
                         res->arg_.push_back(std::move(arg));
                     }
                 }
+                else if (argp) {
+                    return OptError::needless_argument;
+                }
                 return true;
             };
-            auto all_arg_set = [&]() -> OptErr {
+            auto read_as_arg = [&]() -> OptErr {
                 index--;
                 if (auto e = set_optarg(&str_opt[fullarg], true); !e) {
                     return e;
@@ -365,28 +415,101 @@ namespace PROJECT_NAME {
             auto invoke = [&](String&& str, bool on_error) {
                 return invoke_cb<Ignore, bool>::invoke(std::forward<Ignore>(cb), str, on_error);
             };
-            bool first = false;
+            auto errorhandle_on_longname = [&](auto arg) -> OptErr {
+                if (any(op & OptOption::ignore_when_not_found)) {
+                    if (!invoke(arg + 1, false)) {
+                        return OptError::not_found;
+                    }
+                    return true;
+                }
+                if (any(op & OptOption::parse_all_arg)) {
+                    if (auto e = read_as_arg(); !e) {
+                        return e;
+                    }
+                    return true;
+                }
+                invoke(arg + 1, true);
+                return OptError::not_found;
+            };
+            auto set_longname_prefix = [&](auto argp, auto prefix) -> OptErr {
+                decltype(str_opt.find(argp)) found;
+                String arg;
+                if (any(OptOption::allow_equal)) {
+                    auto result = commonlib2::split<String, const C*, Vec<String>>(String(argp + prefix), "=", 1);
+                    if (result.size() == 2) {
+                        arg = result[1];
+                    }
+                    found = str_opt.find(result[0]);
+                }
+                else {
+                    found = str_opt.find(argp + prefix);
+                }
+                if (found != str_opt.end()) {
+                    if (auto e = set_optarg(&found->second, false, arg.size() ? &arg : nullptr); !e) {
+                        return e;
+                    }
+                    return true;
+                }
+                else {
+                    if (auto e = errorhandle_on_longname(argp); !e) {
+                        return e;
+                    }
+                    return true;
+                }
+            };
+            auto set_shortname = [&](auto ch, const C* argp = nullptr) -> OptErr {
+                if (auto found = char_opt.find(ch); found == char_opt.end()) {
+                    if (any(op & OptOption::ignore_when_not_found)) {
+                        if (!invoke(String(&ch, 1), false)) {
+                            return OptError::not_found;
+                        }
+                        return true;
+                    }
+                    invoke(String(&ch, 1), true);
+                    return OptError::not_found;
+                }
+                else {
+                    String arg;
+                    if (argp) {
+                        if (any(op & OptOption::allow_equal)) {
+                            if (argp[2] == '=') {
+                                arg = String(argp + 3);
+                            }
+                        }
+                        if (arg.size() == 0) {
+                            arg = String(argp + 2);
+                        }
+                    }
+                    if (auto e = set_optarg(found->second, false, arg.size() ? &arg : nullptr); !e) {
+                        invoke(String(&ch, 1), true);
+                        return e;
+                    }
+                }
+                return true;
+            };
+            //bool first = false;
             for (; index < argc; index++) {
                 auto arg = argv[index];
                 for (; arg[col]; col++) {
                     if (col == 0) {
-                        if (arg[0] != (C)optprefix) {
+                        if (arg[0] != (C)optprefix || str_opt.size() == 0 ||
+                            (any(op & OptOption::parse_all_arg) & str_opt.size() == 1)) {
                             if (any(op & OptOption::parse_all_arg)) {
-                                if (auto e = all_arg_set(); !e) {
+                                if (auto e = read_as_arg(); !e) {
                                     return e;
                                 }
                                 break;
                             }
-                            if (first) {
+                            /*if (first) {
                                 return OptError::no_option;
                             }
-                            else {
-                                return OptError::option_suspended;
-                            }
+                            else {*/
+                            return OptError::option_suspended;
+                            //}
                         }
                         if (arg[1] == 0) {
                             if (any(op & OptOption::parse_all_arg)) {
-                                if (auto e = all_arg_set(); !e) {
+                                if (auto e = read_as_arg(); !e) {
                                     return e;
                                 }
                                 break;
@@ -399,7 +522,7 @@ namespace PROJECT_NAME {
                                     index++;
                                     if (any(op & OptOption::parse_all_arg)) {
                                         for (; index < argc; index++) {
-                                            if (auto e = all_arg_set(); !e) {
+                                            if (auto e = read_as_arg(); !e) {
                                                 return e;
                                             }
                                         }
@@ -411,54 +534,35 @@ namespace PROJECT_NAME {
                             if (any(op & OptOption::two_prefix_longname)) {
                                 if (arg[2] == 0) {
                                     if (any(op & OptOption::parse_all_arg)) {
-                                        if (auto e = all_arg_set(); !e) {
+                                        if (auto e = read_as_arg(); !e) {
                                             return e;
                                         }
                                         break;
                                     }
                                     return OptError::invalid_format;
                                 }
-                                if (auto found = str_opt.find((const C*)(arg + 2)); found == str_opt.end()) {
-                                    if (any(op & OptOption::ignore_when_not_found)) {
-                                        if (!invoke(arg + 1, false)) {
-                                            return OptError::not_found;
-                                        }
-                                        break;
-                                    }
-                                    if (any(op & OptOption::parse_all_arg)) {
-                                        if (auto e = all_arg_set(); !e) {
-                                            return e;
-                                        }
-                                        break;
-                                    }
-                                    invoke(arg + 1, true);
-                                    return OptError::not_found;
+                                if (auto e = set_longname_prefix(arg, 2); !e) {
+                                    return e;
                                 }
-                                else {
-                                    if (auto e = set_optarg(&found->second); !e) {
-                                        return e;
-                                    }
-                                    break;
-                                }
+                                break;
                             }
+                        }
+                        if (any(op & OptOption::one_prefix_longname)) {
+                            if (auto e = set_longname_prefix(arg, 1); !e) {
+                                return e;
+                            }
+                            break;
+                        }
+                        if (any(op & OptOption::allow_adjacent)) {
+                            if (auto e = set_shortname(arg[1], arg); !e) {
+                                return e;
+                            }
+                            break;
                         }
                     }
                     else {
-                        if (auto found = char_opt.find(arg[col]); found == char_opt.end()) {
-                            if (any(op & OptOption::ignore_when_not_found)) {
-                                if (!invoke(String(arg + col, 1), false)) {
-                                    return OptError::not_found;
-                                }
-                                continue;
-                            }
-                            invoke(String(arg + col, 1), true);
-                            return OptError::not_found;
-                        }
-                        else {
-                            if (auto e = set_optarg(found->second); !e) {
-                                invoke(String(arg + col, 1), true);
-                                return e;
-                            }
+                        if (auto e = set_shortname(arg[col]); !e) {
+                            return e;
                         }
                     }
                 }

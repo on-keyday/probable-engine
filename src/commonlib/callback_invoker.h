@@ -19,7 +19,7 @@ namespace PROJECT_NAME {
         static std::false_type has(...);                     \
     };                                                       \
     template <class T>                                       \
-    struct NAME : decltype(NAME##_impl::has<T>(nullptr)) {}
+    struct NAME : decltype(NAME##_impl::template has<T>(nullptr)) {}
 
     DEFINE_ENABLE_IF_EXPR_VALID(has_bool, (bool)std::declval<T>());
 
