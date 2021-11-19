@@ -57,6 +57,14 @@ namespace PROJECT_NAME {
                 keywords = std::move(key);
             }
 
+            reg_t& GetSymbols() {
+                return symbols;
+            }
+
+            reg_t& GetKeyWords() {
+                return keywords;
+            }
+
             template <class Buf>
             bool Read(commonlib2::Reader<Buf>& r) {
                 auto set_next = [this](auto& v) {
@@ -308,6 +316,100 @@ namespace PROJECT_NAME {
 
             std::shared_ptr<token_t> GetParsed() {
                 return roottoken.get_next();
+            }
+        };
+
+        template <class String>
+        struct TokenReaderBase {
+            std::shared_ptr<Token<String>> root;
+            std::shared_ptr<Token<String>> current;
+            TokenReaderBase() {}
+
+            TokenReaderBase(std::shared_ptr<Token<String>> tok)
+                : root(tok), current(tok) {}
+
+           protected:
+            bool is_DefaultIgnore() {
+                return current->is_nodisplay() || current->is_(TokenKind::comments);
+            }
+
+            virtual bool is_IgnoreToken() {
+                return is_DefaultIgnore();
+            }
+
+            virtual void SetEOF() {}
+
+           public:
+            bool is_EOF() {
+                return current == nullptr;
+            }
+
+            void SeekRoot() {
+                current = root;
+            }
+
+            bool Consume() {
+                if (current) {
+                    current = current->get_next();
+                    return true;
+                }
+                return false;
+            }
+
+            std::shared_ptr<Token<String>> Read() {
+                while (current && is_IgnoreToken()) {
+                    current = current->get_next();
+                }
+                return current;
+            }
+
+            std::shared_ptr<Token<String>> ConsumeRead() {
+                if (!Consume()) {
+                    return nullptr;
+                }
+                return Read();
+            }
+
+            std::shared_ptr<Token<String>> Get() {
+                return current;
+            }
+
+            std::shared_ptr<Token<String>> ConsumeGet() {
+                if (!Consume()) {
+                    return nullptr;
+                }
+                return Get();
+            }
+
+            std::shared_ptr<Token<String>> ReadorEOF() {
+                auto ret = Read();
+                if (!ret) {
+                    SetEOF();
+                }
+                return ret;
+            }
+
+            std::shared_ptr<Token<String>> ConsumeReadorEOF() {
+                auto ret = ConsumeRead();
+                if (!ret) {
+                    SetEOF();
+                }
+                return ret;
+            }
+
+            std::shared_ptr<Token<String>> GetorEOF() {
+                if (!current) {
+                    SetEOF();
+                }
+                return current;
+            }
+
+            std::shared_ptr<Token<String>> ConsumeGetorEOF() {
+                auto ret = ConsumeGet();
+                if (!ret) {
+                    SetEOF();
+                }
+                return ret;
             }
         };
     }  // namespace tokenparser
