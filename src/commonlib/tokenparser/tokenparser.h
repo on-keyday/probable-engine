@@ -40,6 +40,7 @@ namespace PROJECT_NAME {
         template <class Vector, class String>
         struct TokenParser {
            private:
+            friend struct TokensIO;
             using reg_t = Registry<Vector>;
             using token_t = Token<String>;
             reg_t symbols;
@@ -319,7 +320,7 @@ namespace PROJECT_NAME {
             }
         };
 
-        template <class String>
+        template <class String, bool invoke_set_eof = false, bool invoke_consume_hook = false>
         struct TokenReaderBase {
             std::shared_ptr<Token<String>> root;
             std::shared_ptr<Token<String>> current;
@@ -339,6 +340,22 @@ namespace PROJECT_NAME {
 
             virtual void SetEOF() {}
 
+            virtual void ConsumeHook(bool to_root) {}
+
+           private:
+            template <bool v>
+            inline void callHook() {
+                if CONSTEXPRIF (invoke_consume_hook) {
+                    ConsumeHook(v);
+                }
+            }
+
+            inline void callEOF() {
+                if CONSTEXPRIF (invoke_set_eof) {
+                    SetEOF();
+                }
+            }
+
            public:
             bool is_EOF() {
                 return current == nullptr;
@@ -346,11 +363,13 @@ namespace PROJECT_NAME {
 
             void SeekRoot() {
                 current = root;
+                callHook<true>();
             }
 
             bool Consume() {
                 if (current) {
                     current = current->get_next();
+                    callHook<false>();
                     return true;
                 }
                 return false;
@@ -359,6 +378,7 @@ namespace PROJECT_NAME {
             std::shared_ptr<Token<String>> Read() {
                 while (current && is_IgnoreToken()) {
                     current = current->get_next();
+                    callHook<false>();
                 }
                 return current;
             }
@@ -384,7 +404,7 @@ namespace PROJECT_NAME {
             std::shared_ptr<Token<String>> ReadorEOF() {
                 auto ret = Read();
                 if (!ret) {
-                    SetEOF();
+                    callEOF();
                 }
                 return ret;
             }
@@ -392,14 +412,14 @@ namespace PROJECT_NAME {
             std::shared_ptr<Token<String>> ConsumeReadorEOF() {
                 auto ret = ConsumeRead();
                 if (!ret) {
-                    SetEOF();
+                    callEOF();
                 }
                 return ret;
             }
 
             std::shared_ptr<Token<String>> GetorEOF() {
                 if (!current) {
-                    SetEOF();
+                    callEOF();
                 }
                 return current;
             }
@@ -407,7 +427,7 @@ namespace PROJECT_NAME {
             std::shared_ptr<Token<String>> ConsumeGetorEOF() {
                 auto ret = ConsumeGet();
                 if (!ret) {
-                    SetEOF();
+                    callEOF();
                 }
                 return ret;
             }

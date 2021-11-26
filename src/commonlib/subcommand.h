@@ -62,15 +62,15 @@ namespace PROJECT_NAME {
                 return &result[index].second;
             }
 
-            String error(const String& msg, Char sep = ':') {
+            String fmt(const String& msg, Char sep = ':') {
                 if (current) {
                     return current->get_currentcmdname(sep) + msg;
                 }
                 return msg;
             }
 
-            String errorln(const String& msg, Char sep = ':') {
-                return error(msg, sep) + '\n';
+            String fmtln(const String& msg, Char sep = ':') {
+                return fmt(msg, sep) + '\n';
             }
 
             String help(const Cmd* p = nullptr, const char* usagemsg = "Usage:", const char* subcmdmsg = "Subcommand:", size_t currentoffset = 2, size_t preoffset = 0, bool noUsage = false) {
@@ -159,8 +159,9 @@ namespace PROJECT_NAME {
             return ret;
         }
 
-        void set_usage(const String& str) {
+        Cmd* set_usage(const String& str) {
             opt.set_usage(str);
+            return static_cast<Cmd*>(this);
         }
 
         const String& get_cmdname() const {

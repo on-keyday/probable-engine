@@ -44,11 +44,11 @@ namespace PROJECT_NAME {
         return static_cast<basety>(a) != 0;              \
     }
 
-    template <class E, E trueval, E falseval>
+    template <class E, E trueval, E falseval, E defaultv = falseval>
     struct EnumWrap {
         E e;
         constexpr EnumWrap()
-            : e(falseval) {}
+            : e(defaultv) {}
         constexpr EnumWrap(bool i)
             : e(i ? trueval : falseval) {}
         constexpr EnumWrap(E i)

@@ -118,6 +118,7 @@ namespace PROJECT_NAME {
         template <class String>
         struct Token {
            private:
+            friend struct TokenIO;
             TokenKind kind = TokenKind::unknown;
             std::shared_ptr<Token> next = nullptr;
             Token* prev = nullptr;
@@ -232,8 +233,11 @@ namespace PROJECT_NAME {
         template <class String>
         struct Spaces : Token<String> {
            private:
+            friend struct TokenIO;
             size_t numsp = 0;
             char16_t spchar = 0;
+            constexpr Spaces()
+                : Token<String>(TokenKind::spaces) {}
 
            public:
             constexpr Spaces(size_t nsp, uint16_t c)
@@ -381,8 +385,12 @@ namespace PROJECT_NAME {
         template <class String>
         struct Line : Token<String> {
            private:
+            friend struct TokenIO;
             LineKind linekind = LineKind::none;
             size_t numline = 0;
+
+            constexpr Line()
+                : Token<String>(TokenKind::line) {}
 
            public:
             constexpr Line(LineKind kind, size_t num)
@@ -458,8 +466,11 @@ namespace PROJECT_NAME {
         template <class String>
         struct Comment : Token<String> {
            private:
+            friend struct TokenIO;
             String comments;
             bool oneline = false;
+            Comment()
+                : Token<String>(TokenKind::comments) {}
 
            public:
             Comment(String&& com, bool ol)
@@ -550,7 +561,11 @@ namespace PROJECT_NAME {
         template <class String>
         struct RegistryRead : Token<String> {
            private:
+            friend struct TokenIO;
             String token;
+
+            RegistryRead(TokenKind kind)
+                : Token<String>(kind) {}
 
            public:
             RegistryRead(String&& str, TokenKind kind)
@@ -629,7 +644,11 @@ namespace PROJECT_NAME {
         template <class String>
         struct Identifier : Token<String> {
            private:
+            friend struct TokenIO;
             String id;
+
+            Identifier()
+                : Token<String>(TokenKind::identifiers) {}
 
            public:
             Identifier(String&& s)
